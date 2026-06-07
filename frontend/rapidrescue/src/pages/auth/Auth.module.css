@@ -1,0 +1,483 @@
+/* ─── Layout ─────────────────────────────────────────── */
+.pageWrapper {
+  min-height: 100vh;
+  display: flex;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+.leftPanel {
+  width: 440px;
+  min-height: 100vh;
+  background: linear-gradient(160deg, #7b0000 0%, #b71c1c 35%, #c62828 65%, #d32f2f 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 40px;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Decorative circles */
+.leftPanel::before {
+  content: '';
+  position: absolute;
+  width: 340px;
+  height: 340px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.04);
+  top: -80px;
+  right: -80px;
+  pointer-events: none;
+}
+.leftPanel::after {
+  content: '';
+  position: absolute;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.05);
+  bottom: 60px;
+  left: -60px;
+  pointer-events: none;
+}
+
+.rightPanel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f4f6fb;
+  padding: 48px 32px;
+  overflow-y: auto;
+}
+
+/* ─── Brand ─────────────────────────────────────────── */
+.brandBox {
+  color: #fff;
+  text-align: center;
+  width: 100%;
+  position: relative;
+  z-index: 1;
+}
+
+.brandLogo {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  margin: 0 auto 20px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+}
+
+.brandName {
+  font-size: 34px;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+  margin: 0 0 6px;
+  line-height: 1.1;
+}
+
+.brandTagline {
+  font-size: 14px;
+  opacity: 0.82;
+  margin: 0 0 8px;
+  letter-spacing: 0.3px;
+}
+
+.brandCity {
+  font-size: 12px;
+  opacity: 0.65;
+  margin: 0 0 32px;
+  letter-spacing: 0.5px;
+}
+
+/* ─── Divider ─────────────────────────────────────────── */
+.brandDivider {
+  width: 100%;
+  height: 1px;
+  background: rgba(255,255,255,0.18);
+  margin: 0 0 28px;
+}
+
+/* ─── Features ───────────────────────────────────────── */
+.features {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: left;
+  margin-bottom: 32px;
+}
+
+.feature {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 12px;
+  padding: 12px 16px;
+  font-size: 13.5px;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+.feature:hover {
+  background: rgba(255,255,255,0.15);
+}
+
+.featureIcon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+/* ─── Stats Row ──────────────────────────────────────── */
+.statsRow {
+  display: flex;
+  gap: 0;
+  width: 100%;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 14px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.statItem {
+  flex: 1;
+  text-align: center;
+  padding: 14px 8px;
+  border-right: 1px solid rgba(255,255,255,0.12);
+}
+.statItem:last-child {
+  border-right: none;
+}
+
+.statVal {
+  font-size: 22px;
+  font-weight: 900;
+  color: #fff;
+  line-height: 1;
+}
+
+.statKey {
+  font-size: 10.5px;
+  color: rgba(255,255,255,0.72);
+  margin-top: 4px;
+  letter-spacing: 0.4px;
+  font-weight: 500;
+}
+
+/* ─── Left panel footer ──────────────────────────────── */
+.panelFooter {
+  font-size: 11px;
+  color: rgba(255,255,255,0.5);
+  text-align: center;
+}
+
+/* ─── Form Card ───────────────────────────────────────── */
+.formCard {
+  background: #fff;
+  border-radius: 24px;
+  padding: 44px 40px;
+  width: 100%;
+  max-width: 500px;
+  box-shadow: 0 4px 40px rgba(0,0,0,0.09);
+  border: 1px solid #efefef;
+}
+
+.adminBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, #fff3e0, #fff8f0);
+  color: #e65100;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 5px 14px;
+  border-radius: 20px;
+  border: 1.5px solid #ffcc80;
+  margin-bottom: 16px;
+  letter-spacing: 0.4px;
+}
+
+.formTitle {
+  font-size: 28px;
+  font-weight: 800;
+  color: #111;
+  margin: 0 0 5px;
+  letter-spacing: -0.3px;
+}
+
+.formSubtitle {
+  font-size: 14px;
+  color: #999;
+  margin: 0 0 28px;
+}
+
+/* ─── Form Fields ─────────────────────────────────────── */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.row {
+  display: flex;
+  gap: 14px;
+}
+
+.row .inputGroup {
+  flex: 1;
+}
+
+.inputGroup {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 16px;
+}
+
+.label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #444;
+  margin-bottom: 7px;
+  letter-spacing: 0.2px;
+}
+
+.required {
+  color: #e53935;
+}
+
+/* Icon input wrapper */
+.inputWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.inputIcon {
+  position: absolute;
+  left: 14px;
+  font-size: 15px;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.55;
+}
+
+.inputWithIcon {
+  width: 100%;
+  padding: 12px 14px 12px 42px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 12px;
+  font-size: 14px;
+  font-family: 'Inter', system-ui, sans-serif;
+  color: #111;
+  background: #fafafa;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+  box-sizing: border-box;
+}
+
+.inputWithIcon:focus {
+  border-color: #e53935;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(229,57,53,0.08);
+}
+
+.input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 12px;
+  font-size: 14px;
+  font-family: 'Inter', system-ui, sans-serif;
+  color: #111;
+  background: #fafafa;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+  box-sizing: border-box;
+}
+
+.input:focus {
+  border-color: #e53935;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(229,57,53,0.08);
+}
+
+.passwordWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.passwordWrapper .inputWithIcon,
+.passwordWrapper .input {
+  padding-right: 46px;
+}
+
+.eyeBtn {
+  position: absolute;
+  right: 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 4px;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+.eyeBtn:hover {
+  opacity: 1;
+}
+
+/* ─── Error ──────────────────────────────────────────── */
+.errorAlert {
+  background: #fff5f5;
+  border: 1.5px solid #ffd6d6;
+  border-left: 4px solid #e53935;
+  color: #c62828;
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 13.5px;
+  font-weight: 500;
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ─── Submit Button ───────────────────────────────────── */
+.submitBtn {
+  width: 100%;
+  padding: 14px;
+  background: linear-gradient(135deg, #e53935 0%, #c62828 100%);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  font-family: 'Inter', system-ui, sans-serif;
+  cursor: pointer;
+  letter-spacing: 0.3px;
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: transform 0.15s, box-shadow 0.2s, opacity 0.2s;
+  box-shadow: 0 4px 20px rgba(229,57,53,0.35);
+}
+
+.submitBtn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(229,57,53,0.45);
+}
+
+.submitBtn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.submitBtn:disabled {
+  opacity: 0.72;
+  cursor: not-allowed;
+}
+
+/* ─── Spinner ──────────────────────────────────────────  */
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 3px solid rgba(255,255,255,0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+  display: inline-block;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ─── Divider ─────────────────────────────────────────── */
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0;
+}
+
+.dividerLine {
+  flex: 1;
+  height: 1px;
+  background: #f0f0f0;
+}
+
+.dividerText {
+  font-size: 12px;
+  color: #bbb;
+  font-weight: 600;
+}
+
+/* ─── Switch Link ─────────────────────────────────────── */
+.switchText {
+  text-align: center;
+  color: #999;
+  font-size: 14px;
+  margin-top: 22px;
+}
+
+.switchLink {
+  color: #e53935;
+  font-weight: 700;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.switchLink:hover {
+  color: #c62828;
+  text-decoration: underline;
+}
+
+/* ─── Responsive ──────────────────────────────────────── */
+@media (max-width: 900px) {
+  .leftPanel {
+    width: 360px;
+    padding: 40px 28px;
+  }
+  .formCard {
+    padding: 36px 28px;
+  }
+}
+
+@media (max-width: 768px) {
+  .pageWrapper {
+    flex-direction: column;
+  }
+  .leftPanel {
+    width: 100%;
+    min-height: auto;
+    padding: 32px 24px 28px;
+  }
+  .features {
+    display: none;
+  }
+  .statsRow {
+    margin-bottom: 0;
+  }
+  .brandCity { margin-bottom: 20px; }
+  .rightPanel {
+    padding: 28px 16px;
+  }
+  .formCard {
+    padding: 28px 20px;
+  }
+  .row {
+    flex-direction: column;
+    gap: 0;
+  }
+}
