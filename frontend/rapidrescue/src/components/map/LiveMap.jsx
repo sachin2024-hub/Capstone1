@@ -1,41 +1,20 @@
-import { useEffect, useState, useCallback, Fragment } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
-import L from 'leaflet';
+import { useEffect, useState, useCallback, useRef, Fragment } from 'react';
+import { MapContainer, Marker, Popup, Polyline, TileLayer } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import api from '../../services/api';
-import { CABADBARAN, CABADBARAN_MAX_BOUNDS, RESPONDER_STATIONS } from '../../constants/cabadbaran';
+import { CABADBARAN, CABADBARAN_MAX_BOUNDS, RESPONDER_STATIONS, CITY_HALL } from '../../constants/cabadbaran';
+import { MAP_LAYERS } from '../../constants/mapLayers';
 import { isWithinCabadbaran, OUTSIDE_CITY_MESSAGE } from '../../utils/geofence';
 import MapBoundary from './MapBoundary';
-import { victimIcon, responderIcon, outsideIcon, drrmoIcon, stationIcon } from './mapIcons';
+import MapResizeFix from './MapResizeFix';
+import MapInitBounds from './MapInitBounds';
+import MapFocusOnClick from './MapFocusOnClick';
+import { victimIcon, responderIcon, outsideIcon, cityHallIcon, stationIcon } from './mapIcons';
 import { fetchRoute, formatDistance, formatDuration } from './routeService';
+import { parseLocationAddress, formatAreaLabel } from '../../utils/locationFormat';
 import styles from './LiveMap.module.css';
 
-// DRRMO HQ — main admin headquarters
-const DRRMO_HQ = {
-  name: 'DRRMO Headquarters',
-  label: 'Cabadbaran City DRRMO',
-  lat: 9.1226,
-  lng: 125.5344,
-};
-
-function MapFitCabadbaran() {
-  const map = useMap();
-  useEffect(() => {
-    map.fitBounds(L.latLngBounds(CABADBARAN_MAX_BOUNDS), { padding: [20, 20] });
-    map.setMaxBounds(CABADBARAN_MAX_BOUNDS);
-  }, [map]);
-  return null;
-}
-
-function MapFocusRoute({ routePoints, incidentId, selectedId }) {
-  const map = useMap();
-  useEffect(() => {
-    if (incidentId === selectedId && routePoints?.length > 1) {
-      map.fitBounds(L.latLngBounds(routePoints), { padding: [60, 60], maxZoom: 15 });
-    }
-  }, [map, routePoints, incidentId, selectedId]);
-  return null;
-}
+const DRRMO_HQ = CITY_HALL;
 
 export default function LiveMap() {
   const [liveIncidents, setLiveIncidents] = useState([]);
@@ -43,6 +22,14 @@ export default function LiveMap() {
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [outsideAlerts, setOutsideAlerts] = useState([]);
+  const [mapLayer, setMapLayer] = useState('hybrid');
+  const [layersOpen, setLayersOpen] = useState(false);
+  const [mapError, setMapError] = useState('');
+  const [focusRequestId, setFocusRequestId] = useState(0);
+  const hasAutoSelected = useRef(false);
+
+  const activeLayer = MAP_LAYERS.find((l) => l.id === mapLayer) || MAP_LAYERS[0];
+  const isSatelliteView = mapLayer === 'hybrid';
 
   const loadLive = useCallback(async () => {
     try {
@@ -54,7 +41,14 @@ export default function LiveMap() {
       setOutsideAlerts(outside);
 
       if (data.length > 0) {
-        setSelectedId((prev) => prev ?? data[0].incident_id);
+        setSelectedId((prev) => {
+          if (prev && data.some((i) => i.incident_id === prev)) return prev;
+          if (!hasAutoSelected.current) {
+            hasAutoSelected.current = true;
+            return data[0].incident_id;
+          }
+          return prev;
+        });
       }
 
       const routeMap = {};
@@ -62,16 +56,19 @@ export default function LiveMap() {
         data
           .filter((inc) => isWithinCabadbaran(inc.victim.lat, inc.victim.lng))
           .map(async (inc) => {
-            if (inc.responder && inc.victim) {
-              const from = { lat: inc.responder.latitude, lng: inc.responder.longitude };
-              const to   = { lat: inc.victim.lat, lng: inc.victim.lng };
-              routeMap[inc.incident_id] = await fetchRoute(from, to);
-            }
+            if (!inc.victim) return;
+            const to = { lat: inc.victim.lat, lng: inc.victim.lng };
+            const from = inc.responder
+              ? { lat: inc.responder.latitude, lng: inc.responder.longitude }
+              : { lat: DRRMO_HQ.lat, lng: DRRMO_HQ.lng };
+            routeMap[inc.incident_id] = await fetchRoute(from, to);
           })
       );
       setRoutes(routeMap);
+      setMapError('');
     } catch (err) {
       console.error('Live map error:', err);
+      setMapError(err.message || 'Failed to load live map data.');
     } finally {
       setLoading(false);
     }
@@ -83,22 +80,53 @@ export default function LiveMap() {
     return () => clearInterval(interval);
   }, [loadLive]);
 
+  useEffect(() => {
+    if (!layersOpen) return undefined;
+    const close = () => setLayersOpen(false);
+    const timer = setTimeout(() => document.addEventListener('click', close), 0);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('click', close);
+    };
+  }, [layersOpen]);
+
   const insideIncidents = liveIncidents.filter((inc) =>
     isWithinCabadbaran(inc.victim.lat, inc.victim.lng)
   );
 
-  // Active dispatches for DRRMO HQ popup info
-  const activeDispatches = insideIncidents.filter((inc) => inc.responder);
+  const selectedIncident = insideIncidents.find((inc) => inc.incident_id === selectedId);
+  const selectedRoute = selectedId ? routes[selectedId] : null;
 
-  // Responder is always at DRRMO HQ now — no separate blue marker needed at HQ
-  // (the green DRRMO marker will show dispatch info in its popup)
-  const responderAtHQ = (inc) =>
-    inc.responder &&
-    Math.abs(inc.responder.latitude - DRRMO_HQ.lat) < 0.001 &&
-    Math.abs(inc.responder.longitude - DRRMO_HQ.lng) < 0.001;
+  // When a sidebar card is clicked, show only that incident on the map
+  const mapIncidents = selectedId
+    ? insideIncidents.filter((inc) => inc.incident_id === selectedId)
+    : insideIncidents;
+
+  const focusOnIncident = (incidentId) => {
+    setSelectedId(incidentId);
+    setFocusRequestId((n) => n + 1);
+  };
+
+  // Active dispatches for CDRRMO HQ popup — scoped to selected incident
+  const activeDispatches = mapIncidents.filter((inc) => inc.responder);
+
+  // Suppress separate responder marker if it's at an already-visible station pin
+  const responderAtStation = (inc) => {
+    if (!inc.responder) return false;
+    return RESPONDER_STATIONS.some(
+      (s) =>
+        Math.abs(inc.responder.latitude - s.lat) < 0.001 &&
+        Math.abs(inc.responder.longitude - s.lng) < 0.001
+    );
+  };
 
   return (
     <div className={styles.wrapper}>
+      {mapError && (
+        <div className={styles.mapErrorBanner}>
+          ⚠️ {mapError} — Make sure the backend is running on port 5000.
+        </div>
+      )}
       <div className={styles.mapPanel}>
         {outsideAlerts.length > 0 && (
           <div className={styles.outsideBanner}>
@@ -110,30 +138,51 @@ export default function LiveMap() {
           center={CABADBARAN.center}
           zoom={CABADBARAN.defaultZoom}
           minZoom={CABADBARAN.minZoom}
-          maxZoom={CABADBARAN.maxZoom}
+          maxZoom={activeLayer.mapMaxZoom ?? CABADBARAN.maxZoom}
           maxBounds={CABADBARAN_MAX_BOUNDS}
           maxBoundsViscosity={1.0}
-          className={styles.map}
+          style={{ position: 'absolute', inset: 0, height: '100%', width: '100%' }}
+          className={`${styles.map} ${isSatelliteView ? styles.mapSatellite : ''}`}
         >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-          <MapFitCabadbaran />
-          <MapBoundary />
+          {activeLayer.layers.map((tile, i) => (
+            <TileLayer
+              key={`${activeLayer.id}-${i}`}
+              url={tile.url}
+              {...(tile.subdomains ? { subdomains: tile.subdomains } : {})}
+              {...(tile.attribution ? { attribution: tile.attribution } : {})}
+              {...(tile.maxNativeZoom != null ? { maxNativeZoom: tile.maxNativeZoom } : {})}
+              maxZoom={tile.maxZoom}
+              opacity={tile.opacity ?? 1}
+            />
+          ))}
+          <MapResizeFix />
+          <MapInitBounds />
+          {selectedIncident && (
+            <MapFocusOnClick
+              lat={selectedIncident.victim.lat}
+              lng={selectedIncident.victim.lng}
+              routePoints={selectedRoute?.points}
+              focusId={focusRequestId}
+            />
+          )}
+          <MapBoundary subtle={isSatelliteView} />
 
-          {/* ── DRRMO HQ — always visible, shows dispatch status ── */}
-          <Marker position={[DRRMO_HQ.lat, DRRMO_HQ.lng]} icon={drrmoIcon}>
+          {/* ── CDRRMO HQ ── */}
+          <Marker position={[DRRMO_HQ.lat, DRRMO_HQ.lng]} icon={cityHallIcon}>
             <Popup>
-              <div style={{ minWidth: 200 }}>
-                <strong style={{ fontSize: 14, color: '#1b5e20' }}>🏢 {DRRMO_HQ.name}</strong>
+              <div style={{ minWidth: 240 }}>
+                <strong style={{ fontSize: 14, color: '#b71c1c' }}>🚨 {CITY_HALL.name}</strong>
                 <br />
-                <span style={{ fontSize: 12, color: '#555' }}>{DRRMO_HQ.label}</span>
+                <span style={{ fontSize: 12, color: '#555', fontWeight: 600 }}>{CITY_HALL.label}</span>
                 <br />
-                <span style={{ fontSize: 12, color: '#888' }}>Admin HQ · Dispatch Center</span>
+                <span style={{ fontSize: 12, color: '#333' }}>📍 {CITY_HALL.address}</span>
+                <br />
+                <span style={{ fontSize: 11, color: '#2e7d32', fontWeight: 600 }}>🕐 {CITY_HALL.hours}</span>
+                <br />
+                <span style={{ fontSize: 11, color: '#888' }}>All dispatches originate from here</span>
                 <br />
                 <span style={{ fontSize: 11, color: '#aaa' }}>
-                  {DRRMO_HQ.lat.toFixed(4)}, {DRRMO_HQ.lng.toFixed(4)}
+                  {DRRMO_HQ.lat.toFixed(5)}, {DRRMO_HQ.lng.toFixed(5)}
                 </span>
                 {activeDispatches.length > 0 && (
                   <>
@@ -163,51 +212,113 @@ export default function LiveMap() {
             </Popup>
           </Marker>
 
-          {/* ── Other dispatch stations — always visible ── */}
-          {RESPONDER_STATIONS
+          {/* ── Sub-stations — hidden when one incident is focused ── */}
+          {!selectedId && RESPONDER_STATIONS
             .filter((s) => !(s.lat === DRRMO_HQ.lat && s.lng === DRRMO_HQ.lng))
-            .map((station) => (
-              <Marker key={station.id} position={[station.lat, station.lng]} icon={stationIcon}>
-                <Popup>
-                  <div style={{ minWidth: 160 }}>
-                    <strong style={{ fontSize: 13, color: '#4a148c' }}>📡 {station.name}</strong>
-                    <br />
-                    <span style={{ fontSize: 12, color: '#888' }}>DRRMO Sub-Station</span>
-                    <br />
-                    <span style={{ fontSize: 11, color: '#aaa' }}>
-                      {station.lat.toFixed(4)}, {station.lng.toFixed(4)}
-                    </span>
-                  </div>
-                </Popup>
-              </Marker>
-            ))}
+            .map((station) => {
+              const dispatchingFrom = insideIncidents.filter(
+                (inc) =>
+                  inc.responder &&
+                  Math.abs(inc.responder.latitude - station.lat) < 0.001 &&
+                  Math.abs(inc.responder.longitude - station.lng) < 0.001
+              );
+              return (
+                <Marker key={station.id} position={[station.lat, station.lng]} icon={stationIcon}>
+                  <Popup>
+                    <div style={{ minWidth: 190 }}>
+                      <strong style={{ fontSize: 13, color: '#4a148c' }}>📡 {station.name}</strong>
+                      <br />
+                      <span style={{ fontSize: 12, color: '#888' }}>DRRMO Sub-Station</span>
+                      <br />
+                      <span style={{ fontSize: 11, color: '#aaa' }}>
+                        {station.lat.toFixed(4)}, {station.lng.toFixed(4)}
+                      </span>
+                      {dispatchingFrom.length > 0 && (
+                        <>
+                          <hr style={{ margin: '6px 0', border: 'none', borderTop: '1px solid #eee' }} />
+                          <strong style={{ fontSize: 12, color: '#e53935' }}>
+                            🚑 {dispatchingFrom.length} unit(s) dispatching from here
+                          </strong>
+                          {dispatchingFrom.map((inc) => (
+                            <div key={inc.incident_id} style={{ fontSize: 11, color: '#555', marginTop: 3 }}>
+                              → #{inc.incident_id} · {inc.responder.first_name} {inc.responder.last_name}
+                              <span style={{ color: '#e53935', fontWeight: 700 }}>
+                                {' '}({inc.dispatch?.dispatch_status || 'En Route'})
+                              </span>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  </Popup>
+                </Marker>
+              );
+            })}
 
-          {/* ── Active incidents with routes ─────────────── */}
-          {insideIncidents.map((inc) => {
+          {/* ── Active incidents with routes (selected only when focused) ── */}
+          {mapIncidents.map((inc) => {
             const route = routes[inc.incident_id];
             const isSelected = selectedId === inc.incident_id;
             return (
               <Fragment key={inc.incident_id}>
-                {route?.points?.length > 1 && (
-                  <MapFocusRoute
-                    routePoints={route.points}
-                    incidentId={inc.incident_id}
-                    selectedId={selectedId}
-                  />
-                )}
-
                 {/* Victim marker */}
-                <Marker position={[inc.victim.lat, inc.victim.lng]} icon={victimIcon}>
+                <Marker
+                  position={[inc.victim.lat, inc.victim.lng]}
+                  icon={victimIcon}
+                  zIndexOffset={isSelected ? 1000 : 0}
+                  eventHandlers={{ click: () => focusOnIncident(inc.incident_id) }}
+                >
                   <Popup>
-                    <div style={{ minWidth: 180 }}>
-                      <strong style={{ fontSize: 14, color: '#b71c1c' }}>🆘 Victim — #{inc.incident_id}</strong>
+                    <div style={{ minWidth: 220 }}>
+                      <strong style={{ fontSize: 14, color: '#b71c1c' }}>🆘 Help Request — #{inc.incident_id}</strong>
                       <br />
                       <span style={{ fontSize: 13, fontWeight: 600 }}>
                         {inc.user ? `${inc.user.first_name} ${inc.user.last_name}` : 'Unknown'}
                       </span>
+                      {inc.user?.phone_number && (
+                        <>
+                          <br />
+                          <a
+                            href={`tel:${inc.user.phone_number}`}
+                            style={{
+                              fontSize: 13,
+                              fontWeight: 700,
+                              color: '#fff',
+                              background: '#2e7d32',
+                              padding: '4px 10px',
+                              borderRadius: 8,
+                              display: 'inline-block',
+                              marginTop: 5,
+                              textDecoration: 'none',
+                            }}
+                          >
+                            📞 {inc.user.phone_number}
+                          </a>
+                        </>
+                      )}
                       <br />
-                      <span style={{ fontSize: 12, color: '#666' }}>
-                        {inc.victim.address || 'SOS Location'}
+                      <span style={{ fontSize: 12, color: '#333', fontWeight: 700 }}>
+                        📍 {formatAreaLabel({
+                          purok: inc.victim.purok || parseLocationAddress(inc.victim.address).purok,
+                          area: inc.victim.area || parseLocationAddress(inc.victim.address).area,
+                          barangay: inc.victim.barangay || parseLocationAddress(inc.victim.address).barangay,
+                        })}
+                      </span>
+                      <br />
+                      <span style={{ fontSize: 12, color: '#1565c0', fontWeight: 700 }}>
+                        🏘️ Barangay {inc.victim.barangay || parseLocationAddress(inc.victim.address).barangay || 'Unknown'}
+                      </span>
+                      <br />
+                      <span style={{ fontSize: 11, color: '#666' }}>
+                        {[
+                          formatAreaLabel({
+                            purok: inc.victim.purok || parseLocationAddress(inc.victim.address).purok,
+                            area: inc.victim.area || parseLocationAddress(inc.victim.address).area,
+                            barangay: inc.victim.barangay || parseLocationAddress(inc.victim.address).barangay,
+                          }),
+                          inc.victim.barangay ? `Barangay ${inc.victim.barangay}` : null,
+                          inc.victim.city || 'Cabadbaran City',
+                        ].filter(Boolean).join(', ')}
                       </span>
                       {route?.isRoad && (
                         <>
@@ -221,8 +332,8 @@ export default function LiveMap() {
                   </Popup>
                 </Marker>
 
-                {/* Responder marker — only if NOT at DRRMO HQ (no duplicate) */}
-                {inc.responder && !responderAtHQ(inc) && (
+                {/* Responder marker — only if NOT already at a visible station pin */}
+                {inc.responder && !responderAtStation(inc) && (
                   <Marker
                     position={[inc.responder.latitude, inc.responder.longitude]}
                     icon={responderIcon}
@@ -263,7 +374,7 @@ export default function LiveMap() {
                     positions={route.points}
                     pathOptions={{
                       color: isSelected ? '#E53935' : '#ef9a9a',
-                      weight: isSelected ? 6 : 4,
+                      weight: isSelected ? 7 : 5,
                       opacity: isSelected ? 0.95 : 0.5,
                       lineCap: 'round',
                       lineJoin: 'round',
@@ -274,8 +385,11 @@ export default function LiveMap() {
             );
           })}
 
-          {/* ── Outside city alerts ───────────────────── */}
-          {outsideAlerts.map((inc) => (
+          {/* ── Outside city alerts (selected only when focused) ── */}
+          {(selectedId
+            ? outsideAlerts.filter((inc) => inc.incident_id === selectedId)
+            : outsideAlerts
+          ).map((inc) => (
             <Marker
               key={`out-${inc.incident_id}`}
               position={[inc.victim.lat, inc.victim.lng]}
@@ -299,15 +413,15 @@ export default function LiveMap() {
           <div className={styles.legendTitle}>Map Legend</div>
           <div className={styles.legendItem}>
             <span className={styles.legendDot} style={{ background: '#e53935' }} />
-            Victim / SOS
+            Victim / Help
           </div>
           <div className={styles.legendItem}>
             <span className={styles.legendDot} style={{ background: '#1565c0' }} />
             Responder (DRRMO)
           </div>
           <div className={styles.legendItem}>
-            <span className={styles.legendDot} style={{ background: '#2e7d32' }} />
-            DRRMO Headquarters
+            <span className={styles.legendDot} style={{ background: '#f9a825' }} />
+            CDRRMO HQ
           </div>
           <div className={styles.legendItem}>
             <span className={styles.legendDot} style={{ background: '#6a1b9a' }} />
@@ -322,9 +436,44 @@ export default function LiveMap() {
         {loading && liveIncidents.length === 0 && (
           <div className={styles.mapOverlay}>
             <div className={styles.loader} />
-            <p>Waiting for SOS alerts...</p>
+            <p>Waiting for help alerts...</p>
           </div>
         )}
+
+        {/* Google-style layer picker */}
+        <div
+          className={`${styles.layerPanel} ${layersOpen ? styles.layerPanelOpen : ''}`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {layersOpen ? (
+            <div className={styles.layerGrid}>
+              {MAP_LAYERS.map((layer) => (
+                <button
+                  key={layer.id}
+                  type="button"
+                  className={`${styles.layerCard} ${mapLayer === layer.id ? styles.layerCardActive : ''}`}
+                  onClick={() => {
+                    setMapLayer(layer.id);
+                    setLayersOpen(false);
+                  }}
+                >
+                  <span className={`${styles.layerThumb} ${styles[`thumb_${layer.preview}`]}`} />
+                  <span className={styles.layerCardLabel}>{layer.label}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <button
+              type="button"
+              className={styles.layerToggle}
+              onClick={() => setLayersOpen(true)}
+              title="Change map layer"
+            >
+              <span className={`${styles.layerThumb} ${styles[`thumb_${activeLayer.preview}`]}`} />
+              <span className={styles.layerToggleLabel}>Layers</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── Side Panel ────────────────────────────────── */}
@@ -332,10 +481,10 @@ export default function LiveMap() {
         {/* DRRMO Info Card */}
         <div className={styles.drrmoCard}>
           <div className={styles.drrmoCardHeader}>
-            <span className={styles.drrmoIcon}>🏢</span>
+            <span className={styles.drrmoIcon}>🚨</span>
             <div>
-              <div className={styles.drrmoName}>DRRMO Headquarters</div>
-              <div className={styles.drrmoSub}>Cabadbaran City, Agusan del Norte</div>
+              <div className={styles.drrmoName}>CDRRMO — Cabadbaran City</div>
+              <div className={styles.drrmoSub}>{CITY_HALL.address}</div>
             </div>
           </div>
           <div className={styles.drrmoStats}>
@@ -345,7 +494,7 @@ export default function LiveMap() {
             </div>
             <div className={styles.drrmStatItem}>
               <span className={styles.drrmStatVal}>{liveIncidents.length}</span>
-              <span className={styles.drrmStatLabel}>Active SOS</span>
+              <span className={styles.drrmStatLabel}>Active Help</span>
             </div>
             <div className={styles.drrmStatItem}>
               <span className={styles.drrmStatVal}>24/7</span>
@@ -354,22 +503,29 @@ export default function LiveMap() {
           </div>
         </div>
 
-        <h3 className={styles.sideTitle}>🚨 Active SOS Alerts</h3>
+        <h3 className={styles.sideTitle}>🚨 Active Help Alerts</h3>
         {liveIncidents.length === 0 ? (
           <div className={styles.emptyBox}>
             <div className={styles.emptyIcon}>📡</div>
-            <p className={styles.emptyText}>No active SOS alerts.</p>
-            <p className={styles.emptyHint}>Press SOS on the mobile app inside Cabadbaran City to trigger a response.</p>
+            <p className={styles.emptyText}>No active help alerts.</p>
+            <p className={styles.emptyHint}>Press Help on the mobile app inside Cabadbaran City to trigger a response.</p>
           </div>
         ) : (
           liveIncidents.map((inc) => {
             const outside = !isWithinCabadbaran(inc.victim.lat, inc.victim.lng);
             const route = routes[inc.incident_id];
+            const parsed = parseLocationAddress(inc.victim.address);
+            const loc = {
+              purok: inc.victim.purok || parsed.purok,
+              area: inc.victim.area || parsed.area,
+              barangay: inc.victim.barangay || parsed.barangay,
+            };
             return (
               <button
+                type="button"
                 key={inc.incident_id}
                 className={`${styles.alertCard} ${selectedId === inc.incident_id ? styles.alertCardActive : ''} ${outside ? styles.alertCardOutside : ''}`}
-                onClick={() => setSelectedId(inc.incident_id)}
+                onClick={() => focusOnIncident(inc.incident_id)}
               >
                 <div className={styles.alertHeader}>
                   <span className={styles.alertId}>#{inc.incident_id}</span>
@@ -377,29 +533,55 @@ export default function LiveMap() {
                     {outside ? '⚠️ Outside' : inc.incident_status}
                   </span>
                 </div>
-                <p className={styles.alertUser}>
-                  👤 {inc.user ? `${inc.user.first_name} ${inc.user.last_name}` : 'Unknown user'}
-                </p>
+                <div className={styles.alertUserRow}>
+                  <p className={styles.alertUser}>
+                    👤 {inc.user ? `${inc.user.first_name} ${inc.user.last_name}` : 'Unknown user'}
+                  </p>
+                  {inc.user?.phone_number && (
+                    <a
+                      href={`tel:${inc.user.phone_number}`}
+                      className={styles.callBtn}
+                      onClick={(e) => e.stopPropagation()}
+                      title={`Call ${inc.user.first_name}`}
+                    >
+                      📞 {inc.user.phone_number}
+                    </a>
+                  )}
+                </div>
+                {!outside && (
+                  <div className={styles.alertLocation}>
+                    <p className={styles.alertPurok}>
+                      📍 {formatAreaLabel(loc)}
+                    </p>
+                    <p className={styles.alertBarangay}>
+                      🏘️ Barangay {loc.barangay || 'Unknown'}
+                    </p>
+                  </div>
+                )}
                 {outside ? (
                   <p className={styles.alertOutsideText}>{OUTSIDE_CITY_MESSAGE}</p>
                 ) : (
                   <>
-                    {inc.responder && (
-                      <p className={styles.alertResponder}>
-                        🚑 {inc.responder.first_name} {inc.responder.last_name} — {inc.responder.responder_type}
-                      </p>
-                    )}
-                    {inc.responder && (
-                      <p className={styles.alertStation}>
-                        🏢 From: {inc.responder.station_name || 'DRRMO Headquarters'}
+                    {inc.responder ? (
+                      <>
+                        <p className={styles.alertResponder}>
+                          🚑 {inc.responder.first_name} {inc.responder.last_name} — {inc.responder.responder_type}
+                        </p>
+                        <p className={styles.alertStation}>
+                          🏢 From: {inc.responder.station_name || 'DRRMO Headquarters'}
+                        </p>
+                      </>
+                    ) : (
+                      <p className={styles.alertNoResponder}>
+                        ⏳ Waiting for responder dispatch...
                       </p>
                     )}
                     <p className={styles.alertRoute}>
                       {route?.isRoad
                         ? `🛣️ ${formatDistance(route.distance)} · ${formatDuration(route.duration)} via road`
-                        : route
+                        : route?.points
                           ? '⏳ Calculating road route...'
-                          : '⏳ Waiting for route...'}
+                          : '⏳ Loading route...'}
                     </p>
                   </>
                 )}

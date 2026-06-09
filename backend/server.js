@@ -7,6 +7,7 @@ const adminAuthRoutes = require('./routes/adminAuth');
 const incidentRoutes = require('./routes/incidents');
 const responderRoutes = require('./routes/responders');
 const dispatchRoutes = require('./routes/dispatch');
+const callLogRoutes = require('./routes/callLogs');
 
 const app = express();
 
@@ -29,6 +30,7 @@ app.use('/api/admin', adminAuthRoutes);
 app.use('/api/incidents', incidentRoutes);
 app.use('/api/responders', responderRoutes);
 app.use('/api/dispatch', dispatchRoutes);
+app.use('/api/call-logs', callLogRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Route not found.' });

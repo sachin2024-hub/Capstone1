@@ -5,6 +5,8 @@ export const STATUS_COLORS = {
   Arrived: '#2E7D32',
   Resolved: '#4CAF50',
   Cancelled: '#9E9E9E',
+  Archived: '#757575',
+  Deleted: '#B71C1C',
 };
 
 export const DISPATCH_COLORS = {

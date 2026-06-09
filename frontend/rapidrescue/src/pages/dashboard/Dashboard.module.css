@@ -341,6 +341,11 @@
 
 .contentMap {
   padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* ─── Tab Header ──────────────────────────────────────── */
@@ -378,6 +383,34 @@
 .refreshBtn:hover {
   border-color: #e53935;
   color: #e53935;
+}
+
+.tabHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.addBtn {
+  background: linear-gradient(135deg, #1565c0, #0d47a1);
+  color: #fff;
+  border: none;
+  border-radius: 9px;
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: 'Inter', system-ui, sans-serif;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 3px 12px rgba(21, 101, 192, 0.3);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.addBtn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 5px 16px rgba(21, 101, 192, 0.4);
 }
 
 /* ─── Error Banner ────────────────────────────────────── */
@@ -741,6 +774,176 @@
   background: #1565c0;
   color: #fff;
   border-color: #1565c0;
+}
+
+.actionGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.archiveBtn {
+  background: #fff;
+  color: #6a1b9a;
+  border: 1.5px solid #e1bee7;
+  padding: 5px 10px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'Inter', system-ui, sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.archiveBtn:hover {
+  background: #6a1b9a;
+  color: #fff;
+  border-color: #6a1b9a;
+}
+
+.deleteBtn {
+  background: #fff;
+  color: #c62828;
+  border: 1.5px solid #ffcdd2;
+  padding: 5px 10px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'Inter', system-ui, sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.deleteBtn:hover {
+  background: #c62828;
+  color: #fff;
+  border-color: #c62828;
+}
+
+.archiveHint {
+  font-size: 13px;
+  color: #888;
+  margin: -8px 0 16px;
+}
+
+.incidentFilterBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.incidentFilterBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+  color: #555;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: 'Inter', system-ui, sans-serif;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s, color 0.2s, box-shadow 0.2s;
+}
+
+.incidentFilterBtn:hover {
+  border-color: #e53935;
+  color: #e53935;
+}
+
+.incidentFilterBtnActive {
+  background: linear-gradient(135deg, #e53935, #c62828);
+  border-color: #c62828;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(229, 57, 53, 0.25);
+}
+
+.incidentFilterBtnActive:hover {
+  color: #fff;
+  border-color: #b71c1c;
+}
+
+.incidentFilterBadge {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  background: rgba(0, 0, 0, 0.08);
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.incidentFilterBtnActive .incidentFilterBadge {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+.incidentSection {
+  margin-bottom: 28px;
+}
+
+.incidentSectionTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 16px;
+  font-weight: 700;
+  color: #333;
+  margin: 0 0 12px;
+}
+
+.incidentCount {
+  font-size: 13px;
+  font-weight: 600;
+  color: #888;
+  background: #f3f4f6;
+  border-radius: 20px;
+  padding: 2px 10px;
+}
+
+.settingsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.settingsCard {
+  background: #fff;
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  border: 1px solid #f0f0f0;
+}
+
+.settingsCardTitle {
+  font-size: 15px;
+  font-weight: 800;
+  color: #1a1a1a;
+  margin: 0 0 14px;
+}
+
+.settingsRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid #f5f5f5;
+  font-size: 13px;
+  color: #888;
+  gap: 12px;
+}
+
+.settingsRow strong {
+  color: #1a1a1a;
+  text-align: right;
 }
 
 /* ─── User cell ───────────────────────────────────────── */

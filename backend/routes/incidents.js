@@ -4,10 +4,25 @@ const supabase = require('../config/supabase');
 const authenticateToken = require('../middleware/auth');
 const { autoDispatch } = require('../utils/autoDispatch');
 const { isWithinCabadbaran } = require('../config/cabadbaran');
+const { buildLocationAddress } = require('../utils/locationFormat');
+const { resolveLocationFromGps } = require('../utils/locationResolver');
 
 // POST /api/incidents/sos  - Send SOS emergency alert
 router.post('/sos', authenticateToken, async (req, res) => {
-  const { incident_type, incident_description, latitude, longitude, location_address } = req.body;
+  const {
+    incident_type,
+    incident_description,
+    latitude,
+    longitude,
+    location_address,
+    purok,
+    barangay,
+    city,
+    priority_level,
+  } = req.body;
+
+  const VALID_PRIORITIES = ['Normal', 'High', 'Critical'];
+  const resolvedPriority = VALID_PRIORITIES.includes(priority_level) ? priority_level : 'High';
   const user_id = req.user.user_id;
 
   if (!latitude || !longitude) {
@@ -21,6 +36,11 @@ router.post('/sos', authenticateToken, async (req, res) => {
   }
 
   try {
+    const resolvedLocation = await resolveLocationFromGps(
+      Number(latitude),
+      Number(longitude)
+    );
+
     const { data: incident, error: incidentError } = await supabase
       .from('incidents')
       .insert([
@@ -29,7 +49,7 @@ router.post('/sos', authenticateToken, async (req, res) => {
           incident_type: incident_type || 'Emergency',
           incident_description: incident_description || 'SOS alert triggered.',
           incident_status: 'Pending',
-          priority_level: 'High',
+          priority_level: resolvedPriority,
         },
       ])
       .select()
@@ -47,7 +67,13 @@ router.post('/sos', authenticateToken, async (req, res) => {
             incident_id: incident.incident_id,
             latitude,
             longitude,
-            location_address: location_address || null,
+            location_address: buildLocationAddress({
+              purok: resolvedLocation.purok,
+              area: resolvedLocation.area,
+              barangay: resolvedLocation.barangay,
+              city: resolvedLocation.city,
+              location_address,
+            }),
           },
         ]);
 
@@ -62,6 +88,7 @@ router.post('/sos', authenticateToken, async (req, res) => {
       message: 'SOS sent successfully! Help is on the way.',
       incident,
       dispatch,
+      location: resolvedLocation,
     });
   } catch (err) {
     return res.status(500).json({ message: 'Server error. Please try again.' });
@@ -113,7 +140,7 @@ router.get('/all', async (req, res) => {
   }
 });
 
-const VALID_STATUSES = ['Pending', 'In Progress', 'En Route', 'Arrived', 'Resolved', 'Cancelled'];
+const VALID_STATUSES = ['Pending', 'In Progress', 'En Route', 'Arrived', 'Resolved', 'Cancelled', 'Archived', 'Deleted'];
 
 const DISPATCH_STATUS_MAP = {
   Pending: 'Assigned',
@@ -122,6 +149,8 @@ const DISPATCH_STATUS_MAP = {
   Arrived: 'Arrived',
   Resolved: 'Completed',
   Cancelled: 'Completed',
+  Archived: 'Completed',
+  Deleted: 'Completed',
 };
 
 // PATCH /api/incidents/:id/status — admin updates status (user sees on mobile)
@@ -183,6 +212,154 @@ router.patch('/:id/status', async (req, res) => {
       message: 'Status updated successfully.',
       incident,
     });
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+// PATCH /api/incidents/:id/archive — move incident to archive
+router.patch('/:id/archive', async (req, res) => {
+  const incidentId = Number(req.params.id);
+
+  try {
+    const { data: existing, error: fetchErr } = await supabase
+      .from('incidents')
+      .select('incident_status')
+      .eq('incident_id', incidentId)
+      .single();
+
+    if (fetchErr) return res.status(500).json({ message: fetchErr.message });
+    if (!existing) return res.status(404).json({ message: 'Incident not found.' });
+
+    if (!['Resolved', 'Cancelled'].includes(existing.incident_status)) {
+      return res.status(400).json({
+        message: 'Only resolved or cancelled incidents can be archived.',
+      });
+    }
+
+    const { data: incident, error } = await supabase
+      .from('incidents')
+      .update({ incident_status: 'Archived' })
+      .eq('incident_id', incidentId)
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ message: error.message });
+    if (!incident) return res.status(404).json({ message: 'Incident not found.' });
+
+    const { data: dispatches } = await supabase
+      .from('dispatch')
+      .select('dispatch_id, responder_id')
+      .eq('incident_id', incidentId)
+      .order('dispatch_time', { ascending: false })
+      .limit(1);
+
+    const dispatch = dispatches?.[0];
+    if (dispatch) {
+      await supabase
+        .from('dispatch')
+        .update({ dispatch_status: 'Completed' })
+        .eq('dispatch_id', dispatch.dispatch_id);
+
+      await supabase
+        .from('responders')
+        .update({ availability_status: 'Available' })
+        .eq('responder_id', dispatch.responder_id);
+    }
+
+    return res.json({ message: 'Incident archived.', incident });
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+async function freeRespondersForIncident(incidentId) {
+  const { data: dispatches } = await supabase
+    .from('dispatch')
+    .select('dispatch_id, responder_id')
+    .eq('incident_id', incidentId);
+
+  if (!dispatches?.length) return;
+
+  for (const d of dispatches) {
+    await supabase
+      .from('responders')
+      .update({ availability_status: 'Available' })
+      .eq('responder_id', d.responder_id);
+
+    await supabase
+      .from('dispatch')
+      .update({ dispatch_status: 'Completed' })
+      .eq('dispatch_id', d.dispatch_id);
+  }
+}
+
+// DELETE /api/incidents/:id/permanent — permanently remove (Deleted status only)
+router.delete('/:id/permanent', async (req, res) => {
+  const incidentId = Number(req.params.id);
+
+  try {
+    const { data: existing, error: fetchErr } = await supabase
+      .from('incidents')
+      .select('incident_status')
+      .eq('incident_id', incidentId)
+      .single();
+
+    if (fetchErr) return res.status(500).json({ message: fetchErr.message });
+    if (!existing) return res.status(404).json({ message: 'Incident not found.' });
+
+    if (existing.incident_status !== 'Deleted') {
+      return res.status(400).json({
+        message: 'Only deleted incidents can be permanently removed.',
+      });
+    }
+
+    await supabase.from('dispatch').delete().eq('incident_id', incidentId);
+    await supabase.from('locations').delete().eq('incident_id', incidentId);
+
+    const { error } = await supabase
+      .from('incidents')
+      .delete()
+      .eq('incident_id', incidentId);
+
+    if (error) return res.status(500).json({ message: error.message });
+
+    return res.json({ message: 'Incident permanently removed.' });
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+// DELETE /api/incidents/:id — soft delete (moves to Archive → Deleted)
+router.delete('/:id', async (req, res) => {
+  const incidentId = Number(req.params.id);
+
+  try {
+    const { data: existing, error: fetchErr } = await supabase
+      .from('incidents')
+      .select('incident_id, incident_status')
+      .eq('incident_id', incidentId)
+      .single();
+
+    if (fetchErr) return res.status(500).json({ message: fetchErr.message });
+    if (!existing) return res.status(404).json({ message: 'Incident not found.' });
+
+    if (existing.incident_status === 'Deleted') {
+      return res.status(400).json({ message: 'Incident is already in Deleted.' });
+    }
+
+    await freeRespondersForIncident(incidentId);
+
+    const { data: incident, error } = await supabase
+      .from('incidents')
+      .update({ incident_status: 'Deleted' })
+      .eq('incident_id', incidentId)
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ message: error.message });
+
+    return res.json({ message: 'Incident moved to Deleted.', incident });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }

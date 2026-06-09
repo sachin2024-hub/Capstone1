@@ -1,18 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
-const { CABADBARAN, RESPONDER_STATIONS, isWithinCabadbaran } = require('../config/cabadbaran');
-
-// All responders are based at DRRMO Headquarters — always dispatch from HQ
-const DRRMO_HQ = RESPONDER_STATIONS.find((s) => s.id === 'hq') || RESPONDER_STATIONS[0];
-
-function responderCoords() {
-  return {
-    lat: DRRMO_HQ.lat,
-    lng: DRRMO_HQ.lng,
-    station_name: 'DRRMO Headquarters — Cabadbaran City',
-  };
-}
+const { CABADBARAN, RESPONDER_STATIONS, isWithinCabadbaran, CITY_HALL } = require('../config/cabadbaran');
+const { parseLocationAddress } = require('../utils/locationFormat');
 
 // GET /api/dispatch/all
 router.get('/all', async (req, res) => {
@@ -58,12 +48,22 @@ router.get('/live', async (req, res) => {
         const loc = Array.isArray(inc.locations) ? inc.locations[0] : inc.locations;
         const dispatch = Array.isArray(inc.dispatch) ? inc.dispatch[0] : inc.dispatch;
         const responder = dispatch?.responders;
+        const locDetails = parseLocationAddress(loc.location_address);
         const victim = {
           lat: Number(loc.latitude),
           lng: Number(loc.longitude),
-          address: loc.location_address,
+          address: locDetails.display,
+          purok: locDetails.purok,
+          area: locDetails.area,
+          barangay: locDetails.barangay,
+          city: locDetails.city,
         };
-        const responderPos = responderCoords();
+        // Always dispatch from CDRRMO HQ (Brgy. 9, Cabadbaran City)
+        const responderPos = {
+          lat: CITY_HALL.lat,
+          lng: CITY_HALL.lng,
+          station_name: 'CDRRMO — Brgy. 9, Cabadbaran City',
+        };
         const withinCity = isWithinCabadbaran(victim.lat, victim.lng);
         return {
           incident_id: inc.incident_id,

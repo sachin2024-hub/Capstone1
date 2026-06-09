@@ -42,6 +42,16 @@ export const outsideIcon = new L.Icon({
   shadowSize: [41, 41],
 });
 
+// 🟡 City Hall / DRRMO HQ
+export const cityHallIcon = new L.Icon({
+  iconUrl: `${BASE}/marker-icon-gold.png`,
+  shadowUrl: markerShadow,
+  iconSize: [32, 52],
+  iconAnchor: [16, 52],
+  popupAnchor: [1, -42],
+  shadowSize: [41, 41],
+});
+
 // 🟢 DRRMO HQ — permanent admin/headquarters marker
 export const drrmoIcon = new L.Icon({
   iconUrl: `${BASE}/marker-icon-green.png`,
