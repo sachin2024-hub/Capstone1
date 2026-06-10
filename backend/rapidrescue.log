@@ -1,0 +1,16 @@
+[7:32:43 PM] RapidRescue — starting backend + tunnel
+[7:32:43 PM] Local IP detected: 192.168.1.11
+◇ injected env (3) from .env // tip: ⌘ override existing { override: true }
+◇ injected env (0) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+✅ RapidRescue server running on http://localhost:5000
+📱 Mobile (same WiFi): http://192.168.1.11:5000
+[7:32:49 PM] Backend ready on http://localhost:5000
+[7:32:49 PM] Error: spawn EINVAL
+[7:35:26 PM] RapidRescue — starting backend + tunnel
+[7:35:26 PM] Local IP detected: 192.168.1.11
+◇ injected env (3) from .env // tip: ◈ encrypted .env [www.dotenvx.com]
+◇ injected env (0) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
+✅ RapidRescue server running on http://localhost:5000
+📱 Mobile (same WiFi): http://192.168.1.11:5000
+[7:35:27 PM] Backend ready on http://localhost:5000
+[7:35:27 PM] Error: spawn EINVAL

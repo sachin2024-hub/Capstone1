@@ -92,7 +92,7 @@ Write-Host "Done! RapidRescue starts in the BACKGROUND when you log in (no CMD w
 
 Write-Host ""
 
-Write-Host "Manual start (shows window):" -ForegroundColor Yellow
+Write-Host "Manual start anytime:" -ForegroundColor Yellow
 
 Write-Host "  Double-click START-RAPIDRESCUE.bat" -ForegroundColor White
 
