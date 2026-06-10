@@ -8,7 +8,8 @@
     "dev": "nodemon server.js",
     "stop": "npx --yes kill-port 5000",
     "restart": "npx --yes kill-port 5000 && node server.js",
-    "tunnel": "node scripts/start-tunnel.js"
+    "tunnel": "node scripts/start-tunnel.js",
+    "start:all": "node scripts/start-all.js"
   },
   "keywords": [],
   "author": "",

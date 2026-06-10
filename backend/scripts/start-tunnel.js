@@ -1,29 +1,15 @@
 // Starts Cloudflare tunnel and auto-updates mobile API URL
-// Usage: node scripts/start-tunnel.js
+// Usage: npm run tunnel
 
 const { spawn } = require('child_process');
-const fs = require('fs');
-const path = require('path');
+const { getLocalIp, updateMobileApi, writeConnectionInfo } = require('./update-mobile-api');
 
 const PORT = 5000;
-const MOBILE_API_FILE = path.join(
-  __dirname,
-  '../../mobile/RapidRescue/constants/api.ts'
-);
 
-function updateMobileConfig(tunnelUrl) {
-  let content = fs.readFileSync(MOBILE_API_FILE, 'utf8');
-  content = content.replace(
-    /export const TUNNEL_URL = '[^']*'/,
-    `export const TUNNEL_URL = '${tunnelUrl}'`
-  );
-  content = content.replace(
-    /export const CONNECTION_MODE[^=]*= '[^']*'/,
-    `export const CONNECTION_MODE: 'tunnel' | 'local' = 'tunnel'`
-  );
-  fs.writeFileSync(MOBILE_API_FILE, content);
-  console.log('\n✅ Mobile API URL updated:', tunnelUrl);
-  console.log('📱 Press "r" in Expo terminal to reload the app\n');
+const localIp = getLocalIp();
+if (localIp) {
+  updateMobileApi({ localIp, connectionMode: 'auto' });
+  writeConnectionInfo({ localIp });
 }
 
 console.log('🔄 Starting Cloudflare tunnel on port', PORT, '...\n');
@@ -42,7 +28,10 @@ function onData(data) {
   const match = text.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
   if (match && !updated) {
     updated = true;
-    updateMobileConfig(match[0]);
+    updateMobileApi({ tunnelUrl: match[0], connectionMode: 'auto' });
+    writeConnectionInfo({ tunnelUrl: match[0] });
+    console.log('\n✅ Mobile API URL updated:', match[0]);
+    console.log('📱 Open Expo app — it will auto-connect (WiFi first, then tunnel)\n');
   }
 }
 
