@@ -382,7 +382,7 @@ export default function Dashboard() {
           </button>
 
           <div className={styles.topbarLeft}>
-            <div className={styles.topbarTitle}>
+          <div className={styles.topbarTitle}>
               {currentNav?.icon} {currentNav?.label}
             </div>
             {activeTab !== 'live-map' && (
@@ -403,11 +403,11 @@ export default function Dashboard() {
                 <span className={styles.notifCount}>{stats.pending}</span>
               )}
             </button>
-            <div className={styles.userInfo}>
-              <div className={styles.avatar}>{initial}</div>
-              <div>
-                <span className={styles.userName}>{fullName}</span>
-                <span className={styles.userRole}>{adminRole}</span>
+          <div className={styles.userInfo}>
+            <div className={styles.avatar}>{initial}</div>
+            <div>
+              <span className={styles.userName}>{fullName}</span>
+              <span className={styles.userRole}>{adminRole}</span>
               </div>
             </div>
           </div>
@@ -442,7 +442,7 @@ export default function Dashboard() {
                   <button className={styles.bannerBtn} onClick={() => setActiveTab('live-map')}>🗺️ Live Map</button>
                   <button className={styles.bannerBtn} onClick={() => setActiveTab('incidents')}>🚨 Incidents</button>
                 </div>
-              </div>
+                  </div>
 
               {/* Stats */}
               <div className={styles.statsGrid}>
@@ -450,8 +450,8 @@ export default function Dashboard() {
                   <div key={card.label} className={`${styles.statCard} ${styles[card.color]}`}>
                     <div className={styles.statIconBox}>
                       <span>{card.icon}</span>
-                    </div>
-                    <div className={styles.statBody}>
+                </div>
+                  <div className={styles.statBody}>
                       <div className={styles.statValue}>{isLoading ? '—' : card.value}</div>
                       <div className={styles.statLabel}>{card.label}</div>
                       {card.label === 'Pending' && !isLoading && card.value > 0 && (
@@ -460,7 +460,7 @@ export default function Dashboard() {
                       {card.label === 'Available' && !isLoading && (
                         <div className={`${styles.statTrend} ${styles.trendUp}`}>● Ready to respond</div>
                       )}
-                    </div>
+                </div>
                   </div>
                 ))}
               </div>
@@ -759,7 +759,7 @@ export default function Dashboard() {
                   >
                     ➕ Add Dispatcher
                   </button>
-                  <button className={styles.refreshBtn} onClick={fetchData}>🔄 Refresh</button>
+                <button className={styles.refreshBtn} onClick={fetchData}>🔄 Refresh</button>
                 </div>
               </div>
               <div className={styles.tableCard}>
@@ -810,13 +810,13 @@ export default function Dashboard() {
                                 >
                                   🗑️ Delete
                                 </button>
-                                <button
+                              <button
                                   type="button"
-                                  className={styles.smallBtn}
-                                  onClick={() => setActiveTab('live-map')}
-                                >
+                                className={styles.smallBtn}
+                                onClick={() => setActiveTab('live-map')}
+                              >
                                   🗺️ Map
-                                </button>
+                              </button>
                               </div>
                             </td>
                           </tr>
