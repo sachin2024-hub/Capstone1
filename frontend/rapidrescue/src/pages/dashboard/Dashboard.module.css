@@ -822,6 +822,61 @@
   border-color: #c62828;
 }
 
+.mapBtn {
+  background: #fff;
+  color: #2e7d32;
+  border: 1.5px solid #c8e6c9;
+  padding: 5px 10px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'Inter', system-ui, sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.mapBtn:hover:not(:disabled) {
+  background: #2e7d32;
+  color: #fff;
+  border-color: #2e7d32;
+}
+
+.mapBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.assignBtn {
+  background: #fff;
+  color: #1565c0;
+  border: 1.5px solid #bbdefb;
+  padding: 5px 10px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'Inter', system-ui, sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.assignBtn:hover {
+  background: #1565c0;
+  color: #fff;
+  border-color: #1565c0;
+}
+
+.assignedBadge {
+  display: inline-block;
+  background: #e3f2fd;
+  color: #1565c0;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .archiveHint {
   font-size: 13px;
   color: #888;

@@ -94,6 +94,112 @@ router.get('/live', async (req, res) => {
   }
 });
 
+// POST /api/dispatch/assign — manually assign a responder to an incident
+router.post('/assign', async (req, res) => {
+  const incidentId = Number(req.body.incident_id);
+  const responderId = Number(req.body.responder_id);
+
+  if (!incidentId || !responderId) {
+    return res.status(400).json({ message: 'incident_id and responder_id are required.' });
+  }
+
+  const CLOSED_STATUSES = ['Resolved', 'Cancelled', 'Archived', 'Deleted'];
+
+  try {
+    const { data: incident, error: incErr } = await supabase
+      .from('incidents')
+      .select('incident_id, incident_status')
+      .eq('incident_id', incidentId)
+      .single();
+
+    if (incErr || !incident) {
+      return res.status(404).json({ message: 'Incident not found.' });
+    }
+
+    if (CLOSED_STATUSES.includes(incident.incident_status)) {
+      return res.status(400).json({ message: 'Cannot assign a responder to a closed incident.' });
+    }
+
+    const { data: responder, error: respErr } = await supabase
+      .from('responders')
+      .select('responder_id, first_name, last_name, responder_type, availability_status')
+      .eq('responder_id', responderId)
+      .single();
+
+    if (respErr || !responder) {
+      return res.status(404).json({ message: 'Responder not found.' });
+    }
+
+    const { data: existingRows } = await supabase
+      .from('dispatch')
+      .select('dispatch_id, responder_id, dispatch_status')
+      .eq('incident_id', incidentId)
+      .neq('dispatch_status', 'Completed')
+      .order('dispatch_time', { ascending: false })
+      .limit(1);
+
+    const existing = existingRows?.[0];
+
+    if (existing) {
+      if (existing.responder_id !== responderId) {
+        await supabase
+          .from('responders')
+          .update({ availability_status: 'Available' })
+          .eq('responder_id', existing.responder_id);
+
+        const { error: updateErr } = await supabase
+          .from('dispatch')
+          .update({ responder_id: responderId, dispatch_status: 'En Route' })
+          .eq('dispatch_id', existing.dispatch_id);
+
+        if (updateErr) return res.status(500).json({ message: updateErr.message });
+      }
+    } else {
+      const { error: insertErr } = await supabase
+        .from('dispatch')
+        .insert([{
+          incident_id: incidentId,
+          responder_id: responderId,
+          dispatch_status: 'En Route',
+        }]);
+
+      if (insertErr) return res.status(500).json({ message: insertErr.message });
+    }
+
+    if (incident.incident_status === 'Pending') {
+      await supabase
+        .from('incidents')
+        .update({ incident_status: 'In Progress' })
+        .eq('incident_id', incidentId);
+    }
+
+    await supabase
+      .from('responders')
+      .update({ availability_status: 'Busy' })
+      .eq('responder_id', responderId);
+
+    const { data: dispatch, error: fetchErr } = await supabase
+      .from('dispatch')
+      .select(`
+        *,
+        responders(responder_id, first_name, last_name, responder_type, contact_number, availability_status)
+      `)
+      .eq('incident_id', incidentId)
+      .order('dispatch_time', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (fetchErr) return res.status(500).json({ message: fetchErr.message });
+
+    return res.json({
+      message: `${responder.first_name} ${responder.last_name} assigned successfully.`,
+      dispatch,
+    });
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+});
+
 // PATCH /api/dispatch/:id/status
 router.patch('/:id/status', async (req, res) => {
   const { dispatch_status, incident_status } = req.body;

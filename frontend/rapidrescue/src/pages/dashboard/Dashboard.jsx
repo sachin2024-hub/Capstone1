@@ -4,6 +4,8 @@ import { logout, getStoredAdmin } from '../../services/authService';
 import api from '../../services/api';
 import LiveMap from '../../components/map/LiveMap';
 import IncidentStatusModal from '../../components/incidents/IncidentStatusModal';
+import AssignResponderModal from '../../components/incidents/AssignResponderModal';
+import IncidentMapModal from '../../components/incidents/IncidentMapModal';
 import ResponderModal from '../../components/responders/ResponderModal';
 import CallLogPage from '../../components/calllog/CallLogPage';
 import { archiveIncident, deleteIncident, permanentDeleteIncident } from '../../services/incidentService';
@@ -65,6 +67,16 @@ const ARCHIVE_FILTER_TABS = [
   { id: 'deleted', icon: '🗑️', label: 'Deleted' },
 ];
 
+function getAssignedResponder(inc) {
+  const dispatch = Array.isArray(inc.dispatch) ? inc.dispatch[0] : inc.dispatch;
+  return dispatch?.responders || null;
+}
+
+function hasIncidentLocation(inc) {
+  const loc = Array.isArray(inc.locations) ? inc.locations[0] : inc.locations;
+  return Boolean(loc?.latitude && loc?.longitude);
+}
+
 function IncidentTableSection({
   title,
   icon,
@@ -75,6 +87,9 @@ function IncidentTableSection({
   onArchive,
   onDelete,
   onPermanentDelete,
+  onAssign,
+  onShowMap,
+  showAssignActions = false,
   actions = {},
   hideTitle = false,
 }) {
@@ -84,7 +99,7 @@ function IncidentTableSection({
     delete: showDelete = true,
     permanentDelete = false,
   } = actions;
-  const hasActions = edit || archive || showDelete || permanentDelete;
+  const hasActions = edit || archive || showDelete || permanentDelete || showAssignActions || onShowMap;
 
   return (
     <div className={styles.incidentSection}>
@@ -106,13 +121,14 @@ function IncidentTableSection({
               <thead>
                 <tr>
                   <th>ID</th><th>Type</th><th>Description</th><th>Reporter</th>
-                  <th>Location</th><th>Status</th><th>Priority</th><th>Date</th>
+                  <th>Location</th><th>Assigned</th><th>Status</th><th>Priority</th><th>Date</th>
                   {hasActions && <th>Action</th>}
                 </tr>
               </thead>
               <tbody>
                 {rows.map((inc) => {
                   const loc = Array.isArray(inc.locations) ? inc.locations[0] : inc.locations;
+                  const assigned = getAssignedResponder(inc);
                   return (
                     <tr key={inc.incident_id}>
                       <td><strong>#{inc.incident_id}</strong></td>
@@ -125,6 +141,15 @@ function IncidentTableSection({
                       </td>
                       <td className={styles.descCell} style={{ color: '#888', fontSize: 12 }}>
                         {formatLocation(loc)}
+                      </td>
+                      <td style={{ fontSize: 12 }}>
+                        {assigned ? (
+                          <span className={styles.assignedBadge}>
+                            🚑 {assigned.first_name} {assigned.last_name}
+                          </span>
+                        ) : (
+                          <span style={{ color: '#bbb' }}>Unassigned</span>
+                        )}
                       </td>
                       <td>
                         <span
@@ -140,6 +165,26 @@ function IncidentTableSection({
                       {hasActions && (
                         <td>
                           <div className={styles.actionGroup}>
+                            {onShowMap && (
+                              <button
+                                type="button"
+                                className={styles.mapBtn}
+                                onClick={() => onShowMap(inc)}
+                                disabled={!hasIncidentLocation(inc)}
+                                title={hasIncidentLocation(inc) ? 'View SOS location on map' : 'No GPS location'}
+                              >
+                                🗺️ Map
+                              </button>
+                            )}
+                            {showAssignActions && onAssign && (
+                              <button
+                                type="button"
+                                className={styles.assignBtn}
+                                onClick={() => onAssign(inc)}
+                              >
+                                🚑 Assign
+                              </button>
+                            )}
                             {edit && (
                               <button type="button" className={styles.editBtn} onClick={() => onEdit(inc)}>
                                 ✏️ Edit
@@ -168,7 +213,7 @@ function IncidentTableSection({
                 })}
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={hasActions ? 9 : 8} className={styles.emptyRow}>{emptyMessage}</td>
+                    <td colSpan={hasActions ? 10 : 9} className={styles.emptyRow}>{emptyMessage}</td>
                   </tr>
                 )}
               </tbody>
@@ -198,13 +243,17 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [editingIncident, setEditingIncident] = useState(null);
+  const [assigningIncident, setAssigningIncident] = useState(null);
+  const [mapIncident, setMapIncident] = useState(null);
   const [responderModal, setResponderModal] = useState(null);
   const [incidentFilter, setIncidentFilter] = useState('pending');
   const [archiveFilter, setArchiveFilter] = useState('archived');
 
-  const fetchData = useCallback(async () => {
-    setIsLoading(true);
-    setError('');
+  const fetchData = useCallback(async ({ showLoader = false } = {}) => {
+    if (showLoader) {
+      setIsLoading(true);
+      setError('');
+    }
     try {
       const [usersRes, incidentsRes, respondersRes, dispatchRes] = await Promise.all([
         api.get('/auth/users'),
@@ -231,16 +280,17 @@ export default function Dashboard() {
         available:  respondersData.filter((r) => r.availability_status === 'Available').length,
         dispatch:   dispatchData.length,
       });
+      setError('');
     } catch (err) {
       setError(err.message || 'Failed to load data.');
     } finally {
-      setIsLoading(false);
+      if (showLoader) setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 15000);
+    fetchData({ showLoader: true });
+    const interval = setInterval(() => fetchData(), 15000);
     return () => clearInterval(interval);
   }, [fetchData]);
 
@@ -418,7 +468,7 @@ export default function Dashboard() {
           {error && (
             <div className={styles.errorBanner}>
               <span>⚠️ {error}</span>
-              <button onClick={fetchData} className={styles.retryBtn}>🔄 Retry</button>
+              <button onClick={() => fetchData({ showLoader: true })} className={styles.retryBtn}>🔄 Retry</button>
             </div>
           )}
 
@@ -559,6 +609,9 @@ export default function Dashboard() {
                   onEdit={setEditingIncident}
                   onArchive={handleArchive}
                   onDelete={handleDelete}
+                  onAssign={setAssigningIncident}
+                  onShowMap={setMapIncident}
+                  showAssignActions
                   hideTitle
                 />
               )}
@@ -573,6 +626,9 @@ export default function Dashboard() {
                   onEdit={setEditingIncident}
                   onArchive={handleArchive}
                   onDelete={handleDelete}
+                  onAssign={setAssigningIncident}
+                  onShowMap={setMapIncident}
+                  showAssignActions
                   hideTitle
                 />
               )}
@@ -587,6 +643,8 @@ export default function Dashboard() {
                   onEdit={setEditingIncident}
                   onArchive={handleArchive}
                   onDelete={handleDelete}
+                  onShowMap={setMapIncident}
+                  showAssignActions={false}
                   actions={{ edit: true, archive: true, delete: true }}
                   hideTitle
                 />
@@ -602,6 +660,8 @@ export default function Dashboard() {
                   onEdit={setEditingIncident}
                   onArchive={handleArchive}
                   onDelete={handleDelete}
+                  onShowMap={setMapIncident}
+                  showAssignActions={false}
                   actions={{ edit: true, archive: true, delete: true }}
                   hideTitle
                 />
@@ -962,6 +1022,22 @@ export default function Dashboard() {
           incident={editingIncident}
           onClose={() => setEditingIncident(null)}
           onUpdated={fetchData}
+        />
+      )}
+
+      {assigningIncident && (
+        <AssignResponderModal
+          incident={assigningIncident}
+          responders={responders}
+          onClose={() => setAssigningIncident(null)}
+          onAssigned={fetchData}
+        />
+      )}
+
+      {mapIncident && (
+        <IncidentMapModal
+          incident={mapIncident}
+          onClose={() => setMapIncident(null)}
         />
       )}
 

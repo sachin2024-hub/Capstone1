@@ -49,8 +49,9 @@ function launchBackend() {
   });
 
   proc.on('close', (code) => {
-    log(`Backend exited (${code}). Restarting in 3s...`);
-    setTimeout(launchBackend, 3000);
+    log(`Backend stopped (exit ${code ?? 'unknown'}).`);
+    log('To start again: npm run start:all');
+    process.exit(code ?? 1);
   });
 
   return proc;
