@@ -172,11 +172,11 @@ export default function CallLogPage() {
                     ))}
                     <td className={styles.actionCol}>
                       <div className={styles.actionGroup}>
-                        <button type="button" className={styles.editBtn} onClick={() => handleEdit(row)}>
-                          ✏️ Edit
+                        <button type="button" className={styles.editBtn} onClick={() => handleEdit(row)} title="Edit">
+                          ✏️
                         </button>
-                        <button type="button" className={styles.deleteBtn} onClick={() => handleDelete(row)}>
-                          🗑️ Delete
+                        <button type="button" className={styles.deleteBtn} onClick={() => handleDelete(row)} title="Delete">
+                          🗑️
                         </button>
                       </div>
                     </td>

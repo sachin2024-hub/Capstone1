@@ -16,10 +16,10 @@ import styles from './LiveMap.module.css';
 
 const DRRMO_HQ = CITY_HALL;
 
-export default function LiveMap() {
+export default function LiveMap({ focusIncidentId = null }) {
   const [liveIncidents, setLiveIncidents] = useState([]);
   const [routes, setRoutes] = useState({});
-  const [selectedId, setSelectedId] = useState(null);
+  const [selectedId, setSelectedId] = useState(focusIncidentId);
   const [loading, setLoading] = useState(true);
   const [outsideAlerts, setOutsideAlerts] = useState([]);
   const [mapLayer, setMapLayer] = useState('hybrid');
@@ -79,6 +79,13 @@ export default function LiveMap() {
     const interval = setInterval(loadLive, 8000);
     return () => clearInterval(interval);
   }, [loadLive]);
+
+  useEffect(() => {
+    if (!focusIncidentId) return;
+    setSelectedId(focusIncidentId);
+    setFocusRequestId((n) => n + 1);
+    hasAutoSelected.current = true;
+  }, [focusIncidentId]);
 
   useEffect(() => {
     if (!layersOpen) return undefined;

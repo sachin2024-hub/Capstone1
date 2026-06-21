@@ -5,7 +5,6 @@ import api from '../../services/api';
 import LiveMap from '../../components/map/LiveMap';
 import IncidentStatusModal from '../../components/incidents/IncidentStatusModal';
 import AssignResponderModal from '../../components/incidents/AssignResponderModal';
-import IncidentMapModal from '../../components/incidents/IncidentMapModal';
 import ResponderModal from '../../components/responders/ResponderModal';
 import CallLogPage from '../../components/calllog/CallLogPage';
 import { archiveIncident, deleteIncident, permanentDeleteIncident } from '../../services/incidentService';
@@ -116,8 +115,8 @@ function IncidentTableSection({
             <span>Loading data...</span>
           </div>
         ) : (
-          <div className={styles.tableWrapper}>
-            <table className={styles.table}>
+          <div className={`${styles.tableWrapper} ${styles.incidentTableWrapper}`}>
+            <table className={`${styles.table} ${styles.incidentTable}`}>
               <thead>
                 <tr>
                   <th>ID</th><th>Type</th><th>Description</th><th>Reporter</th>
@@ -132,7 +131,7 @@ function IncidentTableSection({
                   return (
                     <tr key={inc.incident_id}>
                       <td><strong>#{inc.incident_id}</strong></td>
-                      <td>{inc.incident_type}</td>
+                      <td className={styles.compactCell}>{inc.incident_type}</td>
                       <td className={styles.descCell}>{inc.incident_description || '—'}</td>
                       <td>
                         {inc.users
@@ -168,41 +167,62 @@ function IncidentTableSection({
                             {onShowMap && (
                               <button
                                 type="button"
-                                className={styles.mapBtn}
+                                className={`${styles.mapBtn} ${styles.actionIconBtn}`}
                                 onClick={() => onShowMap(inc)}
                                 disabled={!hasIncidentLocation(inc)}
-                                title={hasIncidentLocation(inc) ? 'View SOS location on map' : 'No GPS location'}
+                                title={hasIncidentLocation(inc) ? 'Open on Live Map' : 'No GPS location'}
                               >
-                                🗺️ Map
+                                🗺️
                               </button>
                             )}
                             {showAssignActions && onAssign && (
                               <button
                                 type="button"
-                                className={styles.assignBtn}
+                                className={`${styles.assignBtn} ${styles.actionIconBtn}`}
                                 onClick={() => onAssign(inc)}
+                                title="Assign responder"
                               >
-                                🚑 Assign
+                                🚑
                               </button>
                             )}
                             {edit && (
-                              <button type="button" className={styles.editBtn} onClick={() => onEdit(inc)}>
-                                ✏️ Edit
+                              <button
+                                type="button"
+                                className={`${styles.editBtn} ${styles.actionIconBtn}`}
+                                onClick={() => onEdit(inc)}
+                                title="Edit"
+                              >
+                                ✏️
                               </button>
                             )}
                             {archive && (
-                              <button type="button" className={styles.archiveBtn} onClick={() => onArchive(inc)}>
-                                📁 Archive
+                              <button
+                                type="button"
+                                className={`${styles.archiveBtn} ${styles.actionIconBtn}`}
+                                onClick={() => onArchive(inc)}
+                                title="Archive"
+                              >
+                                📁
                               </button>
                             )}
                             {showDelete && (
-                              <button type="button" className={styles.deleteBtn} onClick={() => onDelete(inc)}>
-                                🗑️ Delete
+                              <button
+                                type="button"
+                                className={`${styles.deleteBtn} ${styles.actionIconBtn}`}
+                                onClick={() => onDelete(inc)}
+                                title="Delete"
+                              >
+                                🗑️
                               </button>
                             )}
                             {permanentDelete && (
-                              <button type="button" className={styles.deleteBtn} onClick={() => onPermanentDelete(inc)}>
-                                🗑️ Remove Forever
+                              <button
+                                type="button"
+                                className={`${styles.deleteBtn} ${styles.actionIconBtn}`}
+                                onClick={() => onPermanentDelete(inc)}
+                                title="Remove forever"
+                              >
+                                🗑️
                               </button>
                             )}
                           </div>
@@ -244,7 +264,7 @@ export default function Dashboard() {
   const [error, setError] = useState('');
   const [editingIncident, setEditingIncident] = useState(null);
   const [assigningIncident, setAssigningIncident] = useState(null);
-  const [mapIncident, setMapIncident] = useState(null);
+  const [liveMapFocusId, setLiveMapFocusId] = useState(null);
   const [responderModal, setResponderModal] = useState(null);
   const [incidentFilter, setIncidentFilter] = useState('pending');
   const [archiveFilter, setArchiveFilter] = useState('archived');
@@ -297,6 +317,11 @@ export default function Dashboard() {
   const handleLogout = () => {
     logout();
     navigate('/login');
+  };
+
+  const handleShowOnLiveMap = (inc) => {
+    setLiveMapFocusId(inc.incident_id);
+    setActiveTab('live-map');
   };
 
   const pendingIncidents = incidents.filter((i) => i.incident_status === 'Pending');
@@ -464,7 +489,7 @@ export default function Dashboard() {
         </header>
 
         {/* Content */}
-        <div className={`${styles.content} ${activeTab === 'live-map' ? styles.contentMap : ''}`}>
+        <div className={`${styles.content} ${(activeTab === 'live-map' || activeTab === 'call-log') ? styles.contentPanel : ''}`}>
           {error && (
             <div className={styles.errorBanner}>
               <span>⚠️ {error}</span>
@@ -567,7 +592,9 @@ export default function Dashboard() {
           )}
 
           {/* ── LIVE MAP ─────────────────────────────────── */}
-          {activeTab === 'live-map' && <LiveMap key="live-map" />}
+          {activeTab === 'live-map' && (
+            <LiveMap key="live-map" focusIncidentId={liveMapFocusId} />
+          )}
 
           {/* ── INCIDENTS ────────────────────────────────── */}
           {activeTab === 'incidents' && (
@@ -610,7 +637,7 @@ export default function Dashboard() {
                   onArchive={handleArchive}
                   onDelete={handleDelete}
                   onAssign={setAssigningIncident}
-                  onShowMap={setMapIncident}
+                  onShowMap={handleShowOnLiveMap}
                   showAssignActions
                   hideTitle
                 />
@@ -627,7 +654,7 @@ export default function Dashboard() {
                   onArchive={handleArchive}
                   onDelete={handleDelete}
                   onAssign={setAssigningIncident}
-                  onShowMap={setMapIncident}
+                  onShowMap={handleShowOnLiveMap}
                   showAssignActions
                   hideTitle
                 />
@@ -643,7 +670,7 @@ export default function Dashboard() {
                   onEdit={setEditingIncident}
                   onArchive={handleArchive}
                   onDelete={handleDelete}
-                  onShowMap={setMapIncident}
+                  onShowMap={handleShowOnLiveMap}
                   showAssignActions={false}
                   actions={{ edit: true, archive: true, delete: true }}
                   hideTitle
@@ -660,7 +687,7 @@ export default function Dashboard() {
                   onEdit={setEditingIncident}
                   onArchive={handleArchive}
                   onDelete={handleDelete}
-                  onShowMap={setMapIncident}
+                  onShowMap={handleShowOnLiveMap}
                   showAssignActions={false}
                   actions={{ edit: true, archive: true, delete: true }}
                   hideTitle
@@ -1033,14 +1060,6 @@ export default function Dashboard() {
           onAssigned={fetchData}
         />
       )}
-
-      {mapIncident && (
-        <IncidentMapModal
-          incident={mapIncident}
-          onClose={() => setMapIncident(null)}
-        />
-      )}
-
       {responderModal && (
         <ResponderModal
           responder={responderModal.mode === 'edit' ? responderModal.responder : null}

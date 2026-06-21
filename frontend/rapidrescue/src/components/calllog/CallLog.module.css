@@ -1,64 +1,67 @@
 .page {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .toolbar {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .toolbarLeft {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 14px;
+  align-items: center;
+  gap: 10px;
 }
 
 .toolbarRight {
   display: flex;
-  gap: 10px;
+  gap: 8px;
 }
 
 .filterLabel {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  font-size: 11px;
+  gap: 2px;
+  font-size: 10px;
   font-weight: 700;
   color: #666;
   letter-spacing: 0.5px;
 }
 
 .dateInput {
-  padding: 8px 12px;
+  padding: 6px 10px;
   border: 1.5px solid #e0e0e0;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: 12px;
   font-family: inherit;
 }
 
 .teamTabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .teamBtn {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  min-width: 130px;
-  padding: 10px 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
   border: 1.5px solid #e0e0e0;
   border-radius: 8px;
   background: #fff;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   color: #555;
   font-family: inherit;
@@ -80,14 +83,13 @@
   font-size: 10px;
   font-weight: 600;
   opacity: 0.85;
-  margin-top: 2px;
 }
 
 .refreshBtn,
 .addBtn {
-  padding: 10px 16px;
+  padding: 7px 14px;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
@@ -111,9 +113,10 @@
 .errorBanner {
   background: #ffebee;
   color: #c62828;
-  padding: 10px 14px;
+  padding: 8px 12px;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: 12px;
+  flex-shrink: 0;
 }
 
 .errorHint {
@@ -127,85 +130,91 @@
   border-radius: 4px;
   overflow: hidden;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 .sheetHeader {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
-  align-items: flex-start;
-  padding: 16px 20px 12px;
+  align-items: center;
+  padding: 8px 14px;
   border-bottom: 2px solid #b71c1c;
   background: #fff;
+  flex-shrink: 0;
 }
 
 .sheetTitle {
   margin: 0;
-  font-size: 28px;
+  font-size: 18px;
   font-weight: 900;
   color: #b71c1c;
-  letter-spacing: 2px;
+  letter-spacing: 1.5px;
 }
 
 .sheetOrg {
-  margin: 4px 0 0;
-  font-size: 11px;
+  margin: 2px 0 0;
+  font-size: 10px;
   font-weight: 700;
   color: #333;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.2px;
   max-width: 320px;
-  line-height: 1.4;
+  line-height: 1.3;
 }
 
 .sheetMeta {
   text-align: right;
-  font-size: 12px;
+  font-size: 11px;
   color: #333;
 }
 
 .sheetTeam,
 .sheetDate {
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .tableScroll {
-  overflow-x: auto;
-  max-height: calc(100vh - 320px);
-  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 
 .callTable {
   width: 100%;
   min-width: 2200px;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 11.5px;
 }
 
 .callTable thead tr {
   background: #b71c1c;
   color: #fff;
-  position: sticky;
-  top: 0;
-  z-index: 2;
 }
 
 .callTable th {
-  padding: 10px 8px;
+  padding: 7px 6px;
   text-align: left;
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 800;
   letter-spacing: 0.3px;
   white-space: nowrap;
   border-right: 1px solid rgba(255, 255, 255, 0.2);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #b71c1c;
 }
 
 .callTable td {
-  padding: 8px;
+  padding: 6px;
   border-bottom: 1px solid #eee;
   border-right: 1px solid #f0f0f0;
-  vertical-align: top;
+  vertical-align: middle;
   color: #333;
-  max-width: 180px;
+  max-width: 160px;
   word-break: break-word;
 }
 
@@ -214,7 +223,7 @@
 }
 
 .rowNum {
-  width: 36px;
+  width: 32px;
   text-align: center !important;
   font-weight: 700;
   color: #888;
@@ -222,8 +231,8 @@
 }
 
 .actionCol {
-  width: 150px;
-  min-width: 150px;
+  width: 72px;
+  min-width: 72px;
   text-align: center !important;
   position: sticky;
   right: 0;
@@ -234,28 +243,29 @@
 
 .actionGroup {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  align-items: stretch;
+  flex-direction: row;
+  gap: 4px;
+  justify-content: center;
 }
 
 .callTable thead .actionCol {
   background: #b71c1c;
+  z-index: 3;
 }
 
 .cell {
-  min-width: 90px;
+  min-width: 80px;
 }
 
 .emptyRow {
   text-align: center;
-  padding: 32px !important;
+  padding: 18px !important;
   color: #999;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .loadingBox {
-  padding: 40px;
+  padding: 24px;
   text-align: center;
   color: #888;
 }
@@ -265,19 +275,20 @@
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
-  padding: 10px 20px;
+  gap: 8px;
+  padding: 6px 14px;
   border-top: 2px solid #b71c1c;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   color: #555;
   background: #fafafa;
+  flex-shrink: 0;
 }
 
 .footerTeams {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 12px;
 }
 
 .footerTeamActive {
@@ -289,18 +300,22 @@
   margin-left: auto;
 }
 
-.editBtn {
-  background: #fff;
-  color: #1565c0;
-  border: 1.5px solid #bbdefb;
-  padding: 5px 10px;
+.editBtn,
+.deleteBtn {
+  padding: 4px 7px;
   border-radius: 7px;
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 14px;
+  line-height: 1;
   font-family: inherit;
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.editBtn {
+  background: #fff;
+  color: #1565c0;
+  border: 1.5px solid #bbdefb;
 }
 
 .editBtn:hover {
@@ -313,14 +328,6 @@
   background: #fff;
   color: #c62828;
   border: 1.5px solid #ffcdd2;
-  padding: 5px 10px;
-  border-radius: 7px;
-  font-size: 11px;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 
 .deleteBtn:hover {
