@@ -40,17 +40,34 @@ function useClock() {
   return time;
 }
 
-const NAV_ITEMS = [
-  { id: 'overview',   icon: '📊', label: 'Overview' },
-  { id: 'live-map',   icon: '🗺️', label: 'Live Map' },
-  { id: 'incidents',  icon: '🚨', label: 'Incidents' },
-  { id: 'archive',    icon: '📁', label: 'Archive' },
-  { id: 'responders', icon: '🚑', label: 'Responders' },
-  { id: 'dispatch',   icon: '📡', label: 'Dispatch' },
-  { id: 'call-log',   icon: '📋', label: 'Call Log' },
-  { id: 'users',      icon: '👥', label: 'Users' },
-  { id: 'settings',   icon: '⚙️', label: 'Settings' },
+const NAV_SECTIONS = [
+  {
+    label: 'Main Menu',
+    items: [
+      { id: 'dashboard', icon: '📊', label: 'Dashboard' },
+      { id: 'live-map', icon: '🗺️', label: 'Live Map' },
+      { id: 'incidents', icon: '🚨', label: 'Incidents' },
+      { id: 'archive', icon: '📁', label: 'Archive' },
+    ],
+  },
+  {
+    label: 'Operations',
+    items: [
+      { id: 'responders', icon: '🚑', label: 'Responders' },
+      { id: 'dispatch', icon: '📡', label: 'Dispatch' },
+      { id: 'call-log', icon: '📋', label: 'Call Log' },
+    ],
+  },
+  {
+    label: 'Administration',
+    items: [
+      { id: 'users', icon: '👥', label: 'Users' },
+      { id: 'settings', icon: '⚙️', label: 'Settings' },
+    ],
+  },
 ];
+
+const NAV_ITEMS = NAV_SECTIONS.flatMap((section) => section.items);
 
 const STAT_COLORS = ['statRed', 'statOrange', 'statBlue', 'statYellow', 'statGreen', 'statPurple'];
 
@@ -249,7 +266,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const user = getStoredAdmin();
   const clock = useClock();
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const [stats, setStats] = useState({
@@ -315,6 +332,7 @@ export default function Dashboard() {
   }, [fetchData]);
 
   const handleLogout = () => {
+    if (!window.confirm('Are you sure you want to log out?')) return;
     logout();
     navigate('/login');
   };
@@ -417,33 +435,51 @@ export default function Dashboard() {
       <aside className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : styles.sidebarClosed}`}>
         <div className={styles.sidebarHeader}>
           <div className={styles.sidebarLogo}>✚</div>
-          {sidebarOpen && <span className={styles.sidebarAppName}>RapidRescue</span>}
+          {sidebarOpen && (
+            <div className={styles.sidebarBrand}>
+              <span className={styles.sidebarAppName}>RapidRescue</span>
+              <span className={styles.sidebarTagline}>Emergency Dispatch</span>
+            </div>
+          )}
         </div>
 
         <nav className={styles.nav}>
-          {NAV_ITEMS.map((item) => (
-            <button
-              key={item.id}
-              className={`${styles.navItem} ${activeTab === item.id ? styles.navItemActive : ''}`}
-              onClick={() => setActiveTab(item.id)}
-              title={!sidebarOpen ? item.label : undefined}
-            >
-              <span className={styles.navIcon}>{item.icon}</span>
-              {sidebarOpen && <span className={styles.navLabel}>{item.label}</span>}
-              {sidebarOpen && item.id === 'incidents' && stats.pending > 0 && (
-                <span className={styles.navBadge}>{stats.pending}</span>
+          {NAV_SECTIONS.map((section) => (
+            <div key={section.label} className={styles.navSection}>
+              {sidebarOpen && (
+                <p className={styles.navSectionLabel}>{section.label}</p>
               )}
-              {sidebarOpen && item.id === 'archive' && (archivedIncidents.length + deletedIncidents.length) > 0 && (
-                <span className={styles.navBadge}>{archivedIncidents.length + deletedIncidents.length}</span>
-              )}
-            </button>
+              {section.items.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`${styles.navItem} ${activeTab === item.id ? styles.navItemActive : ''}`}
+                  onClick={() => setActiveTab(item.id)}
+                  title={!sidebarOpen ? item.label : undefined}
+                >
+                  <span className={styles.navIcon}>{item.icon}</span>
+                  {sidebarOpen && <span className={styles.navLabel}>{item.label}</span>}
+                  {sidebarOpen && item.id === 'incidents' && stats.pending > 0 && (
+                    <span className={styles.navBadge}>{stats.pending}</span>
+                  )}
+                  {sidebarOpen && item.id === 'archive' && (archivedIncidents.length + deletedIncidents.length) > 0 && (
+                    <span className={styles.navBadge}>{archivedIncidents.length + deletedIncidents.length}</span>
+                  )}
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
 
         <div className={styles.sidebarFooter}>
-          <button className={styles.logoutBtn} onClick={handleLogout} title={!sidebarOpen ? 'Sign Out' : undefined}>
-            <span className={styles.navIcon}>🚪</span>
-            {sidebarOpen && <span>Sign Out</span>}
+          <button
+            type="button"
+            className={styles.logoutBtn}
+            onClick={handleLogout}
+            title={!sidebarOpen ? 'Log Out' : undefined}
+          >
+            <span className={styles.navIcon}>↪</span>
+            {sidebarOpen && <span>Log Out</span>}
           </button>
         </div>
       </aside>
@@ -498,10 +534,10 @@ export default function Dashboard() {
           )}
 
           {/* ── OVERVIEW ────────────────────────────────── */}
-          {activeTab === 'overview' && (
+          {activeTab === 'dashboard' && (
             <div>
               <div className={styles.tabHeader}>
-                <h2 className={styles.sectionTitle}>Dashboard Overview</h2>
+                <h2 className={styles.sectionTitle}>Dashboard</h2>
                 <button className={styles.refreshBtn} onClick={fetchData}>
                   🔄 Refresh
                 </button>
