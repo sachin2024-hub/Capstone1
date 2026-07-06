@@ -44,6 +44,7 @@ const incidentRoutes = require('./routes/incidents');
 const responderRoutes = require('./routes/responders');
 const dispatchRoutes = require('./routes/dispatch');
 const callLogRoutes = require('./routes/callLogs');
+const dispatchRecordRoutes = require('./routes/dispatchRecords');
 
 const app = express();
 
@@ -81,6 +82,7 @@ app.use('/api/incidents', incidentRoutes);
 app.use('/api/responders', responderRoutes);
 app.use('/api/dispatch', dispatchRoutes);
 app.use('/api/call-logs', callLogRoutes);
+app.use('/api/dispatch-records', dispatchRecordRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Route not found.' });

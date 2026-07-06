@@ -7,9 +7,10 @@ import IncidentStatusModal from '../../components/incidents/IncidentStatusModal'
 import AssignResponderModal from '../../components/incidents/AssignResponderModal';
 import ResponderModal from '../../components/responders/ResponderModal';
 import CallLogPage from '../../components/calllog/CallLogPage';
+import DispatchPage from '../../components/dispatch/DispatchPage';
 import { archiveIncident, deleteIncident, permanentDeleteIncident } from '../../services/incidentService';
 import { deleteResponder } from '../../services/responderService';
-import { STATUS_COLORS, DISPATCH_COLORS } from '../../constants/statusColors';
+import { STATUS_COLORS } from '../../constants/statusColors';
 import { formatDate } from '../../utils/formatDate';
 import { parseLocationAddress, formatAreaLabel } from '../../utils/locationFormat';
 import styles from './Dashboard.module.css';
@@ -956,70 +957,7 @@ export default function Dashboard() {
           )}
 
           {/* ── DISPATCH ─────────────────────────────────── */}
-          {activeTab === 'dispatch' && (
-            <div>
-              <div className={styles.tabHeader}>
-                <h2 className={styles.sectionTitle}>Dispatch Log</h2>
-                <button className={styles.refreshBtn} onClick={fetchData}>🔄 Refresh</button>
-              </div>
-              <div className={styles.tableCard}>
-                {isLoading ? <TableLoader /> : (
-                  <div className={styles.tableWrapper}>
-                    <table className={styles.table}>
-                      <thead>
-                        <tr>
-                          <th>ID</th><th>Incident</th><th>Responder</th>
-                          <th>Status</th><th>Dispatch Time</th><th>Arrival</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {dispatches.map((d) => (
-                          <tr key={d.dispatch_id}>
-                            <td><strong>#{d.dispatch_id}</strong></td>
-                            <td>
-                              <strong>#{d.incidents?.incident_id}</strong> — {d.incidents?.incident_type || '—'}
-                              {d.incidents?.users && (
-                                <span className={styles.subText}>
-                                  {d.incidents.users.first_name} {d.incidents.users.last_name}
-                                </span>
-                              )}
-                            </td>
-                            <td>
-                              {d.responders
-                                ? (
-                                  <div className={styles.userCell}>
-                                    <div className={styles.userAvatar}>{d.responders.first_name?.charAt(0)}</div>
-                                    <div>
-                                      <span className={styles.userName2}>{d.responders.first_name} {d.responders.last_name}</span>
-                                      <span className={styles.subText}>{d.responders.responder_type}</span>
-                                    </div>
-                                  </div>
-                                )
-                                : <span style={{ color: '#bbb' }}>—</span>}
-                            </td>
-                            <td>
-                              <span
-                                className={styles.statusBadge}
-                                style={{ background: DISPATCH_COLORS[d.dispatch_status] || '#9E9E9E' }}
-                              >
-                                <span className={styles.statusDotBadge} />
-                                {d.dispatch_status}
-                              </span>
-                            </td>
-                            <td style={{ color: '#888', fontSize: 12 }}>{formatDate(d.dispatch_time)}</td>
-                            <td style={{ color: '#888', fontSize: 12 }}>{formatDate(d.arrival_time)}</td>
-                          </tr>
-                        ))}
-                        {dispatches.length === 0 && (
-                          <tr><td colSpan={6} className={styles.emptyRow}>📭 No dispatches yet. Press SOS on mobile to trigger.</td></tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+          {activeTab === 'dispatch' && <DispatchPage />}
 
           {/* ── CALL LOG ─────────────────────────────────── */}
           {activeTab === 'call-log' && <CallLogPage />}
