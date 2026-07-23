@@ -1,7 +1,10 @@
 .page {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .toolbar {
@@ -10,6 +13,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  flex-shrink: 0;
 }
 
 .toolbarLeft {
@@ -103,14 +107,21 @@
   padding: 8px 12px;
   border-radius: 8px;
   font-size: 12px;
+  flex-shrink: 0;
 }
 
 .sheet {
   background: #fff;
-  border: 2px solid #1565c0;
-  border-radius: 8px;
+  border: none;
+  border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.06),
+    0 6px 24px rgba(21, 101, 192, 0.08);
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 .sheetHeader {
@@ -118,26 +129,29 @@
   flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 16px;
-  border-bottom: 2px solid #1565c0;
-  background: #f8fbff;
+  padding: 14px 20px;
+  border-bottom: 1px solid #e8eef5;
+  background: linear-gradient(to bottom, #fafcff, #fff);
+  flex-shrink: 0;
 }
 
 .sheetTitle {
   margin: 0;
-  font-size: 16px;
-  font-weight: 900;
+  font-size: 15px;
+  font-weight: 800;
   color: #1565c0;
-  letter-spacing: 1px;
+  letter-spacing: 0.8px;
 }
 
 .sheetDate {
   font-size: 12px;
-  color: #555;
+  color: #64748b;
 }
 
 .tableScroll {
-  overflow-x: auto;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 
 .table {
@@ -148,18 +162,18 @@
 }
 
 .table thead tr {
-  background: #1565c0;
+  background: linear-gradient(135deg, #1565c0, #1976d2);
   color: #fff;
 }
 
 .table th {
-  padding: 8px 10px;
+  padding: 10px 12px;
   text-align: left;
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.3px;
   white-space: nowrap;
-  border-right: 1px solid rgba(255, 255, 255, 0.15);
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .table td {
@@ -239,8 +253,8 @@
 
 .emptyRow {
   text-align: center;
-  padding: 28px !important;
-  color: #999;
+  padding: 48px 28px !important;
+  color: #94a3b8;
   font-size: 13px;
 }
 
@@ -254,16 +268,18 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 16px;
-  border-top: 2px solid #1565c0;
+  padding: 10px 20px;
+  border-top: 1px solid #eef2f7;
   font-size: 11px;
-  font-weight: 700;
-  color: #555;
-  background: #fafafa;
+  font-weight: 600;
+  color: #64748b;
+  background: #f8fafc;
+  flex-shrink: 0;
 }
 
 .entryCount {
   color: #1565c0;
+  font-weight: 700;
 }
 
 .subText {

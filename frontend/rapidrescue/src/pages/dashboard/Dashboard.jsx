@@ -13,6 +13,7 @@ import { deleteResponder } from '../../services/responderService';
 import { STATUS_COLORS } from '../../constants/statusColors';
 import { formatDate } from '../../utils/formatDate';
 import { parseLocationAddress, formatAreaLabel } from '../../utils/locationFormat';
+import { APP_IMAGES } from '../../constants/images';
 import styles from './Dashboard.module.css';
 
 const ONGOING_STATUSES = ['Pending', 'In Progress', 'En Route', 'Arrived'];
@@ -435,7 +436,9 @@ export default function Dashboard() {
       {/* ── Sidebar ─────────────────────────────────────── */}
       <aside className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : styles.sidebarClosed}`}>
         <div className={styles.sidebarHeader}>
-          <div className={styles.sidebarLogo}>✚</div>
+          <div className={styles.sidebarLogo}>
+            <img src={APP_IMAGES.logo} alt="" className={styles.sidebarLogoImg} />
+          </div>
           {sidebarOpen && (
             <div className={styles.sidebarBrand}>
               <span className={styles.sidebarAppName}>RapidRescue</span>
@@ -526,7 +529,7 @@ export default function Dashboard() {
         </header>
 
         {/* Content */}
-        <div className={`${styles.content} ${(activeTab === 'live-map' || activeTab === 'call-log') ? styles.contentPanel : ''}`}>
+        <div className={`${styles.content} ${(activeTab === 'live-map' || activeTab === 'call-log' || activeTab === 'dispatch') ? styles.contentPanel : ''}`}>
           {error && (
             <div className={styles.errorBanner}>
               <span>⚠️ {error}</span>
@@ -546,6 +549,7 @@ export default function Dashboard() {
 
               {/* Banner */}
               <div className={styles.overviewBanner}>
+                <img src={APP_IMAGES.ambulances[1]} alt="" className={styles.bannerImage} aria-hidden="true" />
                 <div className={styles.bannerText}>
                   <h3>🚨 Cabadbaran City Emergency System</h3>
                   <p>Monitoring all incidents, responders, and dispatches in real-time · Auto-refresh every 15s</p>

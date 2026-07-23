@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { register } from '../../services/authService';
+import { APP_IMAGES } from '../../constants/images';
 import styles from './Auth.module.css';
 
 const ROLES = ['Admin', 'Super Admin', 'Dispatcher', 'Supervisor'];
@@ -73,7 +74,9 @@ export default function Register() {
       {/* ── Left Panel ─────────────────────────────── */}
       <div className={styles.leftPanel}>
         <div className={styles.brandBox}>
-          <div className={styles.brandLogo}>✚</div>
+          <div className={styles.brandLogoWrap}>
+            <img src={APP_IMAGES.logo} alt="RapidRescue" className={styles.brandLogoImg} />
+          </div>
           <h1 className={styles.brandName}>RapidRescue</h1>
           <p className={styles.brandTagline}>Admin Control Panel</p>
           <p className={styles.brandCity}>📍 Cabadbaran City, Agusan del Norte</p>
@@ -112,6 +115,14 @@ export default function Register() {
               <div className={styles.statVal}>Free</div>
               <div className={styles.statKey}>Service</div>
             </div>
+          </div>
+
+          <div className={styles.imageShowcase}>
+            {APP_IMAGES.showcase.map((src) => (
+              <div key={src} className={styles.showcaseItem}>
+                <img src={src} alt="" className={styles.showcaseImg} />
+              </div>
+            ))}
           </div>
 
           <p className={styles.panelFooter}>🏥 Powered by Cabadbaran City DRRMO</p>

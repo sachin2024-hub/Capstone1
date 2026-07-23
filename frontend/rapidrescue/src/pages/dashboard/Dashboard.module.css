@@ -1,7 +1,8 @@
 /* ─── Layout ─────────────────────────────────────────── */
 .wrapper {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   background: #f0f3f8;
   font-family: 'Inter', system-ui, sans-serif;
 }
@@ -44,6 +45,15 @@
   justify-content: center;
   flex-shrink: 0;
   box-shadow: 0 4px 12px rgba(229, 57, 53, 0.4);
+  overflow: hidden;
+  padding: 0;
+}
+
+.sidebarLogoImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .sidebarBrand {
@@ -505,15 +515,27 @@
 }
 
 .overviewBanner::before {
-  content: '✚';
+  content: '';
   position: absolute;
-  right: 24px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 90px;
-  opacity: 0.1;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(183, 28, 28, 0.95) 0%, rgba(183, 28, 28, 0.75) 55%, rgba(183, 28, 28, 0.35) 100%);
   pointer-events: none;
-  line-height: 1;
+}
+
+.bannerImage {
+  position: absolute;
+  right: 0;
+  top: 0;
+  height: 100%;
+  width: min(340px, 45%);
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.bannerText,
+.bannerActions {
+  position: relative;
+  z-index: 1;
 }
 
 .bannerText h3 {
