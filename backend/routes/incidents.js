@@ -291,6 +291,43 @@ router.patch('/:id/archive', async (req, res) => {
   }
 });
 
+// PATCH /api/incidents/:id/restore — Archived or Deleted → Resolved immediately
+router.patch('/:id/restore', async (req, res) => {
+  const incidentId = Number(req.params.id);
+
+  try {
+    const { data: existing, error: fetchErr } = await supabase
+      .from('incidents')
+      .select('incident_id, incident_status')
+      .eq('incident_id', incidentId)
+      .single();
+
+    if (fetchErr) return res.status(500).json({ message: fetchErr.message });
+    if (!existing) return res.status(404).json({ message: 'Incident not found.' });
+
+    if (!['Archived', 'Deleted'].includes(existing.incident_status)) {
+      return res.status(400).json({
+        message: 'Only archived or deleted incidents can be restored.',
+      });
+    }
+
+    const nextStatus = existing.incident_status === 'Archived' ? 'Resolved' : 'Pending';
+
+    const { data: incident, error } = await supabase
+      .from('incidents')
+      .update({ incident_status: nextStatus })
+      .eq('incident_id', incidentId)
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ message: error.message });
+
+    return res.json({ message: `Incident restored to ${nextStatus}.`, incident });
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+});
+
 async function freeRespondersForIncident(incidentId) {
   const { data: dispatches } = await supabase
     .from('dispatch')

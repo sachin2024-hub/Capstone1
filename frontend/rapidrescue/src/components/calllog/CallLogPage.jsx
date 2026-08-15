@@ -5,6 +5,7 @@ import {
   CALL_LOG_TEAMS,
 } from '../../services/callLogService';
 import CallLogModal from './CallLogModal';
+import ConfirmModal from '../common/ConfirmModal';
 import styles from './CallLog.module.css';
 
 const COLUMNS = [
@@ -54,6 +55,7 @@ export default function CallLogPage() {
   const [error, setError] = useState('');
   const [modalEntry, setModalEntry] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   const teamInfo = CALL_LOG_TEAMS.find((t) => t.id === team) || CALL_LOG_TEAMS[0];
 
@@ -82,13 +84,19 @@ export default function CallLogPage() {
     setShowModal(true);
   };
 
-  const handleDelete = async (entry) => {
-    if (!window.confirm(`Delete call log entry for ${entry.caller_name || 'this caller'}?`)) return;
+  const handleDelete = (entry) => {
+    setConfirmDelete(entry);
+  };
+
+  const confirmDeleteEntry = async () => {
+    if (!confirmDelete) return;
     try {
-      await deleteCallLog(entry.call_log_id);
+      await deleteCallLog(confirmDelete.call_log_id);
+      setConfirmDelete(null);
       await load();
     } catch (err) {
       setError(err.message || 'Failed to delete.');
+      setConfirmDelete(null);
     }
   };
 
@@ -213,6 +221,17 @@ export default function CallLogPage() {
           team={team}
           onClose={() => setShowModal(false)}
           onSaved={load}
+        />
+      )}
+      {confirmDelete && (
+        <ConfirmModal
+          title="Delete call log?"
+          message={`Delete call log entry for ${confirmDelete.caller_name || 'this caller'}? This cannot be undone.`}
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          variant="danger"
+          onConfirm={confirmDeleteEntry}
+          onCancel={() => setConfirmDelete(null)}
         />
       )}
     </div>

@@ -2,14 +2,17 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { logout, getStoredAdmin } from '../../services/authService';
 import api from '../../services/api';
+import ConfirmModal from '../../components/common/ConfirmModal';
 import LiveMap from '../../components/map/LiveMap';
 import IncidentStatusModal from '../../components/incidents/IncidentStatusModal';
 import AssignResponderModal from '../../components/incidents/AssignResponderModal';
 import ResponderModal from '../../components/responders/ResponderModal';
 import CallLogPage from '../../components/calllog/CallLogPage';
 import DispatchPage from '../../components/dispatch/DispatchPage';
-import { archiveIncident, deleteIncident, permanentDeleteIncident } from '../../services/incidentService';
+import { archiveIncident, restoreIncident, deleteIncident, permanentDeleteIncident } from '../../services/incidentService';
 import { deleteResponder } from '../../services/responderService';
+import { fetchDispatchRecords, deleteDispatchRecord } from '../../services/dispatchRecordService';
+import { fetchCallLogs, deleteCallLog } from '../../services/callLogService';
 import { STATUS_COLORS } from '../../constants/statusColors';
 import { formatDate } from '../../utils/formatDate';
 import { parseLocationAddress, formatAreaLabel } from '../../utils/locationFormat';
@@ -48,8 +51,8 @@ const NAV_SECTIONS = [
     label: 'Main Menu',
     items: [
       { id: 'dashboard', icon: '📊', label: 'Dashboard' },
+      { id: 'incidents', icon: '🚨', label: 'Accident' },
       { id: 'live-map', icon: '🗺️', label: 'Live Map' },
-      { id: 'incidents', icon: '🚨', label: 'Incidents' },
       { id: 'archive', icon: '📁', label: 'Archive' },
     ],
   },
@@ -81,10 +84,51 @@ const INCIDENT_FILTER_TABS = [
   { id: 'cancelled', icon: '❌', label: 'Cancelled' },
 ];
 
-const ARCHIVE_FILTER_TABS = [
-  { id: 'archived', icon: '📁', label: 'Archived' },
-  { id: 'deleted', icon: '🗑️', label: 'Deleted' },
+const ARCHIVE_MODULE_TABS = [
+  { id: 'accident', icon: '🚨', label: 'Accident' },
+  { id: 'dispatch', icon: '📡', label: 'Dispatch' },
+  { id: 'call-log', icon: '📋', label: 'Call Log' },
 ];
+
+const DISPATCH_ARCHIVE_COLUMNS = [
+  { key: 'dispatch_record_id', label: 'ID', render: (row) => <strong>#{row.dispatch_record_id}</strong> },
+  { key: 'vehicle', label: 'Vehicle' },
+  { key: 'modulation', label: 'Modulation' },
+  { key: 'team_officer', label: 'T.O' },
+  { key: 'time_dispatch', label: 'Time Dispatch' },
+  { key: 'log_date', label: 'Date' },
+];
+
+const CALL_LOG_ARCHIVE_COLUMNS = [
+  { key: 'call_log_id', label: 'ID', render: (row) => <strong>#{row.call_log_id}</strong> },
+  { key: 'caller_name', label: 'Caller' },
+  { key: 'time_of_call', label: 'Time' },
+  { key: 'nature_of_incident', label: 'Nature', compact: true },
+  { key: 'team', label: 'Team' },
+  { key: 'log_date', label: 'Date' },
+];
+
+function dispatchRecordSearchText(row) {
+  return [
+    row.dispatch_record_id,
+    row.vehicle,
+    row.modulation,
+    row.team_officer,
+    row.on_board,
+    row.log_date,
+  ].filter(Boolean).join(' ');
+}
+
+function callLogSearchText(row) {
+  return [
+    row.call_log_id,
+    row.caller_name,
+    row.nature_of_incident,
+    row.patient_name,
+    row.team,
+    row.log_date,
+  ].filter(Boolean).join(' ');
+}
 
 function getAssignedResponder(inc) {
   const dispatch = Array.isArray(inc.dispatch) ? inc.dispatch[0] : inc.dispatch;
@@ -137,19 +181,29 @@ function IncidentTableSection({
   onArchive,
   onDelete,
   onPermanentDelete,
+  onRestore,
   onAssign,
   onShowMap,
   showAssignActions = false,
   actions = {},
   hideTitle = false,
+  selectable = false,
+  selectedIds,
+  onToggleSelect,
+  onToggleSelectAll,
+  onBulkRestore,
+  onBulkDelete,
+  bulkDeleteLabel = 'Delete',
 }) {
   const {
     edit = true,
     archive = false,
     delete: showDelete = true,
     permanentDelete = false,
+    restore = false,
   } = actions;
-  const hasActions = edit || archive || showDelete || permanentDelete || showAssignActions || onShowMap;
+  const hasActions = edit || archive || showDelete || permanentDelete || restore || showAssignActions || onShowMap;
+  const selectedSet = selectedIds || new Set();
 
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -178,6 +232,11 @@ function IncidentTableSection({
     setPage(1);
   }, [search, categoryFilter, subFilter, rows]);
 
+  const filteredIds = filteredRows.map((inc) => inc.incident_id);
+  const selectedCount = filteredIds.filter((id) => selectedSet.has(id)).length;
+  const allFilteredSelected = filteredIds.length > 0 && selectedCount === filteredIds.length;
+  const colCount = 9 + (selectable ? 1 : 0) + (hasActions ? 1 : 0);
+
   return (
     <div className={styles.incidentSection}>
       {!hideTitle && (
@@ -187,6 +246,41 @@ function IncidentTableSection({
         </h3>
       )}
       <div className={styles.tableCard}>
+        {selectable && (
+          <div className={styles.archiveBulkBar}>
+            <label className={styles.archiveSelectAll}>
+              <input
+                type="checkbox"
+                checked={allFilteredSelected}
+                onChange={() => onToggleSelectAll?.(filteredIds)}
+              />
+              Select All
+            </label>
+            {restore && (
+              <button
+                type="button"
+                className={styles.restoreBtn}
+                disabled={selectedCount === 0}
+                onClick={() => onBulkRestore?.(filteredIds.filter((id) => selectedSet.has(id)))}
+              >
+                Restore
+              </button>
+            )}
+            {(showDelete || permanentDelete) && (
+              <button
+                type="button"
+                className={styles.deleteBtn}
+                disabled={selectedCount === 0}
+                onClick={() => onBulkDelete?.(filteredIds.filter((id) => selectedSet.has(id)))}
+              >
+                {bulkDeleteLabel}
+              </button>
+            )}
+            {selectedCount > 0 && (
+              <span className={styles.archiveSelectedCount}>{selectedCount} selected</span>
+            )}
+          </div>
+        )}
         <div className={styles.incidentToolbar}>
           <input
             type="search"
@@ -231,6 +325,16 @@ function IncidentTableSection({
             <table className={`${styles.table} ${styles.incidentTable}`}>
               <thead>
                 <tr>
+                  {selectable && (
+                    <th className={styles.checkCell}>
+                      <input
+                        type="checkbox"
+                        checked={allFilteredSelected}
+                        onChange={() => onToggleSelectAll?.(filteredIds)}
+                        title="Select all"
+                      />
+                    </th>
+                  )}
                   <th>ID</th><th>Type</th><th>Description</th><th>Reporter</th>
                   <th>Location</th><th>Assigned</th><th>Status</th><th>Priority</th><th>Date</th>
                   {hasActions && <th>Action</th>}
@@ -246,6 +350,15 @@ function IncidentTableSection({
                       className={onEdit ? styles.incidentRowClickable : undefined}
                       onClick={onEdit ? () => onEdit(inc) : undefined}
                     >
+                      {selectable && (
+                        <td className={styles.checkCell} onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selectedSet.has(inc.incident_id)}
+                            onChange={() => onToggleSelect?.(inc.incident_id)}
+                          />
+                        </td>
+                      )}
                       <td><strong>#{inc.incident_id}</strong></td>
                       <td className={styles.compactCell}>{inc.incident_type}</td>
                       <td className={styles.descCell}>{inc.incident_description || '—'}</td>
@@ -321,6 +434,16 @@ function IncidentTableSection({
                                 📁
                               </button>
                             )}
+                            {restore && (
+                              <button
+                                type="button"
+                                className={`${styles.restoreBtn} ${styles.actionIconBtn}`}
+                                onClick={() => onRestore(inc)}
+                                title="Restore"
+                              >
+                                ↩️
+                              </button>
+                            )}
                             {showDelete && (
                               <button
                                 type="button"
@@ -349,7 +472,7 @@ function IncidentTableSection({
                 })}
                 {pagedRows.length === 0 && (
                   <tr>
-                    <td colSpan={hasActions ? 10 : 9} className={styles.emptyRow}>
+                    <td colSpan={colCount} className={styles.emptyRow}>
                       {rows.length === 0 ? emptyMessage : '📭 No incidents match your search or filter.'}
                     </td>
                   </tr>
@@ -363,6 +486,197 @@ function IncidentTableSection({
             <span className={styles.paginationInfo}>
               Showing {(currentPage - 1) * INCIDENT_PAGE_SIZE + 1}–
               {Math.min(currentPage * INCIDENT_PAGE_SIZE, filteredRows.length)} of {filteredRows.length}
+            </span>
+            <div className={styles.paginationBtns}>
+              <button
+                type="button"
+                className={styles.pageBtn}
+                disabled={currentPage <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                Previous
+              </button>
+              <span className={styles.pageNum}>Page {currentPage} of {totalPages}</span>
+              <button
+                type="button"
+                className={styles.pageBtn}
+                disabled={currentPage >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const ARCHIVE_RECORD_PAGE_SIZE = 8;
+
+function ArchiveRecordsTable({
+  rows,
+  columns,
+  idKey,
+  isLoading,
+  emptyMessage,
+  selectedIds,
+  onToggleSelect,
+  onToggleSelectAll,
+  onRestore,
+  onDelete,
+  searchPlaceholder,
+  getSearchText,
+}) {
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const selectedSet = selectedIds || new Set();
+
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((row) => (getSearchText?.(row) || '').toLowerCase().includes(q));
+  }, [rows, search, getSearchText]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / ARCHIVE_RECORD_PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pagedRows = filteredRows.slice(
+    (currentPage - 1) * ARCHIVE_RECORD_PAGE_SIZE,
+    currentPage * ARCHIVE_RECORD_PAGE_SIZE
+  );
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, rows]);
+
+  const filteredIds = filteredRows.map((row) => row[idKey]);
+  const selectedCount = filteredIds.filter((id) => selectedSet.has(id)).length;
+  const allFilteredSelected = filteredIds.length > 0 && selectedCount === filteredIds.length;
+  const colCount = columns.length + 2;
+
+  return (
+    <div className={styles.incidentSection}>
+      <div className={styles.tableCard}>
+        <div className={styles.archiveBulkBar}>
+          <label className={styles.archiveSelectAll}>
+            <input
+              type="checkbox"
+              checked={allFilteredSelected}
+              onChange={() => onToggleSelectAll?.(filteredIds)}
+            />
+            Select All
+          </label>
+          {onRestore && (
+            <button
+              type="button"
+              className={styles.restoreBtn}
+              disabled={selectedCount === 0}
+              onClick={() => onRestore(filteredIds.filter((id) => selectedSet.has(id)))}
+            >
+              Restore
+            </button>
+          )}
+          <button
+            type="button"
+            className={styles.deleteBtn}
+            disabled={selectedCount === 0}
+            onClick={() => onDelete(filteredIds.filter((id) => selectedSet.has(id)))}
+          >
+            Delete
+          </button>
+          {selectedCount > 0 && (
+            <span className={styles.archiveSelectedCount}>{selectedCount} selected</span>
+          )}
+        </div>
+        <div className={styles.incidentToolbar}>
+          <input
+            type="search"
+            className={styles.incidentSearch}
+            placeholder={searchPlaceholder}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        {isLoading ? (
+          <div className={styles.loadingBox}>
+            <div className={styles.loader} />
+            <span>Loading data...</span>
+          </div>
+        ) : (
+          <div className={`${styles.tableWrapper} ${styles.incidentTableWrapper}`}>
+            <table className={`${styles.table} ${styles.incidentTable}`}>
+              <thead>
+                <tr>
+                  <th className={styles.checkCell}>
+                    <input
+                      type="checkbox"
+                      checked={allFilteredSelected}
+                      onChange={() => onToggleSelectAll?.(filteredIds)}
+                      title="Select all"
+                    />
+                  </th>
+                  {columns.map((col) => (
+                    <th key={col.key}>{col.label}</th>
+                  ))}
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pagedRows.map((row) => (
+                  <tr key={row[idKey]}>
+                    <td className={styles.checkCell}>
+                      <input
+                        type="checkbox"
+                        checked={selectedSet.has(row[idKey])}
+                        onChange={() => onToggleSelect?.(row[idKey])}
+                      />
+                    </td>
+                    {columns.map((col) => (
+                      <td key={col.key} className={col.compact ? styles.compactCell : undefined}>
+                        {col.render ? col.render(row) : (row[col.key] || '—')}
+                      </td>
+                    ))}
+                    <td>
+                      <div className={styles.actionGroup}>
+                        {onRestore && (
+                          <button
+                            type="button"
+                            className={`${styles.restoreBtn} ${styles.actionIconBtn}`}
+                            onClick={() => onRestore([row[idKey]])}
+                            title="Restore"
+                          >
+                            ↩️
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className={`${styles.deleteBtn} ${styles.actionIconBtn}`}
+                          onClick={() => onDelete([row[idKey]])}
+                          title="Delete"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {pagedRows.length === 0 && (
+                  <tr>
+                    <td colSpan={colCount} className={styles.emptyRow}>
+                      {rows.length === 0 ? emptyMessage : '📭 No records match your search.'}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {!isLoading && filteredRows.length > 0 && (
+          <div className={styles.paginationBar}>
+            <span className={styles.paginationInfo}>
+              Showing {(currentPage - 1) * ARCHIVE_RECORD_PAGE_SIZE + 1}–
+              {Math.min(currentPage * ARCHIVE_RECORD_PAGE_SIZE, filteredRows.length)} of {filteredRows.length}
             </span>
             <div className={styles.paginationBtns}>
               <button
@@ -412,7 +726,12 @@ export default function Dashboard() {
   const [liveMapFocusId, setLiveMapFocusId] = useState(null);
   const [responderModal, setResponderModal] = useState(null);
   const [incidentFilter, setIncidentFilter] = useState('pending');
-  const [archiveFilter, setArchiveFilter] = useState('archived');
+  const [archiveModule, setArchiveModule] = useState('accident');
+  const [archiveSelectedIds, setArchiveSelectedIds] = useState(() => new Set());
+  const [archiveDispatchRows, setArchiveDispatchRows] = useState([]);
+  const [archiveCallLogs, setArchiveCallLogs] = useState([]);
+  const [archiveRecordsLoading, setArchiveRecordsLoading] = useState(false);
+  const [confirmModal, setConfirmModal] = useState(null);
 
   const fetchData = useCallback(async ({ showLoader = false } = {}) => {
     if (showLoader) {
@@ -459,6 +778,32 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
+  const fetchArchiveRecords = useCallback(async () => {
+    setArchiveRecordsLoading(true);
+    try {
+      const [dispatchRows, callLogs] = await Promise.all([
+        fetchDispatchRecords(),
+        fetchCallLogs(),
+      ]);
+      setArchiveDispatchRows(dispatchRows || []);
+      setArchiveCallLogs(callLogs || []);
+    } catch (err) {
+      setError(err.message || 'Failed to load archive records.');
+    } finally {
+      setArchiveRecordsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'archive') return undefined;
+    fetchArchiveRecords();
+    return undefined;
+  }, [activeTab, fetchArchiveRecords]);
+
+  useEffect(() => {
+    setArchiveSelectedIds(new Set());
+  }, [archiveModule]);
+
   const handleLogout = () => {
     if (!window.confirm('Are you sure you want to log out?')) return;
     logout();
@@ -476,6 +821,7 @@ export default function Dashboard() {
   const cancelledIncidents = incidents.filter((i) => i.incident_status === 'Cancelled');
   const archivedIncidents = incidents.filter((i) => i.incident_status === 'Archived');
   const deletedIncidents = incidents.filter((i) => i.incident_status === 'Deleted');
+  const archiveAccidentRows = [...archivedIncidents, ...deletedIncidents];
   const ongoingIncidents = incidents.filter((i) => ONGOING_STATUSES.includes(i.incident_status));
 
   const incidentFilterCounts = {
@@ -485,9 +831,42 @@ export default function Dashboard() {
     cancelled: cancelledIncidents.length,
   };
 
-  const archiveFilterCounts = {
-    archived: archivedIncidents.length,
-    deleted: deletedIncidents.length,
+  const archiveModuleCounts = {
+    accident: archivedIncidents.length + deletedIncidents.length,
+    dispatch: archiveDispatchRows.length,
+    'call-log': archiveCallLogs.length,
+  };
+
+  const toggleArchiveSelect = (id) => {
+    setArchiveSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleArchiveSelectAll = (ids) => {
+    setArchiveSelectedIds((prev) => {
+      const allOn = ids.length > 0 && ids.every((id) => prev.has(id));
+      if (allOn) {
+        const next = new Set(prev);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      }
+      return new Set([...prev, ...ids]);
+    });
+  };
+
+  const openConfirm = (config) => setConfirmModal(config);
+  const closeConfirm = () => setConfirmModal(null);
+
+  const goToRestoredAccident = (status) => {
+    setActiveTab('incidents');
+    if (status === 'Resolved') setIncidentFilter('resolved');
+    else if (status === 'Cancelled') setIncidentFilter('cancelled');
+    else if (ACTIVE_RESPONSE_STATUSES.includes(status)) setIncidentFilter('active');
+    else setIncidentFilter('pending');
   };
 
   const handleArchive = async (inc) => {
@@ -500,26 +879,132 @@ export default function Dashboard() {
     }
   };
 
-  const handleDelete = async (inc) => {
-    if (!window.confirm(`Move incident #${inc.incident_id} to Archive → Deleted?`)) return;
+  const handleDelete = (inc) => {
+    openConfirm({
+      title: 'Delete accident?',
+      message: `Move accident #${inc.incident_id} to Archive? You can restore it later.`,
+      confirmLabel: 'Delete',
+      onConfirm: async () => {
+        closeConfirm();
+        try {
+          await deleteIncident(inc.incident_id);
+          await fetchData();
+          setActiveTab('archive');
+          setArchiveModule('accident');
+        } catch (err) {
+          setError(err.message || 'Failed to delete incident.');
+        }
+      },
+    });
+  };
+
+  const handlePermanentDelete = (inc) => {
+    openConfirm({
+      title: 'Delete permanently?',
+      message: `Permanently remove accident #${inc.incident_id}? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      onConfirm: async () => {
+        closeConfirm();
+        try {
+          if (inc.incident_status !== 'Deleted') {
+            await deleteIncident(inc.incident_id);
+          }
+          await permanentDeleteIncident(inc.incident_id);
+          await fetchData();
+        } catch (err) {
+          setError(err.message || 'Failed to permanently remove incident.');
+        }
+      },
+    });
+  };
+
+  const handleRestore = async (inc) => {
     try {
-      await deleteIncident(inc.incident_id);
+      const result = await restoreIncident(inc.incident_id);
+      const nextStatus = result?.incident?.incident_status || 'Pending';
       await fetchData();
-      setActiveTab('archive');
-      setArchiveFilter('deleted');
+      goToRestoredAccident(nextStatus);
     } catch (err) {
-      setError(err.message || 'Failed to delete incident.');
+      setError(err.message || 'Failed to restore incident.');
+      await fetchData();
     }
   };
 
-  const handlePermanentDelete = async (inc) => {
-    if (!window.confirm(`Permanently remove incident #${inc.incident_id}? This cannot be undone.`)) return;
+  const handleBulkRestoreIncidents = async (ids) => {
+    if (!ids?.length) return;
     try {
-      await permanentDeleteIncident(inc.incident_id);
+      const results = await Promise.all(ids.map((id) => restoreIncident(id)));
+      setArchiveSelectedIds(new Set());
       await fetchData();
+      const nextStatus = results[0]?.incident?.incident_status || 'Pending';
+      goToRestoredAccident(nextStatus);
     } catch (err) {
-      setError(err.message || 'Failed to permanently remove incident.');
+      setError(err.message || 'Failed to restore selected accidents.');
+      await fetchData();
     }
+  };
+
+  const handleBulkDeleteIncidents = (ids) => {
+    if (!ids?.length) return;
+    openConfirm({
+      title: 'Delete accidents?',
+      message: `Permanently delete ${ids.length} selected accident(s)? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      onConfirm: async () => {
+        closeConfirm();
+        try {
+          const selected = archiveAccidentRows.filter((inc) => ids.includes(inc.incident_id));
+          await Promise.all(selected.map(async (inc) => {
+            if (inc.incident_status !== 'Deleted') {
+              await deleteIncident(inc.incident_id);
+            }
+            await permanentDeleteIncident(inc.incident_id);
+          }));
+          setArchiveSelectedIds(new Set());
+          await fetchData();
+        } catch (err) {
+          setError(err.message || 'Failed to delete selected accidents.');
+        }
+      },
+    });
+  };
+
+  const handleBulkDeleteDispatch = (ids) => {
+    if (!ids?.length) return;
+    openConfirm({
+      title: 'Delete dispatch records?',
+      message: `Permanently delete ${ids.length} dispatch record(s)? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      onConfirm: async () => {
+        closeConfirm();
+        try {
+          await Promise.all(ids.map((id) => deleteDispatchRecord(id)));
+          setArchiveSelectedIds(new Set());
+          await fetchArchiveRecords();
+        } catch (err) {
+          setError(err.message || 'Failed to delete dispatch records.');
+        }
+      },
+    });
+  };
+
+  const handleBulkDeleteCallLogs = (ids) => {
+    if (!ids?.length) return;
+    openConfirm({
+      title: 'Delete call logs?',
+      message: `Permanently delete ${ids.length} call log(s)? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      onConfirm: async () => {
+        closeConfirm();
+        try {
+          await Promise.all(ids.map((id) => deleteCallLog(id)));
+          setArchiveSelectedIds(new Set());
+          await fetchArchiveRecords();
+        } catch (err) {
+          setError(err.message || 'Failed to delete call logs.');
+        }
+      },
+    });
   };
 
   const handleDeleteResponder = async (r) => {
@@ -767,7 +1252,7 @@ export default function Dashboard() {
           {activeTab === 'incidents' && (
             <div>
               <div className={styles.tabHeader}>
-                <h2 className={styles.sectionTitle}>Incidents</h2>
+                <h2 className={styles.sectionTitle}>Accident</h2>
                 <button className={styles.refreshBtn} onClick={fetchData}>🔄 Refresh</button>
               </div>
 
@@ -867,59 +1352,101 @@ export default function Dashboard() {
           {activeTab === 'archive' && (
             <div>
               <div className={styles.tabHeader}>
-                <h2 className={styles.sectionTitle}>Incident Archive</h2>
-                <button className={styles.refreshBtn} onClick={fetchData}>🔄 Refresh</button>
+                <h2 className={styles.sectionTitle}>Archive</h2>
+                <button
+                  className={styles.refreshBtn}
+                  onClick={() => {
+                    fetchData();
+                    fetchArchiveRecords();
+                  }}
+                >
+                  🔄 Refresh
+                </button>
               </div>
 
               <div className={styles.incidentFilterBar}>
-                {ARCHIVE_FILTER_TABS.map((tab) => (
+                {ARCHIVE_MODULE_TABS.map((tab) => (
                   <button
                     key={tab.id}
                     type="button"
-                    className={`${styles.incidentFilterBtn} ${archiveFilter === tab.id ? styles.incidentFilterBtnActive : ''}`}
-                    onClick={() => setArchiveFilter(tab.id)}
+                    className={`${styles.incidentFilterBtn} ${archiveModule === tab.id ? styles.incidentFilterBtnActive : ''}`}
+                    onClick={() => setArchiveModule(tab.id)}
                   >
                     <span>{tab.icon} {tab.label}</span>
-                    <span className={styles.incidentFilterBadge}>{archiveFilterCounts[tab.id]}</span>
+                    <span className={styles.incidentFilterBadge}>{archiveModuleCounts[tab.id]}</span>
                   </button>
                 ))}
               </div>
 
-              <p className={styles.archiveHint}>
-                {archiveFilter === 'archived'
-                  ? 'Manually archived incidents. Use Delete to move them to the Deleted table.'
-                  : 'Deleted incidents are kept here. Use Remove Forever to permanently erase.'}
-              </p>
-
-              {archiveFilter === 'archived' && (
-                <IncidentTableSection
-                  title="Archived"
-                  icon="📁"
-                  rows={archivedIncidents}
-                  isLoading={isLoading}
-                  emptyMessage="📭 No archived incidents yet."
-                  onEdit={setEditingIncident}
-                  onArchive={handleArchive}
-                  onDelete={handleDelete}
-                  actions={{ edit: false, archive: false, delete: true }}
-                  hideTitle
-                />
+              {archiveModule === 'accident' && (
+                <>
+                  <p className={styles.archiveHint}>
+                    Click Restore to send an accident back to the Accident page immediately. Delete asks for confirmation first.
+                  </p>
+                  <IncidentTableSection
+                    title="Accidents"
+                    icon="🚨"
+                    rows={archiveAccidentRows}
+                    isLoading={isLoading}
+                    emptyMessage="📭 No archived accidents yet."
+                    onEdit={setEditingIncident}
+                    onArchive={handleArchive}
+                    onDelete={handlePermanentDelete}
+                    onRestore={handleRestore}
+                    onPermanentDelete={handlePermanentDelete}
+                    actions={{ edit: false, archive: false, delete: false, permanentDelete: true, restore: true }}
+                    hideTitle
+                    selectable
+                    selectedIds={archiveSelectedIds}
+                    onToggleSelect={toggleArchiveSelect}
+                    onToggleSelectAll={toggleArchiveSelectAll}
+                    onBulkRestore={handleBulkRestoreIncidents}
+                    onBulkDelete={handleBulkDeleteIncidents}
+                    bulkDeleteLabel="Delete"
+                  />
+                </>
               )}
 
-              {archiveFilter === 'deleted' && (
-                <IncidentTableSection
-                  title="Deleted"
-                  icon="🗑️"
-                  rows={deletedIncidents}
-                  isLoading={isLoading}
-                  emptyMessage="📭 No deleted incidents yet."
-                  onEdit={setEditingIncident}
-                  onArchive={handleArchive}
-                  onDelete={handleDelete}
-                  onPermanentDelete={handlePermanentDelete}
-                  actions={{ edit: false, archive: false, delete: false, permanentDelete: true }}
-                  hideTitle
-                />
+              {archiveModule === 'dispatch' && (
+                <>
+                  <p className={styles.archiveHint}>
+                    All dispatch records. Use Select All and Delete to remove records permanently.
+                  </p>
+                  <ArchiveRecordsTable
+                    rows={archiveDispatchRows}
+                    columns={DISPATCH_ARCHIVE_COLUMNS}
+                    idKey="dispatch_record_id"
+                    isLoading={archiveRecordsLoading}
+                    emptyMessage="📭 No dispatch records yet."
+                    selectedIds={archiveSelectedIds}
+                    onToggleSelect={toggleArchiveSelect}
+                    onToggleSelectAll={toggleArchiveSelectAll}
+                    onDelete={handleBulkDeleteDispatch}
+                    searchPlaceholder="Search dispatch records..."
+                    getSearchText={dispatchRecordSearchText}
+                  />
+                </>
+              )}
+
+              {archiveModule === 'call-log' && (
+                <>
+                  <p className={styles.archiveHint}>
+                    All call logs. Use Select All and Delete to remove entries permanently.
+                  </p>
+                  <ArchiveRecordsTable
+                    rows={archiveCallLogs}
+                    columns={CALL_LOG_ARCHIVE_COLUMNS}
+                    idKey="call_log_id"
+                    isLoading={archiveRecordsLoading}
+                    emptyMessage="📭 No call logs yet."
+                    selectedIds={archiveSelectedIds}
+                    onToggleSelect={toggleArchiveSelect}
+                    onToggleSelectAll={toggleArchiveSelectAll}
+                    onDelete={handleBulkDeleteCallLogs}
+                    searchPlaceholder="Search call logs..."
+                    getSearchText={callLogSearchText}
+                  />
+                </>
               )}
             </div>
           )}
@@ -1169,6 +1696,17 @@ export default function Dashboard() {
           responder={responderModal.mode === 'edit' ? responderModal.responder : null}
           onClose={() => setResponderModal(null)}
           onSaved={fetchData}
+        />
+      )}
+      {confirmModal && (
+        <ConfirmModal
+          title={confirmModal.title}
+          message={confirmModal.message}
+          confirmLabel={confirmModal.confirmLabel || 'Delete'}
+          cancelLabel="Cancel"
+          variant="danger"
+          onConfirm={confirmModal.onConfirm}
+          onCancel={closeConfirm}
         />
       )}
     </div>

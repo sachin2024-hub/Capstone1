@@ -36,6 +36,11 @@ export async function archiveIncident(incidentId) {
   return res.data;
 }
 
+export async function restoreIncident(incidentId) {
+  const res = await api.patch(`/incidents/${incidentId}/restore`);
+  return res.data;
+}
+
 export async function deleteIncident(incidentId) {
   const res = await api.delete(`/incidents/${incidentId}`);
   return res.data;
