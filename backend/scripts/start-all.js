@@ -1,10 +1,11 @@
-// Starts backend + Cloudflare tunnel, updates mobile API config.
-// Usage: npm run start:all
+// Starts backend + public Cloudflare tunnel so ANY phone can log in
+// (mobile data or any WiFi). Usage: npm run start:all
 
 const { spawn } = require('child_process');
 const http = require('http');
 const path = require('path');
 const { getLocalIp, updateMobileApi, writeConnectionInfo } = require('./update-mobile-api');
+const { ensureCloudflared } = require('./ensure-cloudflared');
 
 const PORT = 5000;
 const BACKEND_DIR = path.join(__dirname, '..');
@@ -42,10 +43,10 @@ function waitForBackend(maxAttempts = 40) {
 }
 
 function launchBackend() {
-  const proc = spawn('node', ['server.js'], {
+  const proc = spawn(process.execPath, ['server.js'], {
     cwd: BACKEND_DIR,
     stdio: 'inherit',
-    shell: true,
+    windowsHide: true,
   });
 
   proc.on('close', (code) => {
@@ -57,11 +58,13 @@ function launchBackend() {
   return proc;
 }
 
-function startTunnel(onUrl) {
+function startTunnel(binPath) {
+  log(`Starting public tunnel with ${path.basename(binPath)}...`);
+
   const child = spawn(
-    'npx',
-    ['cloudflared', 'tunnel', '--url', `http://localhost:${PORT}`],
-    { shell: true, stdio: ['ignore', 'pipe', 'pipe'] }
+    binPath,
+    ['tunnel', '--url', `http://127.0.0.1:${PORT}`, '--no-autoupdate'],
+    { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true }
   );
 
   let updated = false;
@@ -73,20 +76,29 @@ function startTunnel(onUrl) {
     const match = text.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
     if (match && !updated) {
       updated = true;
-      updateMobileApi({ tunnelUrl: match[0], connectionMode: 'auto' });
-      writeConnectionInfo({ tunnelUrl: match[0] });
-      log(`Tunnel ready: ${match[0]}`);
-      log('Mobile app will auto-connect (local WiFi first, then tunnel).');
-      onUrl?.(match[0]);
+      const ip = getLocalIp() || '192.168.1.11';
+      updateMobileApi({ localIp: ip, tunnelUrl: match[0], connectionMode: 'auto' });
+      writeConnectionInfo({ localIp: ip, tunnelUrl: match[0] });
+      log('');
+      log('==============================================');
+      log(`Public URL ready: ${match[0]}`);
+      log('ANY phone can log in now (WiFi or mobile data).');
+      log('Reload the Expo app once (press r, or shake phone).');
+      log('==============================================');
+      log('');
     }
   }
 
   child.stdout.on('data', onData);
   child.stderr.on('data', onData);
 
-  child.on('close', () => {
-    log('Tunnel stopped. Restarting in 5s...');
-    setTimeout(() => startTunnel(onUrl), 5000);
+  child.on('error', (err) => {
+    log(`Tunnel error: ${err.message}`);
+  });
+
+  child.on('close', (code) => {
+    log(`Tunnel stopped (exit ${code ?? 'unknown'}). Restarting in 5s...`);
+    setTimeout(() => startTunnel(binPath), 5000);
   });
 
   return child;
@@ -98,9 +110,9 @@ async function main() {
   updateMobileApi({ localIp: ip, connectionMode: 'auto' });
   writeConnectionInfo({ localIp: ip });
 
-  log('RapidRescue — starting backend + tunnel');
+  log('RapidRescue — starting backend + public tunnel');
+  log('Goal: any cellphone can log in (not same-WiFi only).');
   if (localIp) log(`Local IP detected: ${localIp}`);
-  else log('Could not detect local IP — check WiFi connection.');
 
   launchBackend();
 
@@ -111,7 +123,16 @@ async function main() {
   }
 
   log('Backend ready on http://localhost:5000');
-  startTunnel();
+
+  try {
+    log('Preparing Cloudflare tunnel (first run may download ~20MB)...');
+    const binPath = await ensureCloudflared();
+    startTunnel(binPath);
+  } catch (err) {
+    log(`Could not start public tunnel: ${err.message}`);
+    log('Same-WiFi login still works at http://' + ip + ':5000');
+    log('Fix internet / try again so phones on mobile data can connect.');
+  }
 }
 
 main().catch((err) => {
