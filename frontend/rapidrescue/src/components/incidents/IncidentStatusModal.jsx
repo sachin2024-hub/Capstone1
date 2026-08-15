@@ -1,10 +1,14 @@
 import { useState } from 'react';
-import { INCIDENT_STATUSES, updateIncidentStatus } from '../../services/incidentService';
+import { getAvailableStatuses, updateIncidentStatus } from '../../services/incidentService';
 import { STATUS_COLORS } from '../../constants/statusColors';
+import { formatDate } from '../../utils/formatDate';
+import { parseLocationAddress, formatAreaLabel } from '../../utils/locationFormat';
 import styles from './IncidentStatusModal.module.css';
 
 export default function IncidentStatusModal({ incident, onClose, onUpdated }) {
-  const [status, setStatus] = useState(incident?.incident_status || 'Pending');
+  const currentStatus = incident?.incident_status || 'Pending';
+  const availableStatuses = getAvailableStatuses(currentStatus);
+  const [status, setStatus] = useState(currentStatus);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -12,6 +16,14 @@ export default function IncidentStatusModal({ incident, onClose, onUpdated }) {
 
   const dispatch = Array.isArray(incident.dispatch) ? incident.dispatch[0] : incident.dispatch;
   const responder = dispatch?.responders;
+  const loc = Array.isArray(incident.locations) ? incident.locations[0] : incident.locations;
+  const locationText = loc ? formatAreaLabel(parseLocationAddress(loc.address)) : '—';
+  const reporterName = incident.users
+    ? `${incident.users.first_name} ${incident.users.last_name}`
+    : '—';
+  const assignedName = responder
+    ? `${responder.first_name} ${responder.last_name}`
+    : 'Unassigned';
 
   const handleSave = async () => {
     setSaving(true);
@@ -27,29 +39,58 @@ export default function IncidentStatusModal({ incident, onClose, onUpdated }) {
     }
   };
 
-  const selectedHint = INCIDENT_STATUSES.find((s) => s.value === status)?.hint;
+  const selectedHint = availableStatuses.find((s) => s.value === status)?.hint;
 
   return (
     <div className={styles.overlay} onClick={onClose}>
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div className={styles.modalHeader}>
-          <h3 className={styles.modalTitle}>Update Incident Status</h3>
+          <h3 className={styles.modalTitle}>Incident Details</h3>
           <button type="button" className={styles.closeBtn} onClick={onClose}>✕</button>
         </div>
 
         <div className={styles.incidentInfo}>
-          <span className={styles.incidentId}>#{incident.incident_id}</span>
-          <span className={styles.incidentType}>{incident.incident_type}</span>
-          {incident.users && (
-            <p className={styles.reporter}>
-              👤 {incident.users.first_name} {incident.users.last_name}
-            </p>
-          )}
-          {responder && (
-            <p className={styles.responder}>
-              🚑 {responder.first_name} {responder.last_name} — {responder.responder_type}
-            </p>
-          )}
+          <div className={styles.detailCell}>
+            <span className={styles.detailLabel}>ID</span>
+            <span className={styles.incidentId}>#{incident.incident_id}</span>
+          </div>
+          <div className={styles.detailCell}>
+            <span className={styles.detailLabel}>Type</span>
+            <span className={styles.detailValue}>{incident.incident_type || '—'}</span>
+          </div>
+          <div className={styles.detailCell}>
+            <span className={styles.detailLabel}>Reporter</span>
+            <span className={styles.detailValue}>{reporterName}</span>
+          </div>
+          <div className={styles.detailCell}>
+            <span className={styles.detailLabel}>Location</span>
+            <span className={styles.detailValue}>{locationText}</span>
+          </div>
+          <div className={styles.detailCell}>
+            <span className={styles.detailLabel}>Assigned</span>
+            <span className={styles.detailValue}>{assignedName}</span>
+          </div>
+          <div className={styles.detailCell}>
+            <span className={styles.detailLabel}>Status</span>
+            <span
+              className={styles.previewBadge}
+              style={{ background: STATUS_COLORS[currentStatus] || '#9E9E9E' }}
+            >
+              {currentStatus}
+            </span>
+          </div>
+          <div className={styles.detailCell}>
+            <span className={styles.detailLabel}>Priority</span>
+            <span className={styles.detailValue}>{incident.priority_level || 'Normal'}</span>
+          </div>
+          <div className={styles.detailCell}>
+            <span className={styles.detailLabel}>Date</span>
+            <span className={styles.detailValue}>{formatDate(incident.date_reported)}</span>
+          </div>
+          <div className={`${styles.detailCell} ${styles.detailCellFull}`}>
+            <span className={styles.detailLabel}>Description</span>
+            <span className={styles.detailValue}>{incident.incident_description || '—'}</span>
+          </div>
         </div>
 
         <label className={styles.label}>Status (visible to user on mobile)</label>
@@ -59,7 +100,7 @@ export default function IncidentStatusModal({ incident, onClose, onUpdated }) {
           onChange={(e) => setStatus(e.target.value)}
           disabled={saving}
         >
-          {INCIDENT_STATUSES.map((opt) => (
+          {availableStatuses.map((opt) => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
           ))}
         </select>

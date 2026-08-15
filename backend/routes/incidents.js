@@ -165,6 +165,24 @@ router.patch('/:id/status', async (req, res) => {
   }
 
   try {
+    const { data: existing, error: existingErr } = await supabase
+      .from('incidents')
+      .select('incident_status')
+      .eq('incident_id', incidentId)
+      .single();
+
+    if (existingErr || !existing) {
+      return res.status(404).json({ message: 'Incident not found.' });
+    }
+
+    const currentIdx = VALID_STATUSES.indexOf(existing.incident_status);
+    const nextIdx = VALID_STATUSES.indexOf(incident_status);
+    if (currentIdx >= 0 && nextIdx >= 0 && nextIdx < currentIdx) {
+      return res.status(400).json({
+        message: `Cannot change status back to ${incident_status}. Status can only move forward.`,
+      });
+    }
+
     const { data: incident, error: incErr } = await supabase
       .from('incidents')
       .update({ incident_status })

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { logout, getStoredAdmin } from '../../services/authService';
 import api from '../../services/api';
@@ -14,6 +14,7 @@ import { STATUS_COLORS } from '../../constants/statusColors';
 import { formatDate } from '../../utils/formatDate';
 import { parseLocationAddress, formatAreaLabel } from '../../utils/locationFormat';
 import { APP_IMAGES } from '../../constants/images';
+import { INCIDENT_TYPE_GROUPS } from '../../constants/incidentTypes';
 import styles from './Dashboard.module.css';
 
 const ONGOING_STATUSES = ['Pending', 'In Progress', 'En Route', 'Arrived'];
@@ -95,6 +96,37 @@ function hasIncidentLocation(inc) {
   return Boolean(loc?.latitude && loc?.longitude);
 }
 
+const INCIDENT_PAGE_SIZE = 8;
+
+function incidentSearchText(inc) {
+  const loc = Array.isArray(inc.locations) ? inc.locations[0] : inc.locations;
+  const assigned = getAssignedResponder(inc);
+  return [
+    inc.incident_id,
+    inc.incident_type,
+    inc.incident_description,
+    inc.incident_status,
+    inc.priority_level,
+    inc.users?.first_name,
+    inc.users?.last_name,
+    loc?.address,
+    assigned?.first_name,
+    assigned?.last_name,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+}
+
+function matchesIncidentType(inc, categoryFilter, subFilter) {
+  if (!categoryFilter) return true;
+  const t = inc.incident_type || '';
+  if (subFilter) {
+    return t === `${categoryFilter} — ${subFilter}` || t.includes(subFilter);
+  }
+  return t === categoryFilter || t.startsWith(`${categoryFilter} —`) || t.startsWith(categoryFilter);
+}
+
 function IncidentTableSection({
   title,
   icon,
@@ -119,6 +151,33 @@ function IncidentTableSection({
   } = actions;
   const hasActions = edit || archive || showDelete || permanentDelete || showAssignActions || onShowMap;
 
+  const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [subFilter, setSubFilter] = useState('');
+  const [page, setPage] = useState(1);
+
+  const subOptions = INCIDENT_TYPE_GROUPS.find((g) => g.category === categoryFilter)?.options || [];
+
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return rows.filter((inc) => {
+      if (!matchesIncidentType(inc, categoryFilter, subFilter)) return false;
+      if (q && !incidentSearchText(inc).includes(q)) return false;
+      return true;
+    });
+  }, [rows, search, categoryFilter, subFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / INCIDENT_PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pagedRows = filteredRows.slice(
+    (currentPage - 1) * INCIDENT_PAGE_SIZE,
+    currentPage * INCIDENT_PAGE_SIZE
+  );
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, categoryFilter, subFilter, rows]);
+
   return (
     <div className={styles.incidentSection}>
       {!hideTitle && (
@@ -128,6 +187,40 @@ function IncidentTableSection({
         </h3>
       )}
       <div className={styles.tableCard}>
+        <div className={styles.incidentToolbar}>
+          <input
+            type="search"
+            className={styles.incidentSearch}
+            placeholder="Search incidents..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <select
+            className={styles.incidentTypeFilter}
+            value={categoryFilter}
+            onChange={(e) => {
+              setCategoryFilter(e.target.value);
+              setSubFilter('');
+            }}
+          >
+            <option value="">All types</option>
+            {INCIDENT_TYPE_GROUPS.map((group) => (
+              <option key={group.category} value={group.category}>{group.category}</option>
+            ))}
+          </select>
+          {categoryFilter && (
+            <select
+              className={styles.incidentTypeFilter}
+              value={subFilter}
+              onChange={(e) => setSubFilter(e.target.value)}
+            >
+              <option value="">All {categoryFilter}</option>
+              {subOptions.map((opt) => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+          )}
+        </div>
         {isLoading ? (
           <div className={styles.loadingBox}>
             <div className={styles.loader} />
@@ -144,11 +237,15 @@ function IncidentTableSection({
                 </tr>
               </thead>
               <tbody>
-                {rows.map((inc) => {
+                {pagedRows.map((inc) => {
                   const loc = Array.isArray(inc.locations) ? inc.locations[0] : inc.locations;
                   const assigned = getAssignedResponder(inc);
                   return (
-                    <tr key={inc.incident_id}>
+                    <tr
+                      key={inc.incident_id}
+                      className={onEdit ? styles.incidentRowClickable : undefined}
+                      onClick={onEdit ? () => onEdit(inc) : undefined}
+                    >
                       <td><strong>#{inc.incident_id}</strong></td>
                       <td className={styles.compactCell}>{inc.incident_type}</td>
                       <td className={styles.descCell}>{inc.incident_description || '—'}</td>
@@ -181,7 +278,7 @@ function IncidentTableSection({
                       <td>{inc.priority_level || 'Normal'}</td>
                       <td style={{ color: '#888', fontSize: 12 }}>{formatDate(inc.date_reported)}</td>
                       {hasActions && (
-                        <td>
+                        <td onClick={(e) => e.stopPropagation()}>
                           <div className={styles.actionGroup}>
                             {onShowMap && (
                               <button
@@ -250,13 +347,42 @@ function IncidentTableSection({
                     </tr>
                   );
                 })}
-                {rows.length === 0 && (
+                {pagedRows.length === 0 && (
                   <tr>
-                    <td colSpan={hasActions ? 10 : 9} className={styles.emptyRow}>{emptyMessage}</td>
+                    <td colSpan={hasActions ? 10 : 9} className={styles.emptyRow}>
+                      {rows.length === 0 ? emptyMessage : '📭 No incidents match your search or filter.'}
+                    </td>
                   </tr>
                 )}
               </tbody>
             </table>
+          </div>
+        )}
+        {!isLoading && filteredRows.length > 0 && (
+          <div className={styles.paginationBar}>
+            <span className={styles.paginationInfo}>
+              Showing {(currentPage - 1) * INCIDENT_PAGE_SIZE + 1}–
+              {Math.min(currentPage * INCIDENT_PAGE_SIZE, filteredRows.length)} of {filteredRows.length}
+            </span>
+            <div className={styles.paginationBtns}>
+              <button
+                type="button"
+                className={styles.pageBtn}
+                disabled={currentPage <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                Previous
+              </button>
+              <span className={styles.pageNum}>Page {currentPage} of {totalPages}</span>
+              <button
+                type="button"
+                className={styles.pageBtn}
+                disabled={currentPage >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              >
+                Next
+              </button>
+            </div>
           </div>
         )}
       </div>

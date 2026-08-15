@@ -26,7 +26,9 @@ export default function LiveMap({ focusIncidentId = null }) {
   const [layersOpen, setLayersOpen] = useState(false);
   const [mapError, setMapError] = useState('');
   const [focusRequestId, setFocusRequestId] = useState(0);
+  const [isExpanded, setIsExpanded] = useState(false);
   const hasAutoSelected = useRef(false);
+  const mapPanelRef = useRef(null);
 
   const activeLayer = MAP_LAYERS.find((l) => l.id === mapLayer) || MAP_LAYERS[0];
   const isSatelliteView = mapLayer === 'hybrid';
@@ -127,6 +129,47 @@ export default function LiveMap({ focusIncidentId = null }) {
     );
   };
 
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      const el = mapPanelRef.current;
+      const active = Boolean(
+        document.fullscreenElement === el ||
+        document.webkitFullscreenElement === el
+      );
+      setIsExpanded(active);
+    };
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
+    };
+  }, []);
+
+  const toggleExpand = async () => {
+    const el = mapPanelRef.current;
+    if (!el) return;
+
+    const active =
+      document.fullscreenElement === el || document.webkitFullscreenElement === el;
+
+    try {
+      if (active) {
+        if (document.exitFullscreen) await document.exitFullscreen();
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+        else setIsExpanded(false);
+      } else if (el.requestFullscreen) {
+        await el.requestFullscreen();
+      } else if (el.webkitRequestFullscreen) {
+        el.webkitRequestFullscreen();
+      } else {
+        setIsExpanded((prev) => !prev);
+      }
+    } catch {
+      setIsExpanded((prev) => !prev);
+    }
+  };
+
   return (
     <div className={styles.wrapper}>
       {mapError && (
@@ -134,7 +177,10 @@ export default function LiveMap({ focusIncidentId = null }) {
           ⚠️ {mapError} — Make sure the backend is running on port 5000.
         </div>
       )}
-      <div className={styles.mapPanel}>
+      <div
+        ref={mapPanelRef}
+        className={`${styles.mapPanel} ${isExpanded ? styles.mapPanelExpanded : ''}`}
+      >
         {outsideAlerts.length > 0 && (
           <div className={styles.outsideBanner}>
             ⚠️ {outsideAlerts.length} alert(s) naka-lapas sa Cabadbaran City!
@@ -411,9 +457,14 @@ export default function LiveMap({ focusIncidentId = null }) {
           ))}
         </MapContainer>
 
-        {/* Map badges */}
-        <div className={styles.liveBadge}>● LIVE</div>
-        <div className={styles.cityBadge}>📍 Cabadbaran City Only</div>
+        <button
+          type="button"
+          className={styles.expandBtn}
+          onClick={toggleExpand}
+          title={isExpanded ? 'Exit full screen' : 'Expand map'}
+        >
+          {isExpanded ? '⛶ Exit' : '⛶ Expand'}
+        </button>
 
         {/* Map Legend */}
         <div className={styles.legend}>

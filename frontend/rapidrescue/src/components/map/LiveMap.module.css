@@ -122,25 +122,10 @@
   to { transform: rotate(360deg); }
 }
 
-.liveBadge {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  background: #e53935;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 6px 12px;
-  border-radius: 20px;
-  z-index: 1000;
-  animation: pulse 2s infinite;
-  box-shadow: 0 2px 8px rgba(229, 57, 53, 0.35);
-}
-
 .cityBadge {
   position: absolute;
   top: 12px;
-  left: 80px;
+  left: 12px;
   background: rgba(46, 125, 50, 0.92);
   color: #fff;
   font-size: 11px;
@@ -149,6 +134,36 @@
   border-radius: 20px;
   z-index: 1000;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.expandBtn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1000;
+  border: none;
+  background: #fff;
+  color: #1a1a1a;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+  font-family: inherit;
+}
+
+.expandBtn:hover {
+  background: #f5f5f5;
+}
+
+.mapPanelExpanded {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  border-radius: 0;
+  height: 100vh;
+  min-height: 100vh;
 }
 
 .outsideBanner {

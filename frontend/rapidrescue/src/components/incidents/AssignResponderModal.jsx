@@ -64,9 +64,15 @@ export default function AssignResponderModal({ incident, responders, onClose, on
           disabled={saving}
         >
           <option value="">— Choose responder —</option>
-          {responders.map((r) => (
+          {responders
+            .filter((r) => {
+              const available = String(r.availability_status || '').toLowerCase() === 'available';
+              const isCurrent = currentResponder && Number(r.responder_id) === Number(currentResponder.responder_id);
+              return available || isCurrent;
+            })
+            .map((r) => (
             <option key={r.responder_id} value={r.responder_id}>
-              {r.first_name} {r.last_name} — {r.responder_type} ({r.availability_status})
+              {r.first_name} {r.last_name} — {r.responder_type}
             </option>
           ))}
         </select>

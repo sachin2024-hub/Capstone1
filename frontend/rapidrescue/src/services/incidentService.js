@@ -10,6 +10,22 @@ export const INCIDENT_STATUSES = [
   { value: 'Archived', label: 'Archived', hint: 'Moved to archive' },
 ];
 
+/** Status can only move forward. Archive is not in this dropdown. */
+export function getAvailableStatuses(currentStatus) {
+  const dropdownStatuses = INCIDENT_STATUSES.filter((s) => s.value !== 'Archived');
+
+  if (currentStatus === 'Resolved') {
+    return dropdownStatuses.filter((s) => s.value === 'Resolved');
+  }
+  if (currentStatus === 'Cancelled') {
+    return dropdownStatuses.filter((s) => s.value === 'Cancelled');
+  }
+
+  const idx = dropdownStatuses.findIndex((s) => s.value === currentStatus);
+  if (idx < 0) return dropdownStatuses;
+  return dropdownStatuses.slice(idx);
+}
+
 export async function updateIncidentStatus(incidentId, incident_status) {
   const res = await api.patch(`/incidents/${incidentId}/status`, { incident_status });
   return res.data;

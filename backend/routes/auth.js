@@ -51,7 +51,7 @@ router.post('/register', async (req, res) => {
     const token = jwt.sign(
       { user_id: data.user_id, email: data.email },
       process.env.JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: '365d' }
     );
 
     return res.status(201).json({
@@ -95,7 +95,7 @@ router.post('/login', async (req, res) => {
     const token = jwt.sign(
       { user_id: data.user_id, email: data.email },
       process.env.JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: '365d' }
     );
 
     const { password: _password, ...userWithoutPassword } = data;
