@@ -6,6 +6,7 @@ const { autoDispatch } = require('../utils/autoDispatch');
 const { isWithinCabadbaran } = require('../config/cabadbaran');
 const { buildLocationAddress } = require('../utils/locationFormat');
 const { resolveLocationFromGps } = require('../utils/locationResolver');
+const { rememberStatus, takeSavedStatus, SAVED_STATUSES } = require('../utils/restoreStatus');
 
 // POST /api/incidents/sos  - Send SOS emergency alert
 router.post('/sos', authenticateToken, async (req, res) => {
@@ -255,6 +256,8 @@ router.patch('/:id/archive', async (req, res) => {
       });
     }
 
+    rememberStatus(incidentId, existing.incident_status);
+
     const { data: incident, error } = await supabase
       .from('incidents')
       .update({ incident_status: 'Archived' })
@@ -311,7 +314,12 @@ router.patch('/:id/restore', async (req, res) => {
       });
     }
 
-    const nextStatus = existing.incident_status === 'Archived' ? 'Resolved' : 'Pending';
+    const fromBody = req.body?.previous_status;
+    const fromFile = takeSavedStatus(incidentId);
+    const saved = SAVED_STATUSES.includes(fromBody) ? fromBody : fromFile;
+    const nextStatus = SAVED_STATUSES.includes(saved)
+      ? saved
+      : (existing.incident_status === 'Archived' ? 'Resolved' : 'Pending');
 
     const { data: incident, error } = await supabase
       .from('incidents')
@@ -404,6 +412,8 @@ router.delete('/:id', async (req, res) => {
     }
 
     await freeRespondersForIncident(incidentId);
+
+    rememberStatus(incidentId, req.body?.previous_status || existing.incident_status);
 
     const { data: incident, error } = await supabase
       .from('incidents')

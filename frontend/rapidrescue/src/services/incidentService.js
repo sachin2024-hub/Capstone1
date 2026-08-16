@@ -36,13 +36,13 @@ export async function archiveIncident(incidentId) {
   return res.data;
 }
 
-export async function restoreIncident(incidentId) {
-  const res = await api.patch(`/incidents/${incidentId}/restore`);
+export async function restoreIncident(incidentId, previous_status) {
+  const res = await api.patch(`/incidents/${incidentId}/restore`, { previous_status });
   return res.data;
 }
 
-export async function deleteIncident(incidentId) {
-  const res = await api.delete(`/incidents/${incidentId}`);
+export async function deleteIncident(incidentId, previous_status) {
+  const res = await api.delete(`/incidents/${incidentId}`, { data: { previous_status } });
   return res.data;
 }
 

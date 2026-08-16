@@ -50,7 +50,7 @@ export default function Login() {
           <div className={styles.features}>
             <div className={styles.feature}>
               <span className={styles.featureIcon}>📊</span>
-              <span>Monitor all incidents in real-time</span>
+              <span>Monitor all incidents</span>
             </div>
             <div className={styles.feature}>
               <span className={styles.featureIcon}>👥</span>

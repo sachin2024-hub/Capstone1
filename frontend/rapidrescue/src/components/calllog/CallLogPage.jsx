@@ -47,7 +47,7 @@ function formatTime(t) {
   }
 }
 
-export default function CallLogPage() {
+export default function CallLogPage({ onArchived }) {
   const [logDate, setLogDate] = useState(todayStr);
   const [team, setTeam] = useState('ALPHA');
   const [entries, setEntries] = useState([]);
@@ -94,6 +94,7 @@ export default function CallLogPage() {
       await deleteCallLog(confirmDelete.call_log_id);
       setConfirmDelete(null);
       await load();
+      onArchived?.();
     } catch (err) {
       setError(err.message || 'Failed to delete.');
       setConfirmDelete(null);
@@ -226,7 +227,7 @@ export default function CallLogPage() {
       {confirmDelete && (
         <ConfirmModal
           title="Delete call log?"
-          message={`Delete call log entry for ${confirmDelete.caller_name || 'this caller'}? This cannot be undone.`}
+          message={`Move the call log for ${confirmDelete.caller_name || 'this caller'} to Archive? You can restore it later.`}
           confirmLabel="Delete"
           cancelLabel="Cancel"
           variant="danger"

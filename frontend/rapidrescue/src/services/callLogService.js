@@ -8,10 +8,11 @@ export const CALL_LOG_TEAMS = [
 
 export const TYPE_OF_CODE_OPTIONS = ['CODE 1', 'CODE 2', 'CODE 3', 'NON-EMERGENCY'];
 
-export async function fetchCallLogs({ date, team } = {}) {
+export async function fetchCallLogs({ date, team, archived } = {}) {
   const params = new URLSearchParams();
   if (date) params.set('date', date);
   if (team) params.set('team', team);
+  if (archived) params.set('archived', '1');
   const qs = params.toString();
   const res = await api.get(`/call-logs${qs ? `?${qs}` : ''}`);
   return res.data;
@@ -29,5 +30,15 @@ export async function updateCallLog(id, data) {
 
 export async function deleteCallLog(id) {
   const res = await api.delete(`/call-logs/${id}`);
+  return res.data;
+}
+
+export async function restoreCallLog(id) {
+  const res = await api.patch(`/call-logs/${id}/restore`);
+  return res.data;
+}
+
+export async function permanentDeleteCallLog(id) {
+  const res = await api.delete(`/call-logs/${id}`, { params: { permanent: 1 } });
   return res.data;
 }

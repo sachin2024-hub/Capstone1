@@ -1,35 +1,57 @@
 import { useState } from 'react';
 import { getAvailableStatuses, updateIncidentStatus } from '../../services/incidentService';
+import { assignResponder } from '../../services/dispatchService';
 import { STATUS_COLORS } from '../../constants/statusColors';
 import { formatDate } from '../../utils/formatDate';
-import { parseLocationAddress, formatAreaLabel } from '../../utils/locationFormat';
+import { formatIncidentLocation } from '../../utils/locationFormat';
 import styles from './IncidentStatusModal.module.css';
 
-export default function IncidentStatusModal({ incident, onClose, onUpdated }) {
+export default function IncidentStatusModal({ incident, responders = [], onClose, onUpdated }) {
   const currentStatus = incident?.incident_status || 'Pending';
+  const dispatch = Array.isArray(incident?.dispatch) ? incident.dispatch[0] : incident?.dispatch;
+  const responder = dispatch?.responders;
   const availableStatuses = getAvailableStatuses(currentStatus);
   const [status, setStatus] = useState(currentStatus);
+  const [responderId, setResponderId] = useState(
+    responder?.responder_id ? String(responder.responder_id) : ''
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   if (!incident) return null;
 
-  const dispatch = Array.isArray(incident.dispatch) ? incident.dispatch[0] : incident.dispatch;
-  const responder = dispatch?.responders;
   const loc = Array.isArray(incident.locations) ? incident.locations[0] : incident.locations;
-  const locationText = loc ? formatAreaLabel(parseLocationAddress(loc.address)) : '—';
+  const locationText = formatIncidentLocation(loc);
   const reporterName = incident.users
     ? `${incident.users.first_name} ${incident.users.last_name}`
     : '—';
   const assignedName = responder
     ? `${responder.first_name} ${responder.last_name}`
     : 'Unassigned';
+  const selectedHint = availableStatuses.find((s) => s.value === status)?.hint;
+  const availableResponders = (responders || []).filter((r) => {
+    const available = String(r.availability_status || '').toLowerCase() === 'available';
+    const isCurrent = responder && Number(r.responder_id) === Number(responder.responder_id);
+    return available || isCurrent;
+  });
 
   const handleSave = async () => {
+    if (!responderId) {
+      setError('Assign a responder first before saving the status.');
+      return;
+    }
+
     setSaving(true);
     setError('');
     try {
-      await updateIncidentStatus(incident.incident_id, status);
+      const alreadyAssigned = responder && String(responder.responder_id) === String(responderId);
+      if (!alreadyAssigned) {
+        await assignResponder(incident.incident_id, Number(responderId));
+      }
+      const afterAssign = !alreadyAssigned && currentStatus === 'Pending' ? 'In Progress' : currentStatus;
+      if (status !== afterAssign) {
+        await updateIncidentStatus(incident.incident_id, status);
+      }
       onUpdated?.();
       onClose();
     } catch (err) {
@@ -38,8 +60,6 @@ export default function IncidentStatusModal({ incident, onClose, onUpdated }) {
       setSaving(false);
     }
   };
-
-  const selectedHint = availableStatuses.find((s) => s.value === status)?.hint;
 
   return (
     <div className={styles.overlay} onClick={onClose}>
@@ -104,6 +124,27 @@ export default function IncidentStatusModal({ incident, onClose, onUpdated }) {
             <option key={opt.value} value={opt.value}>{opt.label}</option>
           ))}
         </select>
+
+        <label className={styles.label}>Assign responder</label>
+        <select
+          className={styles.select}
+          value={responderId}
+          onChange={(e) => setResponderId(e.target.value)}
+          disabled={saving}
+        >
+          <option value="">— Choose responder / ambulance —</option>
+          {availableResponders.map((r) => (
+            <option key={r.responder_id} value={r.responder_id}>
+              {r.first_name} {r.last_name} — {r.responder_type}
+            </option>
+          ))}
+        </select>
+
+        {!responderId && (
+          <p className={styles.hint}>
+            Assign a responder first. Status cannot be saved while this accident is unassigned.
+          </p>
+        )}
 
         {selectedHint && (
           <p className={styles.hint}>

@@ -500,53 +500,29 @@
 
 /* ─── Overview Banner ─────────────────────────────────── */
 .overviewBanner {
-  background: linear-gradient(135deg, #b71c1c 0%, #e53935 50%, #ef5350 100%);
+  background: #c62828;
   border-radius: 18px;
-  padding: 24px 28px;
+  padding: 22px 26px;
   margin-bottom: 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
   color: #fff;
-  box-shadow: 0 4px 20px rgba(229,57,53,0.3);
-  position: relative;
-  overflow: hidden;
-}
-
-.overviewBanner::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, rgba(183, 28, 28, 0.95) 0%, rgba(183, 28, 28, 0.75) 55%, rgba(183, 28, 28, 0.35) 100%);
-  pointer-events: none;
-}
-
-.bannerImage {
-  position: absolute;
-  right: 0;
-  top: 0;
-  height: 100%;
-  width: min(340px, 45%);
-  object-fit: cover;
-  pointer-events: none;
-}
-
-.bannerText,
-.bannerActions {
-  position: relative;
-  z-index: 1;
+  box-shadow: 0 4px 16px rgba(198, 40, 40, 0.28);
 }
 
 .bannerText h3 {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 800;
-  margin-bottom: 4px;
+  margin: 0 0 4px;
 }
 
 .bannerText p {
   font-size: 13px;
-  opacity: 0.85;
+  font-weight: 600;
+  opacity: 0.92;
+  margin: 0;
 }
 
 .bannerActions {
@@ -556,21 +532,20 @@
 }
 
 .bannerBtn {
-  background: rgba(255,255,255,0.18);
-  border: 1.5px solid rgba(255,255,255,0.35);
-  color: #fff;
+  background: #fff;
+  border: none;
+  color: #b71c1c;
   border-radius: 9px;
   padding: 9px 16px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   font-family: 'Inter', system-ui, sans-serif;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.15s;
 }
 
 .bannerBtn:hover {
-  background: rgba(255,255,255,0.28);
+  background: #ffebee;
 }
 
 /* ─── Stats Grid ──────────────────────────────────────── */

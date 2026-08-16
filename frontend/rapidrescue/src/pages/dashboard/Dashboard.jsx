@@ -11,11 +11,12 @@ import CallLogPage from '../../components/calllog/CallLogPage';
 import DispatchPage from '../../components/dispatch/DispatchPage';
 import { archiveIncident, restoreIncident, deleteIncident, permanentDeleteIncident } from '../../services/incidentService';
 import { deleteResponder } from '../../services/responderService';
-import { fetchDispatchRecords, deleteDispatchRecord } from '../../services/dispatchRecordService';
-import { fetchCallLogs, deleteCallLog } from '../../services/callLogService';
+import { fetchDispatchRecords, restoreDispatchRecord, permanentDeleteDispatchRecord } from '../../services/dispatchRecordService';
+import { fetchCallLogs, restoreCallLog, permanentDeleteCallLog } from '../../services/callLogService';
 import { STATUS_COLORS } from '../../constants/statusColors';
 import { formatDate } from '../../utils/formatDate';
-import { parseLocationAddress, formatAreaLabel } from '../../utils/locationFormat';
+import { formatIncidentLocation } from '../../utils/locationFormat';
+import { rememberIncidentStatus, peekIncidentStatus, takeIncidentStatus } from '../../utils/restoreMemory';
 import { APP_IMAGES } from '../../constants/images';
 import { INCIDENT_TYPE_GROUPS } from '../../constants/incidentTypes';
 import styles from './Dashboard.module.css';
@@ -24,17 +25,7 @@ const ONGOING_STATUSES = ['Pending', 'In Progress', 'En Route', 'Arrived'];
 const ACTIVE_RESPONSE_STATUSES = ['In Progress', 'En Route', 'Arrived'];
 
 function formatLocation(loc) {
-  if (!loc) return '—';
-  const parsed = parseLocationAddress(loc.location_address);
-  if (parsed.purok || parsed.barangay) {
-    const parts = [
-      formatAreaLabel(parsed) !== 'GPS location' ? formatAreaLabel(parsed) : null,
-      parsed.barangay ? `Brgy. ${parsed.barangay}` : null,
-      parsed.city || null,
-    ].filter(Boolean);
-    return parts.join(', ') || parsed.display;
-  }
-  return parsed.display || `${loc.latitude?.toFixed(4)}, ${loc.longitude?.toFixed(4)}`;
+  return formatIncidentLocation(loc);
 }
 
 function useClock() {
@@ -230,7 +221,7 @@ function IncidentTableSection({
 
   useEffect(() => {
     setPage(1);
-  }, [search, categoryFilter, subFilter, rows]);
+  }, [search, categoryFilter, subFilter]);
 
   const filteredIds = filteredRows.map((inc) => inc.incident_id);
   const selectedCount = filteredIds.filter((id) => selectedSet.has(id)).length;
@@ -548,7 +539,7 @@ function ArchiveRecordsTable({
 
   useEffect(() => {
     setPage(1);
-  }, [search, rows]);
+  }, [search]);
 
   const filteredIds = filteredRows.map((row) => row[idKey]);
   const selectedCount = filteredIds.filter((id) => selectedSet.has(id)).length;
@@ -782,8 +773,8 @@ export default function Dashboard() {
     setArchiveRecordsLoading(true);
     try {
       const [dispatchRows, callLogs] = await Promise.all([
-        fetchDispatchRecords(),
-        fetchCallLogs(),
+        fetchDispatchRecords({ archived: true }),
+        fetchCallLogs({ archived: true }),
       ]);
       setArchiveDispatchRows(dispatchRows || []);
       setArchiveCallLogs(callLogs || []);
@@ -805,9 +796,17 @@ export default function Dashboard() {
   }, [archiveModule]);
 
   const handleLogout = () => {
-    if (!window.confirm('Are you sure you want to log out?')) return;
-    logout();
-    navigate('/login');
+    setConfirmModal({
+      title: 'Log out?',
+      message: 'Are you sure you want to log out of RapidRescue?',
+      confirmLabel: 'Log Out',
+      variant: 'logout',
+      onConfirm: () => {
+        setConfirmModal(null);
+        logout();
+        navigate('/login');
+      },
+    });
   };
 
   const handleShowOnLiveMap = (inc) => {
@@ -872,6 +871,7 @@ export default function Dashboard() {
   const handleArchive = async (inc) => {
     if (!window.confirm(`Archive incident #${inc.incident_id}? It will move to the Archive tab.`)) return;
     try {
+      rememberIncidentStatus(inc.incident_id, inc.incident_status);
       await archiveIncident(inc.incident_id);
       await fetchData();
     } catch (err) {
@@ -887,7 +887,8 @@ export default function Dashboard() {
       onConfirm: async () => {
         closeConfirm();
         try {
-          await deleteIncident(inc.incident_id);
+          rememberIncidentStatus(inc.incident_id, inc.incident_status);
+          await deleteIncident(inc.incident_id, inc.incident_status);
           await fetchData();
           setActiveTab('archive');
           setArchiveModule('accident');
@@ -918,30 +919,59 @@ export default function Dashboard() {
     });
   };
 
-  const handleRestore = async (inc) => {
-    try {
-      const result = await restoreIncident(inc.incident_id);
-      const nextStatus = result?.incident?.incident_status || 'Pending';
-      await fetchData();
-      goToRestoredAccident(nextStatus);
-    } catch (err) {
-      setError(err.message || 'Failed to restore incident.');
-      await fetchData();
-    }
+  const runRestore = async (inc) => {
+    const previous = peekIncidentStatus(inc.incident_id);
+    const result = await restoreIncident(inc.incident_id, previous);
+    takeIncidentStatus(inc.incident_id);
+    const nextStatus = result?.incident?.incident_status || previous || 'Pending';
+    await fetchData();
+    goToRestoredAccident(nextStatus);
   };
 
-  const handleBulkRestoreIncidents = async (ids) => {
+  const handleRestore = (inc) => {
+    openConfirm({
+      title: 'Restore this accident?',
+      message: `Restore accident #${inc.incident_id} back to its previous status?`,
+      confirmLabel: 'Restore',
+      variant: 'info',
+      onConfirm: async () => {
+        closeConfirm();
+        try {
+          await runRestore(inc);
+        } catch (err) {
+          setError(err.message || 'Failed to restore incident.');
+          await fetchData();
+        }
+      },
+    });
+  };
+
+  const handleBulkRestoreIncidents = (ids) => {
     if (!ids?.length) return;
-    try {
-      const results = await Promise.all(ids.map((id) => restoreIncident(id)));
-      setArchiveSelectedIds(new Set());
-      await fetchData();
-      const nextStatus = results[0]?.incident?.incident_status || 'Pending';
-      goToRestoredAccident(nextStatus);
-    } catch (err) {
-      setError(err.message || 'Failed to restore selected accidents.');
-      await fetchData();
-    }
+    openConfirm({
+      title: 'Restore selected accidents?',
+      message: `Restore ${ids.length} selected accident(s) back to their previous status?`,
+      confirmLabel: 'Restore',
+      variant: 'info',
+      onConfirm: async () => {
+        closeConfirm();
+        try {
+          const results = await Promise.all(ids.map((id) => {
+            const previous = peekIncidentStatus(id);
+            return restoreIncident(id, previous).then((result) => {
+              takeIncidentStatus(id);
+              return result;
+            });
+          }));
+          setArchiveSelectedIds(new Set());
+          await fetchData();
+          goToRestoredAccident(results[0]?.incident?.incident_status || peekIncidentStatus(ids[0]) || 'Pending');
+        } catch (err) {
+          setError(err.message || 'Failed to restore selected accidents.');
+          await fetchData();
+        }
+      },
+    });
   };
 
   const handleBulkDeleteIncidents = (ids) => {
@@ -969,6 +999,27 @@ export default function Dashboard() {
     });
   };
 
+  const handleRestoreDispatch = (ids) => {
+    if (!ids?.length) return;
+    openConfirm({
+      title: 'Restore dispatch record?',
+      message: `Restore ${ids.length} dispatch record(s) back to Dispatch?`,
+      confirmLabel: 'Restore',
+      variant: 'info',
+      onConfirm: async () => {
+        closeConfirm();
+        try {
+          await Promise.all(ids.map((id) => restoreDispatchRecord(id)));
+          setArchiveSelectedIds(new Set());
+          await fetchArchiveRecords();
+          setActiveTab('dispatch');
+        } catch (err) {
+          setError(err.message || 'Failed to restore dispatch records.');
+        }
+      },
+    });
+  };
+
   const handleBulkDeleteDispatch = (ids) => {
     if (!ids?.length) return;
     openConfirm({
@@ -978,11 +1029,32 @@ export default function Dashboard() {
       onConfirm: async () => {
         closeConfirm();
         try {
-          await Promise.all(ids.map((id) => deleteDispatchRecord(id)));
+          await Promise.all(ids.map((id) => permanentDeleteDispatchRecord(id)));
           setArchiveSelectedIds(new Set());
           await fetchArchiveRecords();
         } catch (err) {
           setError(err.message || 'Failed to delete dispatch records.');
+        }
+      },
+    });
+  };
+
+  const handleRestoreCallLogs = (ids) => {
+    if (!ids?.length) return;
+    openConfirm({
+      title: 'Restore call log?',
+      message: `Restore ${ids.length} call log(s) back to Call Log?`,
+      confirmLabel: 'Restore',
+      variant: 'info',
+      onConfirm: async () => {
+        closeConfirm();
+        try {
+          await Promise.all(ids.map((id) => restoreCallLog(id)));
+          setArchiveSelectedIds(new Set());
+          await fetchArchiveRecords();
+          setActiveTab('call-log');
+        } catch (err) {
+          setError(err.message || 'Failed to restore call logs.');
         }
       },
     });
@@ -997,7 +1069,7 @@ export default function Dashboard() {
       onConfirm: async () => {
         closeConfirm();
         try {
-          await Promise.all(ids.map((id) => deleteCallLog(id)));
+          await Promise.all(ids.map((id) => permanentDeleteCallLog(id)));
           setArchiveSelectedIds(new Set());
           await fetchArchiveRecords();
         } catch (err) {
@@ -1160,16 +1232,15 @@ export default function Dashboard() {
 
               {/* Banner */}
               <div className={styles.overviewBanner}>
-                <img src={APP_IMAGES.ambulances[1]} alt="" className={styles.bannerImage} aria-hidden="true" />
                 <div className={styles.bannerText}>
-                  <h3>🚨 Cabadbaran City Emergency System</h3>
-                  <p>Monitoring all incidents, responders, and dispatches in real-time · Auto-refresh every 15s</p>
+                  <h3>Cabadbaran City Emergency System</h3>
+                  <p>Cabadbaran City, Agusan del Norte</p>
                 </div>
                 <div className={styles.bannerActions}>
                   <button className={styles.bannerBtn} onClick={() => setActiveTab('live-map')}>🗺️ Live Map</button>
-                  <button className={styles.bannerBtn} onClick={() => setActiveTab('incidents')}>🚨 Incidents</button>
+                  <button className={styles.bannerBtn} onClick={() => setActiveTab('incidents')}>🚨 Accident</button>
                 </div>
-                  </div>
+              </div>
 
               {/* Stats */}
               <div className={styles.statsGrid}>
@@ -1324,7 +1395,7 @@ export default function Dashboard() {
                   onDelete={handleDelete}
                   onShowMap={handleShowOnLiveMap}
                   showAssignActions={false}
-                  actions={{ edit: true, archive: true, delete: true }}
+                  actions={{ edit: true, archive: false, delete: true }}
                   hideTitle
                 />
               )}
@@ -1410,17 +1481,18 @@ export default function Dashboard() {
               {archiveModule === 'dispatch' && (
                 <>
                   <p className={styles.archiveHint}>
-                    All dispatch records. Use Select All and Delete to remove records permanently.
+                    Deleted dispatch records. Restore sends them back to Dispatch. Delete removes them permanently.
                   </p>
                   <ArchiveRecordsTable
                     rows={archiveDispatchRows}
                     columns={DISPATCH_ARCHIVE_COLUMNS}
                     idKey="dispatch_record_id"
                     isLoading={archiveRecordsLoading}
-                    emptyMessage="📭 No dispatch records yet."
+                    emptyMessage="📭 No archived dispatch records yet."
                     selectedIds={archiveSelectedIds}
                     onToggleSelect={toggleArchiveSelect}
                     onToggleSelectAll={toggleArchiveSelectAll}
+                    onRestore={handleRestoreDispatch}
                     onDelete={handleBulkDeleteDispatch}
                     searchPlaceholder="Search dispatch records..."
                     getSearchText={dispatchRecordSearchText}
@@ -1431,17 +1503,18 @@ export default function Dashboard() {
               {archiveModule === 'call-log' && (
                 <>
                   <p className={styles.archiveHint}>
-                    All call logs. Use Select All and Delete to remove entries permanently.
+                    Deleted call logs. Restore sends them back to Call Log. Delete removes them permanently.
                   </p>
                   <ArchiveRecordsTable
                     rows={archiveCallLogs}
                     columns={CALL_LOG_ARCHIVE_COLUMNS}
                     idKey="call_log_id"
                     isLoading={archiveRecordsLoading}
-                    emptyMessage="📭 No call logs yet."
+                    emptyMessage="📭 No archived call logs yet."
                     selectedIds={archiveSelectedIds}
                     onToggleSelect={toggleArchiveSelect}
                     onToggleSelectAll={toggleArchiveSelectAll}
+                    onRestore={handleRestoreCallLogs}
                     onDelete={handleBulkDeleteCallLogs}
                     searchPlaceholder="Search call logs..."
                     getSearchText={callLogSearchText}
@@ -1490,10 +1563,6 @@ export default function Dashboard() {
                   <div className={styles.settingsRow}>
                     <span>Agency</span>
                     <strong>DRRMO</strong>
-                  </div>
-                  <div className={styles.settingsRow}>
-                    <span>Auto-refresh</span>
-                    <strong>Every 15 seconds</strong>
                   </div>
                 </div>
                 <div className={styles.settingsCard}>
@@ -1614,10 +1683,26 @@ export default function Dashboard() {
           )}
 
           {/* ── DISPATCH ─────────────────────────────────── */}
-          {activeTab === 'dispatch' && <DispatchPage />}
+          {activeTab === 'dispatch' && (
+            <DispatchPage
+              onArchived={() => {
+                setActiveTab('archive');
+                setArchiveModule('dispatch');
+                fetchArchiveRecords();
+              }}
+            />
+          )}
 
           {/* ── CALL LOG ─────────────────────────────────── */}
-          {activeTab === 'call-log' && <CallLogPage />}
+          {activeTab === 'call-log' && (
+            <CallLogPage
+              onArchived={() => {
+                setActiveTab('archive');
+                setArchiveModule('call-log');
+                fetchArchiveRecords();
+              }}
+            />
+          )}
 
           {/* ── USERS ────────────────────────────────────── */}
           {activeTab === 'users' && (
@@ -1678,6 +1763,7 @@ export default function Dashboard() {
       {editingIncident && (
         <IncidentStatusModal
           incident={editingIncident}
+          responders={responders}
           onClose={() => setEditingIncident(null)}
           onUpdated={fetchData}
         />
@@ -1704,7 +1790,7 @@ export default function Dashboard() {
           message={confirmModal.message}
           confirmLabel={confirmModal.confirmLabel || 'Delete'}
           cancelLabel="Cancel"
-          variant="danger"
+          variant={confirmModal.variant || 'danger'}
           onConfirm={confirmModal.onConfirm}
           onCancel={closeConfirm}
         />

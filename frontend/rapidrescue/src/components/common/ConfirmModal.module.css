@@ -134,3 +134,20 @@
 .confirmBtnInfo:hover {
   transform: translateY(-1px);
 }
+
+.iconLogout {
+  background: #fff1f2;
+  border: 2px solid #fecdd3;
+}
+
+.confirmBtnLogout {
+  background: linear-gradient(135deg, #e53935, #b71c1c);
+  border: none;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(183, 28, 28, 0.35);
+}
+
+.confirmBtnLogout:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(183, 28, 28, 0.42);
+}

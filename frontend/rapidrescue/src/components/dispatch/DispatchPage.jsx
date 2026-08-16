@@ -45,7 +45,7 @@ function renderCell(row, key) {
   return row[key] ?? '—';
 }
 
-export default function DispatchPage() {
+export default function DispatchPage({ onArchived }) {
   const [view, setView] = useState('records');
   const [logDate, setLogDate] = useState(todayStr);
   const [records, setRecords] = useState([]);
@@ -107,6 +107,7 @@ export default function DispatchPage() {
       await deleteDispatchRecord(confirmDelete.dispatch_record_id);
       setConfirmDelete(null);
       await loadRecords();
+      onArchived?.();
     } catch (err) {
       setError(err.message || 'Failed to delete record.');
       setConfirmDelete(null);
@@ -322,7 +323,7 @@ export default function DispatchPage() {
       {confirmDelete && (
         <ConfirmModal
           title="Delete Dispatch Record?"
-          message={`Remove dispatch record for ${confirmDelete.vehicle || 'this vehicle'}? This cannot be undone.`}
+          message={`Move the dispatch record for ${confirmDelete.vehicle || 'this vehicle'} to Archive? You can restore it later.`}
           confirmLabel="Delete"
           cancelLabel="Cancel"
           variant="danger"

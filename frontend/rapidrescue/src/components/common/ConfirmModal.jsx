@@ -13,18 +13,21 @@ export default function ConfirmModal({
     danger: styles.iconDanger,
     warning: styles.iconWarning,
     info: styles.iconInfo,
+    logout: styles.iconLogout,
   }[variant] || styles.iconDanger;
 
   const confirmClass = {
     danger: styles.confirmBtnDanger,
     warning: styles.confirmBtnWarning,
     info: styles.confirmBtnInfo,
+    logout: styles.confirmBtnLogout,
   }[variant] || styles.confirmBtnDanger;
 
   const icon = {
     danger: '🗑️',
     warning: '⚠️',
     info: '↪',
+    logout: '↪',
   }[variant] || '⚠️';
 
   return (

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
+const { archiveId, restoreId, listArchived } = require('../utils/archiveStore');
 
 const CALL_LOG_FIELDS = [
   'log_date', 'team', 'caller_name', 'time_of_call', 'cp_number',
@@ -49,11 +50,17 @@ router.get('/', async (req, res) => {
     const { data, error } = await query;
     if (error) return res.status(500).json({ message: error.message });
 
-    const rows = (data || []).map(normalizeRow).sort((a, b) => {
-      const ta = a.time_of_call || '';
-      const tb = b.time_of_call || '';
-      return ta.localeCompare(tb);
-    });
+    const archived = new Set(listArchived('callLogs'));
+    const rows = (data || []).map(normalizeRow)
+      .filter((row) => {
+        const id = String(row.call_log_id);
+        return req.query.archived === '1' ? archived.has(id) : !archived.has(id);
+      })
+      .sort((a, b) => {
+        const ta = a.time_of_call || '';
+        const tb = b.time_of_call || '';
+        return ta.localeCompare(tb);
+      });
 
     return res.json(rows);
   } catch (err) {
@@ -121,16 +128,28 @@ router.patch('/:id', async (req, res) => {
   }
 });
 
-// DELETE /api/call-logs/:id
+// PATCH /api/call-logs/:id/restore
+router.patch('/:id/restore', async (req, res) => {
+  restoreId('callLogs', req.params.id);
+  return res.json({ message: 'Call log restored.' });
+});
+
+// DELETE /api/call-logs/:id — archive, or permanently remove if ?permanent=1
 router.delete('/:id', async (req, res) => {
   try {
-    const { error } = await supabase
-      .from('call_logs')
-      .delete()
-      .eq('call_log_id', req.params.id);
+    if (req.query.permanent === '1') {
+      restoreId('callLogs', req.params.id);
+      const { error } = await supabase
+        .from('call_logs')
+        .delete()
+        .eq('call_log_id', req.params.id);
 
-    if (error) return res.status(500).json({ message: error.message });
-    return res.json({ message: 'Call log entry deleted.' });
+      if (error) return res.status(500).json({ message: error.message });
+      return res.json({ message: 'Call log entry permanently deleted.' });
+    }
+
+    archiveId('callLogs', req.params.id);
+    return res.json({ message: 'Call log entry moved to Archive.' });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }
