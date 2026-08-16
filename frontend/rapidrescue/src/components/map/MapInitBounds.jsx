@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useMap } from 'react-leaflet';
-import { CABADBARAN_MAX_BOUNDS } from '../../constants/cabadbaran';
+import { CABADBARAN_POLYGON } from '../../constants/cabadbaran';
 
 export default function MapInitBounds() {
   const map = useMap();
@@ -9,7 +9,8 @@ export default function MapInitBounds() {
   useEffect(() => {
     if (done.current) return;
     done.current = true;
-    map.setMaxBounds(CABADBARAN_MAX_BOUNDS);
+    map.setMaxBounds(null);
+    map.fitBounds(CABADBARAN_POLYGON, { padding: [28, 28], maxZoom: 13 });
     map.invalidateSize({ animate: false });
   }, [map]);
 

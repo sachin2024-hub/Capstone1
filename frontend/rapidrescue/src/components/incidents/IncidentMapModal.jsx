@@ -1,9 +1,10 @@
 import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import { CABADBARAN, CABADBARAN_MAX_BOUNDS } from '../../constants/cabadbaran';
+import { CABADBARAN } from '../../constants/cabadbaran';
 import { victimIcon, cityHallIcon } from '../map/mapIcons';
 import { parseLocationAddress, formatAreaLabel } from '../../utils/locationFormat';
 import MapResizeFix from '../map/MapResizeFix';
+import MapBoundary from '../map/MapBoundary';
 import styles from './IncidentMapModal.module.css';
 
 function getIncidentLocation(incident) {
@@ -57,8 +58,6 @@ export default function IncidentMapModal({ incident, onClose }) {
               zoom={17}
               minZoom={CABADBARAN.minZoom}
               maxZoom={CABADBARAN.maxZoom}
-              maxBounds={CABADBARAN_MAX_BOUNDS}
-              maxBoundsViscosity={1.0}
               style={{ height: '100%', width: '100%' }}
             >
               <TileLayer
@@ -83,6 +82,7 @@ export default function IncidentMapModal({ incident, onClose }) {
                   {location.address}
                 </Popup>
               </Marker>
+              <MapBoundary subtle />
               <MapResizeFix />
             </MapContainer>
           </div>

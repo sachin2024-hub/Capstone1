@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef, Fragment } from 'react';
 import { MapContainer, Marker, Popup, Polyline, TileLayer } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import api from '../../services/api';
-import { CABADBARAN, CABADBARAN_MAX_BOUNDS, RESPONDER_STATIONS, CITY_HALL } from '../../constants/cabadbaran';
+import { CABADBARAN, RESPONDER_STATIONS, CITY_HALL } from '../../constants/cabadbaran';
 import { MAP_LAYERS } from '../../constants/mapLayers';
 import { isWithinCabadbaran, OUTSIDE_CITY_MESSAGE } from '../../utils/geofence';
 import MapBoundary from './MapBoundary';
@@ -183,7 +183,7 @@ export default function LiveMap({ focusIncidentId = null }) {
       >
         {outsideAlerts.length > 0 && (
           <div className={styles.outsideBanner}>
-            ⚠️ {outsideAlerts.length} alert(s) naka-lapas sa Cabadbaran City!
+            ⚠️ {OUTSIDE_CITY_MESSAGE}
           </div>
         )}
 
@@ -192,8 +192,6 @@ export default function LiveMap({ focusIncidentId = null }) {
           zoom={CABADBARAN.defaultZoom}
           minZoom={CABADBARAN.minZoom}
           maxZoom={activeLayer.mapMaxZoom ?? CABADBARAN.maxZoom}
-          maxBounds={CABADBARAN_MAX_BOUNDS}
-          maxBoundsViscosity={1.0}
           style={{ position: 'absolute', inset: 0, height: '100%', width: '100%' }}
           className={`${styles.map} ${isSatelliteView ? styles.mapSatellite : ''}`}
         >
@@ -449,7 +447,7 @@ export default function LiveMap({ focusIncidentId = null }) {
               icon={outsideIcon}
             >
               <Popup>
-                <strong>⚠️ Outside City — #{inc.incident_id}</strong>
+                <strong>⚠️ Outside service boundary — #{inc.incident_id}</strong>
                 <br />
                 {OUTSIDE_CITY_MESSAGE}
               </Popup>
@@ -487,7 +485,7 @@ export default function LiveMap({ focusIncidentId = null }) {
           </div>
           <div className={styles.legendItem}>
             <span className={styles.legendDot} style={{ background: '#e65100' }} />
-            Outside City
+            Outside boundary
           </div>
         </div>
 

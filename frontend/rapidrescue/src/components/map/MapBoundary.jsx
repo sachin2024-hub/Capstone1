@@ -1,25 +1,22 @@
-import { Polygon } from 'react-leaflet';
+import { Polygon, Tooltip } from 'react-leaflet';
 import { CABADBARAN_POLYGON } from '../../constants/cabadbaran';
 
 export default function MapBoundary({ subtle = false }) {
   return (
     <Polygon
       positions={CABADBARAN_POLYGON}
-      pathOptions={
-        subtle
-          ? {
-              color: 'rgba(255,255,255,0.85)',
-              weight: 2,
-              fillOpacity: 0,
-              dashArray: '6, 8',
-            }
-          : {
-              color: '#2E7D32',
-              weight: 2,
-              fillOpacity: 0,
-              dashArray: '8, 6',
-            }
-      }
-    />
+      pathOptions={{
+        color: '#c62828',
+        weight: subtle ? 3 : 2.5,
+        fillColor: '#c62828',
+        fillOpacity: subtle ? 0.05 : 0.08,
+        dashArray: '10, 8',
+        opacity: 0.95,
+      }}
+    >
+      <Tooltip sticky>
+        Cabadbaran City service boundary
+      </Tooltip>
+    </Polygon>
   );
 }

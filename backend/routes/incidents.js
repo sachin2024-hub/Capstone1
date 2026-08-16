@@ -32,7 +32,7 @@ router.post('/sos', authenticateToken, async (req, res) => {
 
   if (!isWithinCabadbaran(Number(latitude), Number(longitude))) {
     return res.status(403).json({
-      message: 'Naka-lapas na sa Cabadbaran City. Ang SOS available lang sulod sa city.',
+      message: 'Outside the service boundary. Please wait while we refer you to the nearest ambulance.',
     });
   }
 
