@@ -16,6 +16,7 @@ import { fetchCallLogs, restoreCallLog, permanentDeleteCallLog } from '../../ser
 import { STATUS_COLORS } from '../../constants/statusColors';
 import { formatDate } from '../../utils/formatDate';
 import { formatIncidentLocation } from '../../utils/locationFormat';
+import { isWithinCabadbaran } from '../../utils/geofence';
 import { rememberIncidentStatus, peekIncidentStatus, takeIncidentStatus } from '../../utils/restoreMemory';
 import { APP_IMAGES } from '../../constants/images';
 import { INCIDENT_TYPE_GROUPS } from '../../constants/incidentTypes';
@@ -26,6 +27,12 @@ const ACTIVE_RESPONSE_STATUSES = ['In Progress', 'En Route', 'Arrived'];
 
 function formatLocation(loc) {
   return formatIncidentLocation(loc);
+}
+
+function isIncidentOutside(inc) {
+  const loc = Array.isArray(inc?.locations) ? inc.locations[0] : inc?.locations;
+  if (loc?.latitude == null || loc?.longitude == null) return false;
+  return !isWithinCabadbaran(Number(loc.latitude), Number(loc.longitude));
 }
 
 function useClock() {
@@ -360,6 +367,9 @@ function IncidentTableSection({
                       </td>
                       <td className={styles.descCell} style={{ color: '#888', fontSize: 12 }}>
                         {formatLocation(loc)}
+                        {isIncidentOutside(inc) && (
+                          <div className={styles.outsideBadge}>Outside boundary</div>
+                        )}
                       </td>
                       <td style={{ fontSize: 12 }}>
                         {assigned ? (

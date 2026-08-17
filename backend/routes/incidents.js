@@ -30,11 +30,9 @@ router.post('/sos', authenticateToken, async (req, res) => {
     return res.status(400).json({ message: 'Location is required. Please enable GPS.' });
   }
 
-  if (!isWithinCabadbaran(Number(latitude), Number(longitude))) {
-    return res.status(403).json({
-      message: 'Outside the service boundary. Please wait while we refer you to the nearest ambulance.',
-    });
-  }
+  const withinCity = isWithinCabadbaran(Number(latitude), Number(longitude));
+  const OUTSIDE_MESSAGE =
+    'Outside the service boundary. Please wait while we refer you to the nearest ambulance.';
 
   try {
     const resolvedLocation = await resolveLocationFromGps(
@@ -42,13 +40,16 @@ router.post('/sos', authenticateToken, async (req, res) => {
       Number(longitude)
     );
 
+    const baseDescription = incident_description || 'SOS alert triggered.';
     const { data: incident, error: incidentError } = await supabase
       .from('incidents')
       .insert([
         {
           user_id,
           incident_type: incident_type || 'Emergency',
-          incident_description: incident_description || 'SOS alert triggered.',
+          incident_description: withinCity
+            ? baseDescription
+            : `${baseDescription} ${OUTSIDE_MESSAGE}`,
           incident_status: 'Pending',
           priority_level: resolvedPriority,
         },
@@ -86,7 +87,10 @@ router.post('/sos', authenticateToken, async (req, res) => {
     const dispatch = await autoDispatch(incident.incident_id);
 
     return res.status(201).json({
-      message: 'SOS sent successfully! Help is on the way.',
+      message: withinCity
+        ? 'SOS sent successfully! Help is on the way.'
+        : OUTSIDE_MESSAGE,
+      outside_boundary: !withinCity,
       incident,
       dispatch,
       location: resolvedLocation,

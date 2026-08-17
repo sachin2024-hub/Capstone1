@@ -103,7 +103,7 @@ export default function LiveMap({ focusIncidentId = null }) {
     isWithinCabadbaran(inc.victim.lat, inc.victim.lng)
   );
 
-  const selectedIncident = insideIncidents.find((inc) => inc.incident_id === selectedId);
+  const selectedIncident = liveIncidents.find((inc) => inc.incident_id === selectedId);
   const selectedRoute = selectedId ? routes[selectedId] : null;
 
   // When a sidebar card is clicked, show only that incident on the map
@@ -436,18 +436,20 @@ export default function LiveMap({ focusIncidentId = null }) {
             );
           })}
 
-          {/* ── Outside city alerts (selected only when focused) ── */}
-          {(selectedId
-            ? outsideAlerts.filter((inc) => inc.incident_id === selectedId)
-            : outsideAlerts
-          ).map((inc) => (
+          {/* ── Outside city alerts — always visible on the map ── */}
+          {outsideAlerts.map((inc) => (
             <Marker
               key={`out-${inc.incident_id}`}
               position={[inc.victim.lat, inc.victim.lng]}
               icon={outsideIcon}
+              eventHandlers={{
+                click: () => focusOnIncident(inc.incident_id),
+              }}
             >
               <Popup>
                 <strong>⚠️ Outside service boundary — #{inc.incident_id}</strong>
+                <br />
+                {inc.user ? `${inc.user.first_name} ${inc.user.last_name}` : 'Unknown user'}
                 <br />
                 {OUTSIDE_CITY_MESSAGE}
               </Popup>
