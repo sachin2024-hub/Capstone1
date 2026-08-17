@@ -1112,6 +1112,18 @@
   border-color: #b71c1c;
 }
 
+.incidentFilterBtnOutside {
+  background: linear-gradient(135deg, #fb8c00, #ef6c00);
+  border-color: #ef6c00;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(239, 108, 0, 0.28);
+}
+
+.incidentFilterBtnOutside:hover {
+  color: #fff;
+  border-color: #e65100;
+}
+
 .incidentFilterBadge {
   min-width: 22px;
   height: 22px;

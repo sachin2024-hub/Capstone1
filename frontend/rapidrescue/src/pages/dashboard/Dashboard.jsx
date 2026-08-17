@@ -78,6 +78,7 @@ const STAT_COLORS = ['statRed', 'statOrange', 'statBlue', 'statYellow', 'statGre
 const INCIDENT_FILTER_TABS = [
   { id: 'pending', icon: '⏳', label: 'Pending' },
   { id: 'active', icon: '🚑', label: 'Active Response' },
+  { id: 'outside', icon: '⚠️', label: 'Outside' },
   { id: 'resolved', icon: '✅', label: 'Resolved' },
   { id: 'cancelled', icon: '❌', label: 'Cancelled' },
 ];
@@ -824,10 +825,21 @@ export default function Dashboard() {
     setActiveTab('live-map');
   };
 
-  const pendingIncidents = incidents.filter((i) => i.incident_status === 'Pending');
-  const activeResponseIncidents = incidents.filter((i) => ACTIVE_RESPONSE_STATUSES.includes(i.incident_status));
-  const resolvedIncidents = incidents.filter((i) => i.incident_status === 'Resolved');
-  const cancelledIncidents = incidents.filter((i) => i.incident_status === 'Cancelled');
+  const outsideIncidents = incidents.filter(
+    (i) => !['Archived', 'Deleted'].includes(i.incident_status) && isIncidentOutside(i)
+  );
+  const pendingIncidents = incidents.filter(
+    (i) => i.incident_status === 'Pending' && !isIncidentOutside(i)
+  );
+  const activeResponseIncidents = incidents.filter(
+    (i) => ACTIVE_RESPONSE_STATUSES.includes(i.incident_status) && !isIncidentOutside(i)
+  );
+  const resolvedIncidents = incidents.filter(
+    (i) => i.incident_status === 'Resolved' && !isIncidentOutside(i)
+  );
+  const cancelledIncidents = incidents.filter(
+    (i) => i.incident_status === 'Cancelled' && !isIncidentOutside(i)
+  );
   const archivedIncidents = incidents.filter((i) => i.incident_status === 'Archived');
   const deletedIncidents = incidents.filter((i) => i.incident_status === 'Deleted');
   const archiveAccidentRows = [...archivedIncidents, ...deletedIncidents];
@@ -836,6 +848,7 @@ export default function Dashboard() {
   const incidentFilterCounts = {
     pending: pendingIncidents.length,
     active: activeResponseIncidents.length,
+    outside: outsideIncidents.length,
     resolved: resolvedIncidents.length,
     cancelled: cancelledIncidents.length,
   };
@@ -1342,7 +1355,7 @@ export default function Dashboard() {
                   <button
                     key={tab.id}
                     type="button"
-                    className={`${styles.incidentFilterBtn} ${incidentFilter === tab.id ? styles.incidentFilterBtnActive : ''}`}
+                    className={`${styles.incidentFilterBtn} ${incidentFilter === tab.id ? styles.incidentFilterBtnActive : ''} ${tab.id === 'outside' && incidentFilter === 'outside' ? styles.incidentFilterBtnOutside : ''}`}
                     onClick={() => setIncidentFilter(tab.id)}
                   >
                     <span>{tab.icon} {tab.label}</span>
@@ -1356,7 +1369,9 @@ export default function Dashboard() {
                   ? 'Resolved incidents stay here until you manually move them to Archive.'
                   : incidentFilter === 'cancelled'
                     ? 'Cancelled incidents can be archived or deleted from here.'
-                    : 'Click the buttons above to switch between incident groups.'}
+                    : incidentFilter === 'outside'
+                      ? 'Help requests from outside the Cabadbaran City service boundary.'
+                      : 'Click the buttons above to switch between incident groups.'}
               </p>
 
               {incidentFilter === 'pending' && (
@@ -1383,6 +1398,23 @@ export default function Dashboard() {
                   rows={activeResponseIncidents}
                   isLoading={isLoading}
                   emptyMessage="📭 No incidents in progress."
+                  onEdit={setEditingIncident}
+                  onArchive={handleArchive}
+                  onDelete={handleDelete}
+                  onAssign={setAssigningIncident}
+                  onShowMap={handleShowOnLiveMap}
+                  showAssignActions
+                  hideTitle
+                />
+              )}
+
+              {incidentFilter === 'outside' && (
+                <IncidentTableSection
+                  title="Outside"
+                  icon="⚠️"
+                  rows={outsideIncidents}
+                  isLoading={isLoading}
+                  emptyMessage="📭 No incidents outside the service boundary."
                   onEdit={setEditingIncident}
                   onArchive={handleArchive}
                   onDelete={handleDelete}

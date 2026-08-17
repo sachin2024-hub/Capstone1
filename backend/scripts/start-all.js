@@ -77,13 +77,11 @@ function startTunnel(binPath) {
     if (match && !updated) {
       updated = true;
       const ip = getLocalIp() || '192.168.1.11';
-      updateMobileApi({ localIp: ip, tunnelUrl: match[0], connectionMode: 'auto' });
       writeConnectionInfo({ localIp: ip, tunnelUrl: match[0] });
       log('');
       log('==============================================');
       log(`Public URL ready: ${match[0]}`);
-      log('ANY phone can log in now (WiFi or mobile data).');
-      log('Reload the Expo app once (press r, or shake phone).');
+      log('Phone on same WiFi can log in now (no Expo reload needed).');
       log('==============================================');
       log('');
     }

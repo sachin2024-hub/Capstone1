@@ -19,8 +19,11 @@ function getLocalIp() {
   return null;
 }
 
-function updateMobileApi({ localIp, tunnelUrl, connectionMode = 'auto' } = {}) {
+function updateMobileApi({ localIp, tunnelUrl, connectionMode } = {}) {
+  if (!fs.existsSync(MOBILE_API_FILE)) return { localIp, tunnelUrl, connectionMode };
+
   let content = fs.readFileSync(MOBILE_API_FILE, 'utf8');
+  const original = content;
 
   if (localIp) {
     content = content.replace(
@@ -29,19 +32,19 @@ function updateMobileApi({ localIp, tunnelUrl, connectionMode = 'auto' } = {}) {
     );
   }
 
-  if (tunnelUrl) {
+  // Do not rewrite TUNNEL_URL here — it changes often and reloads Expo,
+  // which kicks the phone off login. Tunnel is stored in connection-info.json.
+
+  if (connectionMode) {
     content = content.replace(
-      /export const TUNNEL_URL = '[^']*'/,
-      `export const TUNNEL_URL = '${tunnelUrl}'`
+      /export const CONNECTION_MODE[^=]*= '[^']*'/,
+      `export const CONNECTION_MODE: 'tunnel' | 'local' | 'auto' = '${connectionMode}'`
     );
   }
 
-  content = content.replace(
-    /export const CONNECTION_MODE[^=]*= '[^']*'/,
-    `export const CONNECTION_MODE: 'tunnel' | 'local' | 'auto' = '${connectionMode}'`
-  );
-
-  fs.writeFileSync(MOBILE_API_FILE, content);
+  if (content !== original) {
+    fs.writeFileSync(MOBILE_API_FILE, content);
+  }
   return { localIp, tunnelUrl, connectionMode };
 }
 

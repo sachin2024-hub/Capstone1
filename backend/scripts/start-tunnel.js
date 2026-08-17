@@ -28,10 +28,9 @@ function onData(data) {
   const match = text.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
   if (match && !updated) {
     updated = true;
-    updateMobileApi({ tunnelUrl: match[0], connectionMode: 'auto' });
     writeConnectionInfo({ tunnelUrl: match[0] });
-    console.log('\n✅ Mobile API URL updated:', match[0]);
-    console.log('📱 Open Expo app — it will auto-connect (WiFi first, then tunnel)\n');
+    console.log('\n✅ Public URL ready:', match[0]);
+    console.log('📱 Phone on same WiFi can log in (no Expo reload needed)\n');
   }
 }
 
