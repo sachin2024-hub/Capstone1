@@ -4,13 +4,11 @@ import { register } from '../../services/authService';
 import { APP_IMAGES } from '../../constants/images';
 import styles from './Auth.module.css';
 
-const ROLES = ['Admin', 'Super Admin', 'Dispatcher', 'Supervisor'];
+const ROLES = ['Admin', 'User'];
 
 const ROLE_ICONS = {
   Admin: '🛡️',
-  'Super Admin': '👑',
-  Dispatcher: '📡',
-  Supervisor: '🔭',
+  User: '👤',
 };
 
 export default function Register() {

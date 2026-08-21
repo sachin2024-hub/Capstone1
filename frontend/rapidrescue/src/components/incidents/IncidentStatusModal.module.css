@@ -95,6 +95,18 @@
   word-break: break-word;
 }
 
+.phoneLink {
+  font-size: 15px;
+  font-weight: 800;
+  color: #1565c0;
+  text-decoration: none;
+  letter-spacing: 0.3px;
+}
+
+.phoneLink:hover {
+  text-decoration: underline;
+}
+
 .incidentId {
   font-weight: 800;
   color: #e53935;

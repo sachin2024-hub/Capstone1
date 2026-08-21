@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { getAvailableStatuses, getOutsideStatuses, OUTSIDE_STATUS_VALUES, updateIncidentStatus } from '../../services/incidentService';
 import { assignResponder } from '../../services/dispatchService';
-import { STATUS_COLORS } from '../../constants/statusColors';
+import { STATUS_COLORS, PRIORITY_COLORS } from '../../constants/statusColors';
 import { formatDate } from '../../utils/formatDate';
 import { formatIncidentLocation } from '../../utils/locationFormat';
 import { isWithinCabadbaran } from '../../utils/geofence';
 import styles from './IncidentStatusModal.module.css';
 
-export default function IncidentStatusModal({ incident, responders = [], onClose, onUpdated }) {
+export default function IncidentStatusModal({ incident, responders = [], users = [], onClose, onUpdated }) {
   const currentStatus = incident?.incident_status || 'Pending';
   const dispatch = Array.isArray(incident?.dispatch) ? incident.dispatch[0] : incident?.dispatch;
   const responder = dispatch?.responders;
@@ -32,9 +32,14 @@ export default function IncidentStatusModal({ incident, responders = [], onClose
   if (!incident) return null;
 
   const locationText = formatIncidentLocation(loc);
-  const reporterName = incident.users
-    ? `${incident.users.first_name} ${incident.users.last_name}`
+  const nestedUser = Array.isArray(incident.users) ? incident.users[0] : (incident.users || incident.user);
+  const registeredUser = (users || []).find(
+    (u) => Number(u.user_id) === Number(incident.user_id)
+  ) || nestedUser;
+  const reporterName = registeredUser
+    ? `${registeredUser.first_name || ''} ${registeredUser.last_name || ''}`.trim() || '—'
     : '—';
+  const reporterPhone = registeredUser?.phone_number || '';
   const assignedName = responder
     ? `${responder.first_name} ${responder.last_name}`
     : 'Unassigned';
@@ -97,6 +102,16 @@ export default function IncidentStatusModal({ incident, responders = [], onClose
             <span className={styles.detailValue}>{reporterName}</span>
           </div>
           <div className={styles.detailCell}>
+            <span className={styles.detailLabel}>Mobile Number</span>
+            {reporterPhone ? (
+              <a className={styles.phoneLink} href={`tel:${reporterPhone}`}>
+                {reporterPhone}
+              </a>
+            ) : (
+              <span className={styles.detailValue}>—</span>
+            )}
+          </div>
+          <div className={styles.detailCell}>
             <span className={styles.detailLabel}>Location</span>
             <span className={styles.detailValue}>{locationText}</span>
           </div>
@@ -115,7 +130,15 @@ export default function IncidentStatusModal({ incident, responders = [], onClose
           </div>
           <div className={styles.detailCell}>
             <span className={styles.detailLabel}>Priority</span>
-            <span className={styles.detailValue}>{incident.priority_level || 'Normal'}</span>
+            <span
+              className={styles.previewBadge}
+              style={{
+                background: PRIORITY_COLORS[incident.priority_level] || PRIORITY_COLORS.Normal,
+                color: (incident.priority_level || 'Normal') === 'Normal' ? '#1a1a1a' : '#fff',
+              }}
+            >
+              {incident.priority_level || 'Normal'}
+            </span>
           </div>
           <div className={styles.detailCell}>
             <span className={styles.detailLabel}>Date</span>

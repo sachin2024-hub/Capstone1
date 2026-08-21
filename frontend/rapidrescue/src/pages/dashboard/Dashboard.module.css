@@ -406,7 +406,37 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 22px;
+  margin-bottom: 14px;
+}
+
+/* sub-tabs under Users section */
+.subTabRow {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  border-bottom: 2px solid #e5e7eb;
+  padding-bottom: 0;
+}
+
+.subTab {
+  padding: 8px 18px;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #6B7280;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  font-family: inherit;
+}
+
+.subTab:hover { color: #111827; }
+
+.subTabActive {
+  color: #C1121F;
+  border-bottom-color: #C1121F;
 }
 
 .sectionTitle {
@@ -767,6 +797,51 @@
 
 .statusActive  { background: #16a34a !important; }
 .statusInactive { background: #9E9E9E !important; }
+
+.statusBlocked {
+  background: #fff3e0 !important;
+  color: #e65100 !important;
+}
+
+.blockBtn {
+  background: #fff;
+  color: #e65100;
+  border: 1.5px solid #ffe0b2;
+  padding: 5px 10px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'Inter', system-ui, sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.blockBtn:hover {
+  background: #ef6c00;
+  color: #fff;
+  border-color: #ef6c00;
+}
+
+.unblockBtn {
+  background: #fff;
+  color: #2e7d32;
+  border: 1.5px solid #c8e6c9;
+  padding: 5px 10px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'Inter', system-ui, sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.unblockBtn:hover {
+  background: #2e7d32;
+  color: #fff;
+  border-color: #2e7d32;
+}
 .statusBusy   { background: #ea580c !important; }
 
 .subText {

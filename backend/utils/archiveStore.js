@@ -5,7 +5,7 @@ const FILE = path.join(__dirname, '..', 'data', 'archive-store.json');
 const SAVED_STATUSES = ['Pending', 'Outside', 'For Referral', 'Referred', 'Completed', 'In Progress', 'En Route', 'Arrived', 'Resolved', 'Cancelled'];
 
 function emptyStore() {
-  return { incidents: {}, dispatch: [], callLogs: [] };
+  return { incidents: {}, dispatch: [], callLogs: [], blockedAdmins: [], archivedAdmins: [] };
 }
 
 function loadStore() {
@@ -68,6 +68,33 @@ function isArchived(listName, id) {
   return listArchived(listName).includes(String(id));
 }
 
+function listBlockedAdmins() {
+  return (loadStore().blockedAdmins || []).map(String);
+}
+
+function isAdminBlocked(id) {
+  return listBlockedAdmins().includes(String(id));
+}
+
+function setAdminBlocked(id, blocked) {
+  const store = loadStore();
+  const key = String(id);
+  const current = (store.blockedAdmins || []).map(String);
+  store.blockedAdmins = blocked
+    ? current.includes(key) ? current : [...current, key]
+    : current.filter((item) => item !== key);
+  saveStore(store);
+}
+
+function isAdminArchived(id) {
+  return isArchived('archivedAdmins', id);
+}
+
+function setAdminArchived(id, archived) {
+  if (archived) archiveId('archivedAdmins', id);
+  else restoreId('archivedAdmins', id);
+}
+
 module.exports = {
   SAVED_STATUSES,
   rememberStatus,
@@ -76,4 +103,8 @@ module.exports = {
   restoreId,
   listArchived,
   isArchived,
+  isAdminBlocked,
+  setAdminBlocked,
+  isAdminArchived,
+  setAdminArchived,
 };

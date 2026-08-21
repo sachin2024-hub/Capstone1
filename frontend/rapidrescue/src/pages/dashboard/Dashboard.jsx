@@ -13,7 +13,7 @@ import { archiveIncident, restoreIncident, deleteIncident, permanentDeleteIncide
 import { deleteResponder } from '../../services/responderService';
 import { fetchDispatchRecords, restoreDispatchRecord, permanentDeleteDispatchRecord } from '../../services/dispatchRecordService';
 import { fetchCallLogs, restoreCallLog, permanentDeleteCallLog } from '../../services/callLogService';
-import { STATUS_COLORS } from '../../constants/statusColors';
+import { STATUS_COLORS, PRIORITY_COLORS } from '../../constants/statusColors';
 import { formatDate } from '../../utils/formatDate';
 import { formatIncidentLocation } from '../../utils/locationFormat';
 import { isWithinCabadbaran } from '../../utils/geofence';
@@ -87,6 +87,7 @@ const ARCHIVE_MODULE_TABS = [
   { id: 'accident', icon: '🚨', label: 'Accident' },
   { id: 'dispatch', icon: '📡', label: 'Dispatch' },
   { id: 'call-log', icon: '📋', label: 'Call Log' },
+  { id: 'users', icon: '👥', label: 'Users' },
 ];
 
 const DISPATCH_ARCHIVE_COLUMNS = [
@@ -106,6 +107,46 @@ const CALL_LOG_ARCHIVE_COLUMNS = [
   { key: 'team', label: 'Team' },
   { key: 'log_date', label: 'Date' },
 ];
+
+const USER_ARCHIVE_COLUMNS = [
+  { key: 'user_id', label: 'ID', render: (row) => <strong>#{row.user_id}</strong> },
+  { key: 'name', label: 'Name', render: (row) => `${row.first_name || ''} ${row.last_name || ''}`.trim() || '—' },
+  { key: 'email', label: 'Email' },
+  { key: 'phone_number', label: 'Phone' },
+  { key: 'account_status', label: 'Status', render: () => 'Deleted' },
+  { key: 'date_registered', label: 'Registered', render: (row) => formatDate(row.date_registered) },
+];
+
+const ADMIN_ARCHIVE_COLUMNS = [
+  { key: 'admin_id', label: 'ID', render: (row) => <strong>#{row.admin_id}</strong> },
+  { key: 'name', label: 'Name', render: (row) => `${row.first_name || ''} ${row.last_name || ''}`.trim() || '—' },
+  { key: 'username', label: 'Username', render: (row) => `@${row.username}` },
+  { key: 'role', label: 'Role' },
+  { key: 'contact_number', label: 'Contact' },
+  { key: 'account_status', label: 'Status', render: () => 'Deleted' },
+];
+
+function userSearchText(row) {
+  return [
+    row.user_id,
+    row.first_name,
+    row.last_name,
+    row.email,
+    row.phone_number,
+    row.address,
+  ].filter(Boolean).join(' ');
+}
+
+function adminSearchText(row) {
+  return [
+    row.admin_id,
+    row.first_name,
+    row.last_name,
+    row.username,
+    row.role,
+    row.contact_number,
+  ].filter(Boolean).join(' ');
+}
 
 function dispatchRecordSearchText(row) {
   return [
@@ -127,6 +168,23 @@ function callLogSearchText(row) {
     row.team,
     row.log_date,
   ].filter(Boolean).join(' ');
+}
+
+function PriorityBadge({ level }) {
+  const label = level || 'Normal';
+  const isNormal = label === 'Normal';
+  return (
+    <span
+      className={styles.statusBadge}
+      style={{
+        background: PRIORITY_COLORS[label] || PRIORITY_COLORS.Normal,
+        color: isNormal ? '#1a1a1a' : '#fff',
+      }}
+    >
+      <span className={styles.statusDotBadge} style={isNormal ? { background: 'rgba(0,0,0,0.35)' } : undefined} />
+      {label}
+    </span>
+  );
 }
 
 function getAssignedResponder(inc) {
@@ -365,9 +423,14 @@ function IncidentTableSection({
                       <td className={styles.compactCell}>{inc.incident_type}</td>
                       <td className={styles.descCell}>{inc.incident_description || '—'}</td>
                       <td>
-                        {inc.users
-                          ? `${inc.users.first_name} ${inc.users.last_name}`
-                          : <span style={{ color: '#bbb' }}>—</span>}
+                        {inc.users ? (
+                          <div>
+                            <div>{`${inc.users.first_name} ${inc.users.last_name}`}</div>
+                            <div style={{ color: '#1565c0', fontSize: 12, fontWeight: 700 }}>
+                              {inc.users.phone_number || '—'}
+                            </div>
+                          </div>
+                        ) : <span style={{ color: '#bbb' }}>—</span>}
                       </td>
                       <td className={styles.descCell} style={{ color: '#888', fontSize: 12 }}>
                         {formatLocation(loc)}
@@ -407,7 +470,7 @@ function IncidentTableSection({
                           </span>
                         )}
                       </td>
-                      <td>{inc.priority_level || 'Normal'}</td>
+                      <td><PriorityBadge level={inc.priority_level} /></td>
                       <td style={{ color: '#888', fontSize: 12 }}>{formatDate(inc.date_reported)}</td>
                       {hasActions && (
                         <td onClick={(e) => e.stopPropagation()}>
@@ -723,6 +786,325 @@ function ArchiveRecordsTable({
   );
 }
 
+/* ─── Add Admin Modal ──────────────────────────────────── */
+const ADMIN_ROLES = ['Admin', 'User'];
+
+function AddAdminModal({ onClose, onCreated }) {
+  const [form, setForm] = useState({
+    first_name: '', middle_name: '', last_name: '',
+    username: '', password: '', confirm_password: '',
+    role: 'Admin', contact_number: '',
+  });
+  const [showPwd, setShowPwd] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const [success, setSuccess] = useState('');
+
+  const handleChange = (e) => {
+    setForm(p => ({ ...p, [e.target.name]: e.target.value }));
+    setErr('');
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.first_name || !form.last_name || !form.username || !form.password) {
+      setErr('First name, last name, username and password are required.'); return;
+    }
+    if (form.password.length < 6) { setErr('Password must be at least 6 characters.'); return; }
+    if (form.password !== form.confirm_password) { setErr('Passwords do not match.'); return; }
+    setSaving(true); setErr('');
+    try {
+      await api.post('/admin/register', {
+        first_name: form.first_name.trim(),
+        middle_name: form.middle_name.trim() || undefined,
+        last_name: form.last_name.trim(),
+        username: form.username.trim(),
+        password: form.password,
+        role: form.role,
+        contact_number: form.contact_number.trim() || undefined,
+      });
+      setSuccess('Admin account created successfully!');
+      setTimeout(onCreated, 900);
+    } catch (e2) {
+      setErr(e2.message || 'Failed to create admin.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={OVERLAY}>
+      <div style={MODAL_BOX}>
+        <div style={MODAL_HEAD}>
+          <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#111827' }}>
+            Add
+          </h3>
+          <button onClick={onClose} style={CLOSE_BTN} aria-label="Close">✕</button>
+        </div>
+
+        {err && (
+          <div style={ERR_BOX}>⚠️ {err}</div>
+        )}
+        {success && (
+          <div style={SUC_BOX}>✅ {success}</div>
+        )}
+
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+          {/* name row */}
+          <div style={TWO_COL}>
+            <MField label="First Name *" name="first_name" value={form.first_name} onChange={handleChange} placeholder="First name" />
+            <MField label="Last Name *"  name="last_name"  value={form.last_name}  onChange={handleChange} placeholder="Last name" />
+          </div>
+          <MField label="Middle Name" name="middle_name" value={form.middle_name} onChange={handleChange} placeholder="Middle name (optional)" />
+          <div style={TWO_COL}>
+            <MField label="Username *"       name="username"       value={form.username}       onChange={handleChange} placeholder="Choose a username" />
+            <MField label="Contact Number"   name="contact_number" value={form.contact_number} onChange={handleChange} placeholder="09XXXXXXXXX" />
+          </div>
+
+          {/* role */}
+          <div style={FIELD_WRAP}>
+            <label style={LBL}>Role</label>
+            <select name="role" value={form.role} onChange={handleChange} style={INPUT_STYLE}>
+              {ADMIN_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+
+          {/* passwords */}
+          <div style={TWO_COL}>
+            <div style={FIELD_WRAP}>
+              <label style={LBL}>Password *</label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showPwd ? 'text' : 'password'}
+                  name="password"
+                  value={form.password}
+                  onChange={handleChange}
+                  placeholder="Min 6 characters"
+                  style={{ ...INPUT_STYLE, paddingRight: 40 }}
+                  autoComplete="new-password"
+                />
+                <button type="button" onClick={() => setShowPwd(p => !p)}
+                  style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 14 }}>
+                  {showPwd ? '🙈' : '👁️'}
+                </button>
+              </div>
+            </div>
+            <MField label="Confirm Password *" name="confirm_password" value={form.confirm_password} onChange={handleChange} placeholder="Re-enter password" type="password" />
+          </div>
+
+          {/* actions */}
+          <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+            <button type="button" onClick={onClose}
+              style={{ flex: 1, height: 44, border: '1.5px solid #E5E7EB', borderRadius: 10, background: '#fff', color: '#374151', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+              Cancel
+            </button>
+            <button type="submit" disabled={saving}
+              style={{ flex: 1, height: 44, border: 'none', borderRadius: 10, background: 'linear-gradient(135deg,#C1121F,#8B0000)', color: '#fff', fontWeight: 700, fontSize: 14, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
+              {saving ? 'Creating…' : 'Create'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ── Modal helpers ── */
+function MField({ label, name, value, onChange, placeholder, type = 'text' }) {
+  return (
+    <div style={FIELD_WRAP}>
+      <label style={LBL}>{label}</label>
+      <input type={type} name={name} value={value} onChange={onChange} placeholder={placeholder} style={INPUT_STYLE} autoComplete="off" />
+    </div>
+  );
+}
+
+const OVERLAY   = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 };
+const MODAL_BOX = { background: '#fff', borderRadius: 16, padding: '24px 26px', width: '100%', maxWidth: 560, maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.22)', border: '1px solid #E5E7EB' };
+const MODAL_HEAD = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, paddingBottom: 12, borderBottom: '1px solid #F3F4F6' };
+const CLOSE_BTN  = { background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: '#6B7280', padding: 4, lineHeight: 1 };
+const FIELD_WRAP = { display: 'flex', flexDirection: 'column', marginBottom: 12 };
+const TWO_COL    = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 };
+const LBL        = { fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 5 };
+const INPUT_STYLE = { height: 42, padding: '0 12px', border: '1.5px solid #E5E7EB', borderRadius: 10, fontSize: 13.5, fontFamily: 'inherit', color: '#111827', background: '#FAFAFA', outline: 'none', width: '100%', boxSizing: 'border-box' };
+const ERR_BOX    = { background: '#fff5f5', border: '1.5px solid #fca5a5', borderLeft: '4px solid #C1121F', color: '#7f1d1d', borderRadius: 8, padding: '10px 12px', fontSize: 13, marginBottom: 12 };
+const SUC_BOX    = { background: '#f0fdf4', border: '1.5px solid #86efac', borderLeft: '4px solid #16a34a', color: '#14532d', borderRadius: 8, padding: '10px 12px', fontSize: 13, marginBottom: 12 };
+
+function EditUserModal({ user: target, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    first_name: target.first_name || '',
+    middle_name: target.middle_name || '',
+    last_name: target.last_name || '',
+    email: target.email || '',
+    phone_number: target.phone_number || '',
+    address: target.address || '',
+    password: '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  const handleChange = (e) => {
+    setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
+    setErr('');
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.first_name || !form.last_name || !form.email) {
+      setErr('First name, last name, and email are required.');
+      return;
+    }
+    if (form.password && form.password.length < 6) {
+      setErr('New password must be at least 6 characters.');
+      return;
+    }
+    setSaving(true);
+    setErr('');
+    try {
+      const payload = {
+        first_name: form.first_name.trim(),
+        middle_name: form.middle_name.trim(),
+        last_name: form.last_name.trim(),
+        email: form.email.trim(),
+        phone_number: form.phone_number.trim(),
+        address: form.address.trim(),
+      };
+      if (form.password) payload.password = form.password;
+      await api.patch(`/auth/users/${target.user_id}`, payload);
+      onSaved();
+    } catch (e2) {
+      setErr(e2.message || 'Failed to update user.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={OVERLAY}>
+      <div style={MODAL_BOX}>
+        <div style={MODAL_HEAD}>
+          <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#111827' }}>
+            Edit User — #{target.user_id}
+          </h3>
+          <button onClick={onClose} style={CLOSE_BTN} aria-label="Close">✕</button>
+        </div>
+        {err && <div style={ERR_BOX}>⚠️ {err}</div>}
+        <form onSubmit={handleSubmit}>
+          <div style={TWO_COL}>
+            <MField label="First Name *" name="first_name" value={form.first_name} onChange={handleChange} placeholder="First name" />
+            <MField label="Last Name *" name="last_name" value={form.last_name} onChange={handleChange} placeholder="Last name" />
+          </div>
+          <MField label="Middle Name" name="middle_name" value={form.middle_name} onChange={handleChange} placeholder="Optional" />
+          <MField label="Email *" name="email" value={form.email} onChange={handleChange} placeholder="email@example.com" />
+          <div style={TWO_COL}>
+            <MField label="Phone" name="phone_number" value={form.phone_number} onChange={handleChange} placeholder="09XXXXXXXXX" />
+            <MField label="New Password" name="password" value={form.password} onChange={handleChange} placeholder="Leave blank to keep" type="password" />
+          </div>
+          <MField label="Address" name="address" value={form.address} onChange={handleChange} placeholder="Address" />
+          <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+            <button type="button" onClick={onClose} style={{ flex: 1, height: 44, border: '1.5px solid #E5E7EB', borderRadius: 10, background: '#fff', color: '#374151', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+              Cancel
+            </button>
+            <button type="submit" disabled={saving} style={{ flex: 1, height: 44, border: 'none', borderRadius: 10, background: 'linear-gradient(135deg,#C1121F,#8B0000)', color: '#fff', fontWeight: 700, fontSize: 14, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
+              {saving ? 'Saving…' : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function EditAdminModal({ admin, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    first_name: admin.first_name || '',
+    middle_name: admin.middle_name || '',
+    last_name: admin.last_name || '',
+    username: admin.username || '',
+    contact_number: admin.contact_number || '',
+    role: ADMIN_ROLES.includes(admin.role) ? admin.role : 'Admin',
+    password: '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  const handleChange = (e) => {
+    setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
+    setErr('');
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.first_name || !form.last_name || !form.username) {
+      setErr('First name, last name, and username are required.');
+      return;
+    }
+    if (form.password && form.password.length < 6) {
+      setErr('New password must be at least 6 characters.');
+      return;
+    }
+    setSaving(true);
+    setErr('');
+    try {
+      const payload = {
+        first_name: form.first_name.trim(),
+        middle_name: form.middle_name.trim(),
+        last_name: form.last_name.trim(),
+        username: form.username.trim(),
+        contact_number: form.contact_number.trim(),
+        role: form.role,
+      };
+      if (form.password) payload.password = form.password;
+      await api.patch(`/admin/${admin.admin_id}`, payload);
+      onSaved();
+    } catch (e2) {
+      setErr(e2.message || 'Failed to update admin.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={OVERLAY}>
+      <div style={MODAL_BOX}>
+        <div style={MODAL_HEAD}>
+          <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#111827' }}>
+            Edit Admin — #{admin.admin_id}
+          </h3>
+          <button onClick={onClose} style={CLOSE_BTN} aria-label="Close">✕</button>
+        </div>
+        {err && <div style={ERR_BOX}>⚠️ {err}</div>}
+        <form onSubmit={handleSubmit}>
+          <div style={TWO_COL}>
+            <MField label="First Name *" name="first_name" value={form.first_name} onChange={handleChange} placeholder="First name" />
+            <MField label="Last Name *" name="last_name" value={form.last_name} onChange={handleChange} placeholder="Last name" />
+          </div>
+          <MField label="Middle Name" name="middle_name" value={form.middle_name} onChange={handleChange} placeholder="Optional" />
+          <div style={TWO_COL}>
+            <MField label="Username *" name="username" value={form.username} onChange={handleChange} placeholder="Username" />
+            <MField label="Contact Number" name="contact_number" value={form.contact_number} onChange={handleChange} placeholder="09XXXXXXXXX" />
+          </div>
+          <div style={FIELD_WRAP}>
+            <label style={LBL}>Role</label>
+            <select name="role" value={form.role} onChange={handleChange} style={INPUT_STYLE}>
+              {ADMIN_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+          <MField label="New Password" name="password" value={form.password} onChange={handleChange} placeholder="Leave blank to keep" type="password" />
+          <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+            <button type="button" onClick={onClose} style={{ flex: 1, height: 44, border: '1.5px solid #E5E7EB', borderRadius: 10, background: '#fff', color: '#374151', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+              Cancel
+            </button>
+            <button type="submit" disabled={saving} style={{ flex: 1, height: 44, border: 'none', borderRadius: 10, background: 'linear-gradient(135deg,#C1121F,#8B0000)', color: '#fff', fontWeight: 700, fontSize: 14, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
+              {saving ? 'Saving…' : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const user = getStoredAdmin();
@@ -740,6 +1122,11 @@ export default function Dashboard() {
   const [dispatches, setDispatches] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [admins, setAdmins] = useState([]);
+  const [showAddAdmin, setShowAddAdmin] = useState(false);
+  const [userSubTab, setUserSubTab] = useState('mobile');
+  const [editingUser, setEditingUser] = useState(null);
+  const [editingAdmin, setEditingAdmin] = useState(null);
   const [editingIncident, setEditingIncident] = useState(null);
   const [updatingStatusId, setUpdatingStatusId] = useState(null);
   const [assigningIncident, setAssigningIncident] = useState(null);
@@ -752,6 +1139,9 @@ export default function Dashboard() {
   const [archiveCallLogs, setArchiveCallLogs] = useState([]);
   const [archiveRecordsLoading, setArchiveRecordsLoading] = useState(false);
   const [confirmModal, setConfirmModal] = useState(null);
+  const [userSearch, setUserSearch] = useState('');
+  const [userStatusFilter, setUserStatusFilter] = useState('all');
+  const [archiveUserTab, setArchiveUserTab] = useState('mobile');
 
   const fetchData = useCallback(async ({ showLoader = false } = {}) => {
     if (showLoader) {
@@ -759,11 +1149,12 @@ export default function Dashboard() {
       setError('');
     }
     try {
-      const [usersRes, incidentsRes, respondersRes, dispatchRes] = await Promise.all([
+      const [usersRes, incidentsRes, respondersRes, dispatchRes, adminsRes] = await Promise.all([
         api.get('/auth/users'),
         api.get('/incidents/all'),
         api.get('/responders'),
         api.get('/dispatch/all'),
+        api.get('/admin/list').catch(() => ({ data: [] })),
       ]);
 
       const usersData      = usersRes.data;
@@ -772,11 +1163,12 @@ export default function Dashboard() {
       const dispatchData   = dispatchRes.data;
 
       setUsers(usersData);
+      setAdmins(adminsRes.data || []);
       setIncidents(incidentsData);
       setResponders(respondersData);
       setDispatches(dispatchData);
       setStats({
-        users:      usersData.length,
+        users:      usersData.filter((u) => u.account_status !== 'Deleted').length,
         incidents:  incidentsData.length,
         pending:    incidentsData.filter((i) => i.incident_status === 'Pending').length,
         resolved:   incidentsData.filter((i) => i.incident_status === 'Resolved').length,
@@ -822,7 +1214,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     setArchiveSelectedIds(new Set());
-  }, [archiveModule]);
+  }, [archiveModule, archiveUserTab]);
 
   const handleLogout = () => {
     setConfirmModal({
@@ -888,10 +1280,33 @@ export default function Dashboard() {
     cancelled: cancelledIncidents.length,
   };
 
+  const liveMobileUsers = users.filter((u) => u.account_status !== 'Deleted');
+  const deletedUsers = users.filter((u) => u.account_status === 'Deleted');
+  const otherAdmins = admins.filter(
+    (a) => Number(a.admin_id) !== Number(user?.admin_id) && a.account_status !== 'Deleted'
+  );
+  const deletedAdmins = admins.filter(
+    (a) => Number(a.admin_id) !== Number(user?.admin_id) && a.account_status === 'Deleted'
+  );
+  const userQuery = userSearch.trim().toLowerCase();
+  const filteredMobileUsers = liveMobileUsers.filter((u) => {
+    if (userStatusFilter === 'active' && u.account_status !== 'Active') return false;
+    if (userStatusFilter === 'blocked' && u.account_status === 'Active') return false;
+    if (userQuery && !userSearchText(u).toLowerCase().includes(userQuery)) return false;
+    return true;
+  });
+  const filteredAdmins = otherAdmins.filter((a) => {
+    if (userStatusFilter === 'active' && a.account_status !== 'Active') return false;
+    if (userStatusFilter === 'blocked' && a.account_status !== 'Blocked') return false;
+    if (userQuery && !adminSearchText(a).toLowerCase().includes(userQuery)) return false;
+    return true;
+  });
+
   const archiveModuleCounts = {
     accident: archivedIncidents.length + deletedIncidents.length,
     dispatch: archiveDispatchRows.length,
     'call-log': archiveCallLogs.length,
+    users: deletedUsers.length + deletedAdmins.length,
   };
 
   const toggleArchiveSelect = (id) => {
@@ -1148,6 +1563,188 @@ export default function Dashboard() {
     }
   };
 
+  const userIsBlocked = (u) => u.account_status !== 'Active';
+
+  const handleBlockUser = (u) => {
+    const blocking = !userIsBlocked(u);
+    openConfirm({
+      title: blocking ? 'Block this user?' : 'Unblock this user?',
+      message: blocking
+        ? `${u.first_name} ${u.last_name} will not be able to log in to the mobile app.`
+        : `${u.first_name} ${u.last_name} will be able to log in again.`,
+      confirmLabel: blocking ? 'Block' : 'Unblock',
+      variant: blocking ? 'warning' : 'info',
+      onConfirm: async () => {
+        closeConfirm();
+        try {
+          await api.patch(`/auth/users/${u.user_id}`, {
+            account_status: blocking ? 'Blocked' : 'Active',
+          });
+          await fetchData();
+        } catch (err) {
+          setError(err.message || 'Failed to update user status.');
+        }
+      },
+    });
+  };
+
+  const handleDeleteUser = (u) => {
+    openConfirm({
+      title: 'Move user to Archive?',
+      message: `${u.first_name} ${u.last_name} will be moved to Archive. You can restore them later.`,
+      confirmLabel: 'Move to Archive',
+      variant: 'warning',
+      onConfirm: async () => {
+        closeConfirm();
+        try {
+          await api.patch(`/auth/users/${u.user_id}`, { account_status: 'Deleted' });
+          await fetchData();
+          setActiveTab('archive');
+          setArchiveModule('users');
+          setArchiveUserTab('mobile');
+        } catch (err) {
+          setError(err.message || 'Failed to archive user.');
+        }
+      },
+    });
+  };
+
+  const handleRestoreUsers = (ids) => {
+    if (!ids?.length) return;
+    openConfirm({
+      title: 'Restore user(s)?',
+      message: `Restore ${ids.length} user(s) back to the Users page?`,
+      confirmLabel: 'Restore',
+      variant: 'info',
+      onConfirm: async () => {
+        closeConfirm();
+        try {
+          await Promise.all(ids.map((id) => api.patch(`/auth/users/${id}`, { account_status: 'Active' })));
+          setArchiveSelectedIds(new Set());
+          await fetchData();
+        } catch (err) {
+          setError(err.message || 'Failed to restore users.');
+        }
+      },
+    });
+  };
+
+  const handlePermanentDeleteUsers = (ids) => {
+    if (!ids?.length) return;
+    openConfirm({
+      title: 'Permanently delete user(s)?',
+      message: `This cannot be undone. ${ids.length} user(s) will be removed. If they have incident records, restore and block them instead.`,
+      confirmLabel: 'Delete',
+      variant: 'danger',
+      onConfirm: async () => {
+        closeConfirm();
+        try {
+          await Promise.all(ids.map((id) => api.delete(`/auth/users/${id}`)));
+          setArchiveSelectedIds(new Set());
+          await fetchData();
+        } catch (err) {
+          setError(err.message || 'Failed to delete users.');
+        }
+      },
+    });
+  };
+
+  const handleBlockAdmin = (a) => {
+    if (user?.admin_id && Number(user.admin_id) === Number(a.admin_id)) {
+      setError('You cannot block your own admin account.');
+      return;
+    }
+    const blocking = a.account_status !== 'Blocked';
+    openConfirm({
+      title: blocking ? 'Block this admin?' : 'Unblock this admin?',
+      message: blocking
+        ? `${a.first_name} ${a.last_name} will not be able to sign in to the admin panel.`
+        : `${a.first_name} ${a.last_name} will be able to sign in again.`,
+      confirmLabel: blocking ? 'Block' : 'Unblock',
+      variant: blocking ? 'warning' : 'info',
+      onConfirm: async () => {
+        closeConfirm();
+        try {
+          await api.patch(`/admin/${a.admin_id}`, {
+            account_status: blocking ? 'Blocked' : 'Active',
+          });
+          await fetchData();
+        } catch (err) {
+          setError(err.message || 'Failed to update admin status.');
+        }
+      },
+    });
+  };
+
+  const handleDeleteAdmin = (a) => {
+    if (user?.admin_id && Number(user.admin_id) === Number(a.admin_id)) {
+      setError('You cannot delete your own admin account.');
+      return;
+    }
+    openConfirm({
+      title: 'Move admin to Archive?',
+      message: `${a.first_name} ${a.last_name} (@${a.username}) will be moved to Archive. They will not be able to sign in until restored.`,
+      confirmLabel: 'Move to Archive',
+      variant: 'warning',
+      onConfirm: async () => {
+        closeConfirm();
+        try {
+          await api.patch(`/admin/${a.admin_id}`, { account_status: 'Deleted' });
+          await fetchData();
+          setActiveTab('archive');
+          setArchiveModule('users');
+          setArchiveUserTab('admins');
+        } catch (err) {
+          setError(err.message || 'Failed to archive admin.');
+        }
+      },
+    });
+  };
+
+  const handleRestoreAdmins = (ids) => {
+    if (!ids?.length) return;
+    openConfirm({
+      title: 'Restore admin(s)?',
+      message: `Restore ${ids.length} admin(s) back to Admin Accounts?`,
+      confirmLabel: 'Restore',
+      variant: 'info',
+      onConfirm: async () => {
+        closeConfirm();
+        try {
+          await Promise.all(ids.map((id) => api.patch(`/admin/${id}`, { account_status: 'Active' })));
+          setArchiveSelectedIds(new Set());
+          await fetchData();
+        } catch (err) {
+          setError(err.message || 'Failed to restore admins.');
+        }
+      },
+    });
+  };
+
+  const handlePermanentDeleteAdmins = (ids) => {
+    if (!ids?.length) return;
+    if (ids.some((id) => Number(id) === Number(user?.admin_id))) {
+      setError('You cannot delete your own admin account.');
+      return;
+    }
+    openConfirm({
+      title: 'Permanently delete admin(s)?',
+      message: `This cannot be undone. ${ids.length} admin account(s) will be removed.`,
+      confirmLabel: 'Delete',
+      variant: 'danger',
+      onConfirm: async () => {
+        closeConfirm();
+        try {
+          await Promise.all(ids.map((id) => api.delete(`/admin/${id}`)));
+          setArchiveSelectedIds(new Set());
+          await fetchData();
+        } catch (err) {
+          setError(err.message || 'Failed to delete admins.');
+        }
+      },
+    });
+  };
+
   const fullName  = user ? `${user.first_name} ${user.last_name}` : 'Admin';
   const initial   = user ? user.first_name?.charAt(0).toUpperCase() : 'A';
   const adminRole = user?.role || 'Admin';
@@ -1239,22 +1836,24 @@ export default function Dashboard() {
           </button>
 
           <div className={styles.topbarLeft}>
-          <div className={styles.topbarTitle}>
+            <div className={styles.topbarTitle}>
               {currentNav?.icon} {currentNav?.label}
             </div>
-            {activeTab !== 'live-map' && (
-              <div className={styles.liveBadge}>
-                <span className={styles.liveDot} />
-                LIVE
-              </div>
-            )}
           </div>
 
           <div className={styles.topbarRight}>
             <span className={styles.topbarClock}>
               {clockStr} · {dateStr}
             </span>
-            <button className={styles.notifBtn} title="Pending alerts">
+            <button
+              type="button"
+              className={styles.notifBtn}
+              title="View pending accidents"
+              onClick={() => {
+                setActiveTab('incidents');
+                setIncidentFilter('pending');
+              }}
+            >
               🔔
               {stats.pending > 0 && (
                 <span className={styles.notifCount}>{stats.pending}</span>
@@ -1358,7 +1957,7 @@ export default function Dashboard() {
                                 {inc.incident_status}
                               </span>
                             </td>
-                            <td>{inc.priority_level || 'Normal'}</td>
+                            <td><PriorityBadge level={inc.priority_level} /></td>
                             <td style={{ color: '#888', fontSize: 12 }}>{formatDate(inc.date_reported)}</td>
                           </tr>
                         ))}
@@ -1602,6 +2201,59 @@ export default function Dashboard() {
                   />
                 </>
               )}
+
+              {archiveModule === 'users' && (
+                <>
+                  <p className={styles.archiveHint}>
+                    Deleted users and admins stay here. Restore sends them back to Users. Delete removes them permanently.
+                  </p>
+                  <div className={styles.subTabRow}>
+                    <button
+                      className={`${styles.subTab} ${archiveUserTab === 'mobile' ? styles.subTabActive : ''}`}
+                      onClick={() => setArchiveUserTab('mobile')}
+                    >
+                      Deleted Users ({deletedUsers.length})
+                    </button>
+                    <button
+                      className={`${styles.subTab} ${archiveUserTab === 'admins' ? styles.subTabActive : ''}`}
+                      onClick={() => setArchiveUserTab('admins')}
+                    >
+                      Deleted Admins ({deletedAdmins.length})
+                    </button>
+                  </div>
+                  {archiveUserTab === 'mobile' ? (
+                    <ArchiveRecordsTable
+                      rows={deletedUsers}
+                      columns={USER_ARCHIVE_COLUMNS}
+                      idKey="user_id"
+                      isLoading={isLoading}
+                      emptyMessage="No deleted mobile users yet."
+                      selectedIds={archiveSelectedIds}
+                      onToggleSelect={toggleArchiveSelect}
+                      onToggleSelectAll={toggleArchiveSelectAll}
+                      onRestore={handleRestoreUsers}
+                      onDelete={handlePermanentDeleteUsers}
+                      searchPlaceholder="Search deleted users..."
+                      getSearchText={userSearchText}
+                    />
+                  ) : (
+                    <ArchiveRecordsTable
+                      rows={deletedAdmins}
+                      columns={ADMIN_ARCHIVE_COLUMNS}
+                      idKey="admin_id"
+                      isLoading={isLoading}
+                      emptyMessage="No deleted admin accounts yet."
+                      selectedIds={archiveSelectedIds}
+                      onToggleSelect={toggleArchiveSelect}
+                      onToggleSelectAll={toggleArchiveSelectAll}
+                      onRestore={handleRestoreAdmins}
+                      onDelete={handlePermanentDeleteAdmins}
+                      searchPlaceholder="Search deleted admins..."
+                      getSearchText={adminSearchText}
+                    />
+                  )}
+                </>
+              )}
             </div>
           )}
 
@@ -1789,53 +2441,200 @@ export default function Dashboard() {
           {activeTab === 'users' && (
             <div>
               <div className={styles.tabHeader}>
-                <h2 className={styles.sectionTitle}>Registered Users</h2>
-                <button className={styles.refreshBtn} onClick={fetchData}>🔄 Refresh</button>
+                <h2 className={styles.sectionTitle}>Users & Admins</h2>
+                <div className={styles.tabHeaderActions}>
+                  <button className={styles.addBtn} onClick={() => setShowAddAdmin(true)}>
+                    + Add
+                  </button>
+                  <button className={styles.refreshBtn} onClick={fetchData}>🔄 Refresh</button>
+                </div>
               </div>
-              <div className={styles.tableCard}>
-                {isLoading ? <TableLoader /> : (
-                  <div className={styles.tableWrapper}>
-                    <table className={styles.table}>
-                      <thead>
-                        <tr>
-                          <th>ID</th><th>Name</th><th>Email</th><th>Phone</th>
-                          <th>Address</th><th>Status</th><th>Registered</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {users.map((u) => (
-                          <tr key={u.user_id}>
-                            <td><strong>#{u.user_id}</strong></td>
-                            <td>
-                              <div className={styles.userCell}>
-                                <div className={styles.userAvatar}>{u.first_name?.charAt(0).toUpperCase()}</div>
-                                <span className={styles.userName2}>{u.first_name} {u.last_name}</span>
-                              </div>
-                            </td>
-                            <td style={{ color: '#555' }}>{u.email}</td>
-                            <td style={{ color: '#888' }}>{u.phone_number || '—'}</td>
-                            <td className={styles.descCell} style={{ color: '#888' }}>{u.address || '—'}</td>
-                            <td>
-                              <span
-                                className={`${styles.statusBadge} ${
-                                  u.account_status === 'Active' ? styles.statusActive : styles.statusInactive
-                                }`}
-                              >
-                                <span className={styles.statusDotBadge} />
-                                {u.account_status}
-                              </span>
-                            </td>
-                            <td style={{ color: '#888', fontSize: 12 }}>{formatDate(u.date_registered)}</td>
-                          </tr>
-                        ))}
-                        {users.length === 0 && (
-                          <tr><td colSpan={7} className={styles.emptyRow}>📭 No users registered yet.</td></tr>
-                        )}
-                      </tbody>
-                    </table>
+
+              {/* sub-tabs */}
+              <div className={styles.subTabRow}>
+                <button
+                  className={`${styles.subTab} ${userSubTab === 'mobile' ? styles.subTabActive : ''}`}
+                  onClick={() => setUserSubTab('mobile')}
+                >
+                  📱 Mobile Users ({liveMobileUsers.length})
+                </button>
+                <button
+                  className={`${styles.subTab} ${userSubTab === 'admins' ? styles.subTabActive : ''}`}
+                  onClick={() => setUserSubTab('admins')}
+                >
+                  🛡️ Admin Accounts ({otherAdmins.length})
+                </button>
+              </div>
+
+              {/* Mobile Users table */}
+              {userSubTab === 'mobile' && (
+                <div className={styles.tableCard}>
+                  <div className={styles.incidentToolbar}>
+                    <input
+                      type="search"
+                      className={styles.incidentSearch}
+                      placeholder="Search users by name, email, or phone..."
+                      value={userSearch}
+                      onChange={(e) => setUserSearch(e.target.value)}
+                    />
+                    <select
+                      className={styles.incidentTypeFilter}
+                      value={userStatusFilter}
+                      onChange={(e) => setUserStatusFilter(e.target.value)}
+                    >
+                      <option value="all">All statuses</option>
+                      <option value="active">Active</option>
+                      <option value="blocked">Blocked</option>
+                    </select>
                   </div>
-                )}
-              </div>
+                  {isLoading ? <TableLoader /> : (
+                    <div className={styles.tableWrapper}>
+                      <table className={styles.table}>
+                        <thead>
+                          <tr>
+                            <th>ID</th><th>Name</th><th>Email</th><th>Phone</th>
+                            <th>Address</th><th>Status</th><th>Registered</th><th>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredMobileUsers.map((u) => {
+                            const blocked = u.account_status !== 'Active';
+                            return (
+                            <tr key={u.user_id}>
+                              <td><strong>#{u.user_id}</strong></td>
+                              <td>
+                                <div className={styles.userCell}>
+                                  <div className={styles.userAvatar}>{u.first_name?.charAt(0).toUpperCase()}</div>
+                                  <span className={styles.userName2}>{u.first_name} {u.last_name}</span>
+                                </div>
+                              </td>
+                              <td style={{ color: '#555' }}>{u.email}</td>
+                              <td style={{ color: '#888' }}>{u.phone_number || '—'}</td>
+                              <td className={styles.descCell} style={{ color: '#888' }}>{u.address || '—'}</td>
+                              <td>
+                                <span className={`${styles.statusBadge} ${blocked ? styles.statusBlocked : styles.statusActive}`}>
+                                  <span className={styles.statusDotBadge} />
+                                  {blocked ? 'Blocked' : 'Active'}
+                                </span>
+                              </td>
+                              <td style={{ color: '#888', fontSize: 12 }}>{formatDate(u.date_registered)}</td>
+                              <td>
+                                <div className={styles.actionGroup}>
+                                  <button type="button" className={styles.editBtn} onClick={() => setEditingUser(u)}>
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={blocked ? styles.unblockBtn : styles.blockBtn}
+                                    onClick={() => handleBlockUser(u)}
+                                  >
+                                    {blocked ? 'Unblock' : 'Block'}
+                                  </button>
+                                  <button type="button" className={styles.deleteBtn} onClick={() => handleDeleteUser(u)}>
+                                    Delete
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                            );
+                          })}
+                          {filteredMobileUsers.length === 0 && (
+                            <tr><td colSpan={8} className={styles.emptyRow}>No users match this search.</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Admin Accounts table */}
+              {userSubTab === 'admins' && (
+                <div className={styles.tableCard}>
+                  <div className={styles.incidentToolbar}>
+                    <input
+                      type="search"
+                      className={styles.incidentSearch}
+                      placeholder="Search admins by name, username, or role..."
+                      value={userSearch}
+                      onChange={(e) => setUserSearch(e.target.value)}
+                    />
+                    <select
+                      className={styles.incidentTypeFilter}
+                      value={userStatusFilter}
+                      onChange={(e) => setUserStatusFilter(e.target.value)}
+                    >
+                      <option value="all">All statuses</option>
+                      <option value="active">Active</option>
+                      <option value="blocked">Blocked</option>
+                    </select>
+                  </div>
+                  {isLoading ? <TableLoader /> : (
+                    <div className={styles.tableWrapper}>
+                      <table className={styles.table}>
+                        <thead>
+                          <tr>
+                            <th>ID</th><th>Name</th><th>Username</th><th>Role</th>
+                            <th>Contact</th><th>Status</th><th>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredAdmins.map((a) => {
+                            const blocked = a.account_status === 'Blocked';
+                            return (
+                            <tr key={a.admin_id}>
+                              <td><strong>#{a.admin_id}</strong></td>
+                              <td>
+                                <div className={styles.userCell}>
+                                  <div className={styles.userAvatar} style={{ background: '#7c3aed' }}>
+                                    {a.first_name?.charAt(0).toUpperCase()}
+                                  </div>
+                                  <span className={styles.userName2}>{a.first_name} {a.last_name}</span>
+                                </div>
+                              </td>
+                              <td><code style={{ fontSize: 12, background: '#f3f4f6', padding: '2px 6px', borderRadius: 4 }}>@{a.username}</code></td>
+                              <td>
+                                <span className={`${styles.statusBadge} ${styles.statusActive}`}
+                                  style={{ background: '#ede9fe', color: '#5b21b6', borderColor: '#ddd6fe' }}>
+                                  🛡️ {a.role}
+                                </span>
+                              </td>
+                              <td style={{ color: '#888' }}>{a.contact_number || '—'}</td>
+                              <td>
+                                <span className={`${styles.statusBadge} ${blocked ? styles.statusBlocked : styles.statusActive}`}>
+                                  <span className={styles.statusDotBadge} />
+                                  {blocked ? 'Blocked' : 'Active'}
+                                </span>
+                              </td>
+                              <td>
+                                <div className={styles.actionGroup}>
+                                  <button type="button" className={styles.editBtn} onClick={() => setEditingAdmin(a)}>
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={blocked ? styles.unblockBtn : styles.blockBtn}
+                                    onClick={() => handleBlockAdmin(a)}
+                                  >
+                                    {blocked ? 'Unblock' : 'Block'}
+                                  </button>
+                                  <button type="button" className={styles.deleteBtn} onClick={() => handleDeleteAdmin(a)}>
+                                    Delete
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                            );
+                          })}
+                          {filteredAdmins.length === 0 && (
+                            <tr><td colSpan={7} className={styles.emptyRow}>No other admin accounts match this search.</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1845,6 +2644,7 @@ export default function Dashboard() {
         <IncidentStatusModal
           incident={editingIncident}
           responders={responders}
+          users={users}
           onClose={() => setEditingIncident(null)}
           onUpdated={fetchData}
         />
@@ -1874,6 +2674,28 @@ export default function Dashboard() {
           variant={confirmModal.variant || 'danger'}
           onConfirm={confirmModal.onConfirm}
           onCancel={closeConfirm}
+        />
+      )}
+
+      {/* ── Add Admin Modal ────────────────────────── */}
+      {showAddAdmin && (
+        <AddAdminModal
+          onClose={() => setShowAddAdmin(false)}
+          onCreated={() => { setShowAddAdmin(false); fetchData(); }}
+        />
+      )}
+      {editingUser && (
+        <EditUserModal
+          user={editingUser}
+          onClose={() => setEditingUser(null)}
+          onSaved={() => { setEditingUser(null); fetchData(); }}
+        />
+      )}
+      {editingAdmin && (
+        <EditAdminModal
+          admin={editingAdmin}
+          onClose={() => setEditingAdmin(null)}
+          onSaved={() => { setEditingAdmin(null); fetchData(); }}
         />
       )}
     </div>

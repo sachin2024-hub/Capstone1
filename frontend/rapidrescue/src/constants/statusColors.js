@@ -13,6 +13,12 @@ export const STATUS_COLORS = {
   Deleted: '#B71C1C',
 };
 
+export const PRIORITY_COLORS = {
+  Normal: '#FFC107',
+  High: '#E53935',
+  Critical: '#B71C1C',
+};
+
 export const DISPATCH_COLORS = {
   Assigned: '#FFC107',
   'En Route': '#2196F3',

@@ -142,14 +142,31 @@ router.get('/all', async (req, res) => {
       .from('incidents')
       .select(`
         *,
-        users(first_name, last_name, email),
+        users(user_id, first_name, last_name, email, phone_number),
         locations(*),
         dispatch(dispatch_id, dispatch_status, dispatch_time, responders(first_name, last_name, responder_type))
       `)
       .order('date_reported', { ascending: false });
 
     if (error) return res.status(500).json({ message: error.message });
-    return res.json(data);
+
+    const userIds = [...new Set((data || []).map((inc) => inc.user_id).filter(Boolean))];
+    let registeredById = {};
+    if (userIds.length) {
+      const { data: userRows } = await supabase
+        .from('users')
+        .select('user_id, first_name, last_name, email, phone_number')
+        .in('user_id', userIds);
+      registeredById = Object.fromEntries((userRows || []).map((u) => [String(u.user_id), u]));
+    }
+
+    const rows = (data || []).map((inc) => {
+      const nested = Array.isArray(inc.users) ? inc.users[0] : inc.users;
+      const registered = registeredById[String(inc.user_id)] || nested || null;
+      return { ...inc, users: registered };
+    });
+
+    return res.json(rows);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }

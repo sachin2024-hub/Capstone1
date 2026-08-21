@@ -23,6 +23,37 @@ router.post('/register', async (req, res) => {
 
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const normalizedPhone = phone_number ? String(phone_number).trim() : '';
+
+    const { data: existingEmail } = await supabase
+      .from('users')
+      .select('user_id')
+      .ilike('email', normalizedEmail)
+      .maybeSingle();
+
+    if (existingEmail) {
+      return res.status(409).json({
+        field: 'email',
+        message: 'This email address is already registered. Please use a different email address.',
+      });
+    }
+
+    if (normalizedPhone) {
+      const { data: existingPhone } = await supabase
+        .from('users')
+        .select('user_id')
+        .eq('phone_number', normalizedPhone)
+        .limit(1)
+        .maybeSingle();
+
+      if (existingPhone) {
+        return res.status(409).json({
+          field: 'phone_number',
+          message: 'This mobile number is already registered. Please use a different mobile number.',
+        });
+      }
+    }
 
     const { data, error } = await supabase
       .from('users')
@@ -31,8 +62,8 @@ router.post('/register', async (req, res) => {
           first_name,
           middle_name: middle_name || null,
           last_name,
-          phone_number: phone_number || null,
-          email,
+          phone_number: normalizedPhone || null,
+          email: normalizedEmail,
           password: hashedPassword,
           address: address || null,
           account_status: 'Active',
@@ -43,7 +74,17 @@ router.post('/register', async (req, res) => {
 
     if (error) {
       if (error.code === '23505') {
-        return res.status(409).json({ message: 'Email or phone number already registered.' });
+        const info = `${error.message || ''} ${error.details || ''} ${error.hint || ''}`.toLowerCase();
+        if (info.includes('phone')) {
+          return res.status(409).json({
+            field: 'phone_number',
+            message: 'This mobile number is already registered. Please use a different mobile number.',
+          });
+        }
+        return res.status(409).json({
+          field: 'email',
+          message: 'This email address is already registered. Please use a different email address.',
+        });
       }
       return res.status(500).json({ message: error.message });
     }
@@ -110,6 +151,79 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// POST /api/auth/forgot-password/verify
+router.post('/forgot-password/verify', async (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  const phone_number = String(req.body?.phone_number || '').trim();
+
+  if (!email || !phone_number) {
+    return res.status(400).json({ message: 'Email and mobile number are required.' });
+  }
+
+  try {
+    const { data } = await supabase
+      .from('users')
+      .select('user_id, email, phone_number, account_status')
+      .ilike('email', email)
+      .eq('phone_number', phone_number)
+      .maybeSingle();
+
+    if (!data) {
+      return res.status(404).json({
+        message: 'No account matches that email and mobile number.',
+      });
+    }
+
+    if (data.account_status !== 'Active') {
+      return res.status(403).json({ message: 'This account cannot reset its password. Contact support.' });
+    }
+
+    const reset_token = jwt.sign(
+      { user_id: data.user_id, purpose: 'password_reset' },
+      process.env.JWT_SECRET,
+      { expiresIn: '15m' }
+    );
+
+    return res.json({
+      message: 'Account verified. You can now set a new password.',
+      reset_token,
+    });
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error. Please try again.' });
+  }
+});
+
+// POST /api/auth/forgot-password/reset
+router.post('/forgot-password/reset', async (req, res) => {
+  const { reset_token, password } = req.body;
+
+  if (!reset_token || !password) {
+    return res.status(400).json({ message: 'Reset token and new password are required.' });
+  }
+  if (String(password).length < 6) {
+    return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+  }
+
+  try {
+    const decoded = jwt.verify(reset_token, process.env.JWT_SECRET);
+    if (!decoded || decoded.purpose !== 'password_reset' || !decoded.user_id) {
+      return res.status(403).json({ message: 'Invalid or expired reset link. Please verify again.' });
+    }
+
+    const hashedPassword = await bcrypt.hash(String(password), 10);
+    const { error } = await supabase
+      .from('users')
+      .update({ password: hashedPassword })
+      .eq('user_id', decoded.user_id);
+
+    if (error) return res.status(500).json({ message: error.message });
+
+    return res.json({ message: 'Password updated. You can now log in with your new password.' });
+  } catch (err) {
+    return res.status(403).json({ message: 'Invalid or expired reset link. Please verify again.' });
+  }
+});
+
 // GET /api/auth/users  - Get all users (for dashboard)
 router.get('/users', async (req, res) => {
   try {
@@ -120,6 +234,86 @@ router.get('/users', async (req, res) => {
 
     if (error) return res.status(500).json({ message: error.message });
     return res.json(data);
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+const USER_STATUSES = ['Active', 'Inactive', 'Blocked', 'Deleted'];
+const USER_SAFE_FIELDS = 'user_id, first_name, middle_name, last_name, email, phone_number, address, account_status, date_registered';
+
+// PATCH /api/auth/users/:id — edit profile or block/unblock
+router.patch('/users/:id', async (req, res) => {
+  const { first_name, middle_name, last_name, email, phone_number, address, account_status, password } = req.body;
+  const updates = {};
+
+  if (first_name !== undefined) updates.first_name = first_name.trim();
+  if (middle_name !== undefined) updates.middle_name = middle_name.trim() || null;
+  if (last_name !== undefined) updates.last_name = last_name.trim();
+  if (email !== undefined) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ message: 'Invalid email format.' });
+    }
+    updates.email = email.trim();
+  }
+  if (phone_number !== undefined) updates.phone_number = phone_number.trim() || null;
+  if (address !== undefined) updates.address = address.trim() || null;
+  if (account_status !== undefined) {
+    if (!USER_STATUSES.includes(account_status)) {
+      return res.status(400).json({ message: 'Invalid status. Use Active, Inactive, Blocked, or Deleted.' });
+    }
+    updates.account_status = account_status;
+  }
+  if (password) {
+    if (password.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+    }
+    updates.password = await bcrypt.hash(password, 10);
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return res.status(400).json({ message: 'No fields to update.' });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .update(updates)
+      .eq('user_id', req.params.id)
+      .select(USER_SAFE_FIELDS)
+      .single();
+
+    if (error) {
+      if (error.code === '23505') {
+        return res.status(409).json({ message: 'Email or phone number already in use.' });
+      }
+      return res.status(500).json({ message: error.message });
+    }
+    if (!data) return res.status(404).json({ message: 'User not found.' });
+    return res.json(data);
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+// DELETE /api/auth/users/:id
+router.delete('/users/:id', async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('users')
+      .delete()
+      .eq('user_id', req.params.id);
+
+    if (error) {
+      if (error.code === '23503') {
+        return res.status(409).json({
+          message: 'This user has incident records. Block the account instead of deleting.',
+        });
+      }
+      return res.status(500).json({ message: error.message });
+    }
+    return res.json({ message: 'User deleted.' });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }

@@ -3,6 +3,9 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const supabase = require('../config/supabase');
+const { isAdminBlocked, setAdminBlocked, isAdminArchived, setAdminArchived } = require('../utils/archiveStore');
+
+const ADMIN_ROLES = ['Admin', 'User'];
 
 // POST /api/admin/register
 router.post('/register', async (req, res) => {
@@ -14,6 +17,11 @@ router.post('/register', async (req, res) => {
 
   if (password.length < 6) {
     return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+  }
+
+  const assignedRole = role || 'Admin';
+  if (!ADMIN_ROLES.includes(assignedRole)) {
+    return res.status(400).json({ message: 'Invalid role. Use Admin or User.' });
   }
 
   try {
@@ -28,7 +36,7 @@ router.post('/register', async (req, res) => {
           last_name,
           username,
           password: hashedPassword,
-          role: role || 'Admin',
+          role: assignedRole,
           contact_number: contact_number || null,
         },
       ])
@@ -58,6 +66,28 @@ router.post('/register', async (req, res) => {
   }
 });
 
+// GET /api/admin/list  — fetch all admins (no passwords)
+router.get('/list', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('admin')
+      .select('admin_id, first_name, middle_name, last_name, username, role, contact_number')
+      .order('admin_id', { ascending: false });
+
+    if (error) return res.status(500).json({ message: error.message });
+    const rows = (data || []).map((admin) => {
+      const archived = isAdminArchived(admin.admin_id);
+      return {
+        ...admin,
+        account_status: archived ? 'Deleted' : (isAdminBlocked(admin.admin_id) ? 'Blocked' : 'Active'),
+      };
+    });
+    return res.json(rows);
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+});
+
 // POST /api/admin/login
 router.post('/login', async (req, res) => {
   const { username, password } = req.body;
@@ -75,6 +105,10 @@ router.post('/login', async (req, res) => {
 
     if (error || !data) {
       return res.status(401).json({ message: 'Invalid username or password.' });
+    }
+
+    if (isAdminArchived(data.admin_id) || isAdminBlocked(data.admin_id)) {
+      return res.status(403).json({ message: 'This admin account is blocked. Contact another administrator.' });
     }
 
     const isMatch = await bcrypt.compare(password, data.password);
@@ -97,6 +131,103 @@ router.post('/login', async (req, res) => {
     });
   } catch (err) {
     return res.status(500).json({ message: 'Server error. Please try again.' });
+  }
+});
+
+const ADMIN_SAFE_FIELDS = 'admin_id, first_name, middle_name, last_name, username, role, contact_number';
+
+// PATCH /api/admin/:id — edit admin (must stay after /list, /register, /login)
+router.patch('/:id', async (req, res) => {
+  const { first_name, middle_name, last_name, username, role, contact_number, password, account_status } = req.body;
+  const updates = {};
+
+  if (first_name !== undefined) updates.first_name = first_name.trim();
+  if (middle_name !== undefined) updates.middle_name = middle_name.trim() || null;
+  if (last_name !== undefined) updates.last_name = last_name.trim();
+  if (username !== undefined) updates.username = username.trim();
+  if (contact_number !== undefined) updates.contact_number = contact_number.trim() || null;
+  if (role !== undefined) {
+    if (!ADMIN_ROLES.includes(role)) {
+      return res.status(400).json({ message: 'Invalid role.' });
+    }
+    updates.role = role;
+  }
+  if (password) {
+    if (password.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+    }
+    updates.password = await bcrypt.hash(password, 10);
+  }
+
+  if (account_status !== undefined && !['Active', 'Blocked', 'Deleted'].includes(account_status)) {
+    return res.status(400).json({ message: 'Invalid status. Use Active, Blocked, or Deleted.' });
+  }
+
+  if (Object.keys(updates).length === 0 && account_status === undefined) {
+    return res.status(400).json({ message: 'No fields to update.' });
+  }
+
+  try {
+    let data = null;
+    if (Object.keys(updates).length > 0) {
+      const result = await supabase
+        .from('admin')
+        .update(updates)
+        .eq('admin_id', req.params.id)
+        .select(ADMIN_SAFE_FIELDS)
+        .single();
+
+      if (result.error) {
+        if (result.error.code === '23505') {
+          return res.status(409).json({ message: 'Username already taken.' });
+        }
+        return res.status(500).json({ message: result.error.message });
+      }
+      if (!result.data) return res.status(404).json({ message: 'Admin not found.' });
+      data = result.data;
+    } else {
+      const result = await supabase
+        .from('admin')
+        .select(ADMIN_SAFE_FIELDS)
+        .eq('admin_id', req.params.id)
+        .single();
+      if (result.error || !result.data) return res.status(404).json({ message: 'Admin not found.' });
+      data = result.data;
+    }
+
+    if (account_status !== undefined) {
+      if (account_status === 'Deleted') {
+        setAdminArchived(req.params.id, true);
+      } else {
+        setAdminArchived(req.params.id, false);
+        setAdminBlocked(req.params.id, account_status === 'Blocked');
+      }
+    }
+
+    const archived = isAdminArchived(req.params.id);
+    return res.json({
+      ...data,
+      account_status: archived ? 'Deleted' : (isAdminBlocked(req.params.id) ? 'Blocked' : 'Active'),
+    });
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+// DELETE /api/admin/:id
+router.delete('/:id', async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('admin')
+      .delete()
+      .eq('admin_id', req.params.id);
+
+    if (error) return res.status(500).json({ message: error.message });
+    setAdminBlocked(req.params.id, false);
+    setAdminArchived(req.params.id, false);
+    return res.json({ message: 'Admin deleted.' });
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error.' });
   }
 });
 
