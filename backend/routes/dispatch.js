@@ -37,7 +37,7 @@ router.get('/live', async (req, res) => {
           responders(responder_id, first_name, last_name, responder_type, contact_number, availability_status)
         )
       `)
-      .in('incident_status', ['Pending', 'In Progress'])
+      .in('incident_status', ['Pending', 'Outside', 'For Referral', 'Referred', 'In Progress'])
       .order('date_reported', { ascending: false });
 
     if (incErr) return res.status(500).json({ message: incErr.message });
@@ -103,7 +103,7 @@ router.post('/assign', async (req, res) => {
     return res.status(400).json({ message: 'incident_id and responder_id are required.' });
   }
 
-  const CLOSED_STATUSES = ['Resolved', 'Cancelled', 'Archived', 'Deleted'];
+  const CLOSED_STATUSES = ['Resolved', 'Completed', 'Cancelled', 'Archived', 'Deleted'];
 
   try {
     const { data: incident, error: incErr } = await supabase

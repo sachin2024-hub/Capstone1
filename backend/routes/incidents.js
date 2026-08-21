@@ -41,21 +41,31 @@ router.post('/sos', authenticateToken, async (req, res) => {
     );
 
     const baseDescription = incident_description || 'SOS alert triggered.';
-    const { data: incident, error: incidentError } = await supabase
+    const payload = {
+      user_id,
+      incident_type: incident_type || 'Emergency',
+      incident_description: withinCity
+        ? baseDescription
+        : `${baseDescription} ${OUTSIDE_MESSAGE}`,
+      incident_status: withinCity ? 'Pending' : 'Outside',
+      priority_level: resolvedPriority,
+    };
+
+    let { data: incident, error: incidentError } = await supabase
       .from('incidents')
-      .insert([
-        {
-          user_id,
-          incident_type: incident_type || 'Emergency',
-          incident_description: withinCity
-            ? baseDescription
-            : `${baseDescription} ${OUTSIDE_MESSAGE}`,
-          incident_status: 'Pending',
-          priority_level: resolvedPriority,
-        },
-      ])
+      .insert([payload])
       .select()
       .single();
+
+    if (incidentError && !withinCity) {
+      const retry = await supabase
+        .from('incidents')
+        .insert([{ ...payload, incident_status: 'Pending' }])
+        .select()
+        .single();
+      incident = retry.data;
+      incidentError = retry.error;
+    }
 
     if (incidentError) {
       return res.status(500).json({ message: incidentError.message });
@@ -84,7 +94,7 @@ router.post('/sos', authenticateToken, async (req, res) => {
       }
     }
 
-    const dispatch = await autoDispatch(incident.incident_id);
+    const dispatch = withinCity ? await autoDispatch(incident.incident_id) : null;
 
     return res.status(201).json({
       message: withinCity
@@ -145,10 +155,28 @@ router.get('/all', async (req, res) => {
   }
 });
 
-const VALID_STATUSES = ['Pending', 'In Progress', 'En Route', 'Arrived', 'Resolved', 'Cancelled', 'Archived', 'Deleted'];
+const CITY_FLOW = ['Pending', 'In Progress', 'En Route', 'Arrived', 'Resolved', 'Cancelled', 'Archived', 'Deleted'];
+const OUTSIDE_FLOW = ['Outside', 'For Referral', 'Referred', 'Completed', 'Archived', 'Deleted'];
+const VALID_STATUSES = [...new Set([...CITY_FLOW, ...OUTSIDE_FLOW])];
+
+function canMoveStatus(from, to) {
+  if (from === to) return true;
+  if (from === 'Pending' && ['Outside', 'For Referral', 'Referred', 'Completed'].includes(to)) {
+    return true;
+  }
+  const flow = OUTSIDE_FLOW.includes(from) ? OUTSIDE_FLOW : CITY_FLOW;
+  const currentIdx = flow.indexOf(from);
+  const nextIdx = flow.indexOf(to);
+  if (currentIdx < 0 || nextIdx < 0) return false;
+  return nextIdx >= currentIdx;
+}
 
 const DISPATCH_STATUS_MAP = {
   Pending: 'Assigned',
+  Outside: 'Assigned',
+  'For Referral': 'Assigned',
+  Referred: 'Assigned',
+  Completed: 'Completed',
   'In Progress': 'En Route',
   'En Route': 'En Route',
   Arrived: 'Arrived',
@@ -180,9 +208,7 @@ router.patch('/:id/status', async (req, res) => {
       return res.status(404).json({ message: 'Incident not found.' });
     }
 
-    const currentIdx = VALID_STATUSES.indexOf(existing.incident_status);
-    const nextIdx = VALID_STATUSES.indexOf(incident_status);
-    if (currentIdx >= 0 && nextIdx >= 0 && nextIdx < currentIdx) {
+    if (!canMoveStatus(existing.incident_status, incident_status)) {
       return res.status(400).json({
         message: `Cannot change status back to ${incident_status}. Status can only move forward.`,
       });

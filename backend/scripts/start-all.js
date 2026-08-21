@@ -78,10 +78,12 @@ function startTunnel(binPath) {
       updated = true;
       const ip = getLocalIp() || '192.168.1.11';
       writeConnectionInfo({ localIp: ip, tunnelUrl: match[0] });
+      updateMobileApi({ tunnelUrl: match[0], connectionMode: 'tunnel' });
       log('');
       log('==============================================');
       log(`Public URL ready: ${match[0]}`);
-      log('Phone on same WiFi can log in now (no Expo reload needed).');
+      log('Any phone can log in now — WiFi or mobile data.');
+      log('If Expo reloads once, that is normal. Then tap Log In.');
       log('==============================================');
       log('');
     }
@@ -105,7 +107,7 @@ function startTunnel(binPath) {
 async function main() {
   const localIp = getLocalIp();
   const ip = localIp || '192.168.1.11';
-  updateMobileApi({ localIp: ip, connectionMode: 'auto' });
+  updateMobileApi({ localIp: ip, connectionMode: 'tunnel' });
   writeConnectionInfo({ localIp: ip });
 
   log('RapidRescue — starting backend + public tunnel');
@@ -128,8 +130,8 @@ async function main() {
     startTunnel(binPath);
   } catch (err) {
     log(`Could not start public tunnel: ${err.message}`);
-    log('Same-WiFi login still works at http://' + ip + ':5000');
-    log('Fix internet / try again so phones on mobile data can connect.');
+      log('Same-WiFi login still works at http://' + ip + ':5000');
+      log('Fix internet / try again so phones on mobile data or other WiFi can connect.');
   }
 }
 

@@ -1,17 +1,28 @@
 import { useState } from 'react';
-import { getAvailableStatuses, updateIncidentStatus } from '../../services/incidentService';
+import { getAvailableStatuses, getOutsideStatuses, OUTSIDE_STATUS_VALUES, updateIncidentStatus } from '../../services/incidentService';
 import { assignResponder } from '../../services/dispatchService';
 import { STATUS_COLORS } from '../../constants/statusColors';
 import { formatDate } from '../../utils/formatDate';
 import { formatIncidentLocation } from '../../utils/locationFormat';
+import { isWithinCabadbaran } from '../../utils/geofence';
 import styles from './IncidentStatusModal.module.css';
 
 export default function IncidentStatusModal({ incident, responders = [], onClose, onUpdated }) {
   const currentStatus = incident?.incident_status || 'Pending';
   const dispatch = Array.isArray(incident?.dispatch) ? incident.dispatch[0] : incident?.dispatch;
   const responder = dispatch?.responders;
-  const availableStatuses = getAvailableStatuses(currentStatus);
-  const [status, setStatus] = useState(currentStatus);
+  const loc = Array.isArray(incident.locations) ? incident.locations[0] : incident.locations;
+  const isOutside =
+    OUTSIDE_STATUS_VALUES.includes(currentStatus) ||
+    (loc?.latitude != null &&
+      loc?.longitude != null &&
+      !isWithinCabadbaran(Number(loc.latitude), Number(loc.longitude)));
+  const availableStatuses = isOutside
+    ? getOutsideStatuses(currentStatus)
+    : getAvailableStatuses(currentStatus);
+  const [status, setStatus] = useState(
+    isOutside && currentStatus === 'Pending' ? 'Outside' : currentStatus
+  );
   const [responderId, setResponderId] = useState(
     responder?.responder_id ? String(responder.responder_id) : ''
   );
@@ -20,7 +31,6 @@ export default function IncidentStatusModal({ incident, responders = [], onClose
 
   if (!incident) return null;
 
-  const loc = Array.isArray(incident.locations) ? incident.locations[0] : incident.locations;
   const locationText = formatIncidentLocation(loc);
   const reporterName = incident.users
     ? `${incident.users.first_name} ${incident.users.last_name}`
@@ -36,7 +46,7 @@ export default function IncidentStatusModal({ incident, responders = [], onClose
   });
 
   const handleSave = async () => {
-    if (!responderId) {
+    if (!isOutside && !responderId) {
       setError('Assign a responder first before saving the status.');
       return;
     }
@@ -44,12 +54,16 @@ export default function IncidentStatusModal({ incident, responders = [], onClose
     setSaving(true);
     setError('');
     try {
-      const alreadyAssigned = responder && String(responder.responder_id) === String(responderId);
-      if (!alreadyAssigned) {
-        await assignResponder(incident.incident_id, Number(responderId));
-      }
-      const afterAssign = !alreadyAssigned && currentStatus === 'Pending' ? 'In Progress' : currentStatus;
-      if (status !== afterAssign) {
+      if (!isOutside) {
+        const alreadyAssigned = responder && String(responder.responder_id) === String(responderId);
+        if (!alreadyAssigned) {
+          await assignResponder(incident.incident_id, Number(responderId));
+        }
+        const afterAssign = !alreadyAssigned && currentStatus === 'Pending' ? 'In Progress' : currentStatus;
+        if (status !== afterAssign) {
+          await updateIncidentStatus(incident.incident_id, status);
+        }
+      } else if (status !== currentStatus) {
         await updateIncidentStatus(incident.incident_id, status);
       }
       onUpdated?.();
@@ -125,25 +139,29 @@ export default function IncidentStatusModal({ incident, responders = [], onClose
           ))}
         </select>
 
-        <label className={styles.label}>Assign responder</label>
-        <select
-          className={styles.select}
-          value={responderId}
-          onChange={(e) => setResponderId(e.target.value)}
-          disabled={saving}
-        >
-          <option value="">— Choose responder / ambulance —</option>
-          {availableResponders.map((r) => (
-            <option key={r.responder_id} value={r.responder_id}>
-              {r.first_name} {r.last_name} — {r.responder_type}
-            </option>
-          ))}
-        </select>
+        {!isOutside && (
+          <>
+            <label className={styles.label}>Assign responder</label>
+            <select
+              className={styles.select}
+              value={responderId}
+              onChange={(e) => setResponderId(e.target.value)}
+              disabled={saving}
+            >
+              <option value="">— Choose responder / ambulance —</option>
+              {availableResponders.map((r) => (
+                <option key={r.responder_id} value={r.responder_id}>
+                  {r.first_name} {r.last_name} — {r.responder_type}
+                </option>
+              ))}
+            </select>
 
-        {!responderId && (
-          <p className={styles.hint}>
-            Assign a responder first. Status cannot be saved while this accident is unassigned.
-          </p>
+            {!responderId && (
+              <p className={styles.hint}>
+                Assign a responder first. Status cannot be saved while this accident is unassigned.
+              </p>
+            )}
+          </>
         )}
 
         {selectedHint && (

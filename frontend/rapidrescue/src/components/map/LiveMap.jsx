@@ -55,16 +55,14 @@ export default function LiveMap({ focusIncidentId = null }) {
 
       const routeMap = {};
       await Promise.all(
-        data
-          .filter((inc) => isWithinCabadbaran(inc.victim.lat, inc.victim.lng))
-          .map(async (inc) => {
-            if (!inc.victim) return;
-            const to = { lat: inc.victim.lat, lng: inc.victim.lng };
-            const from = inc.responder
-              ? { lat: inc.responder.latitude, lng: inc.responder.longitude }
-              : { lat: DRRMO_HQ.lat, lng: DRRMO_HQ.lng };
-            routeMap[inc.incident_id] = await fetchRoute(from, to);
-          })
+        data.map(async (inc) => {
+          if (!inc.victim) return;
+          const to = { lat: inc.victim.lat, lng: inc.victim.lng };
+          const from = inc.responder
+            ? { lat: inc.responder.latitude, lng: inc.responder.longitude }
+            : { lat: DRRMO_HQ.lat, lng: DRRMO_HQ.lng };
+          routeMap[inc.incident_id] = await fetchRoute(from, to);
+        })
       );
       setRoutes(routeMap);
       setMapError('');
@@ -105,11 +103,18 @@ export default function LiveMap({ focusIncidentId = null }) {
 
   const selectedIncident = liveIncidents.find((inc) => inc.incident_id === selectedId);
   const selectedRoute = selectedId ? routes[selectedId] : null;
+  const selectedIsOutside = Boolean(
+    selectedIncident && !isWithinCabadbaran(selectedIncident.victim.lat, selectedIncident.victim.lng)
+  );
 
   // When a sidebar card is clicked, show only that incident on the map
   const mapIncidents = selectedId
     ? insideIncidents.filter((inc) => inc.incident_id === selectedId)
     : insideIncidents;
+
+  const mapOutsideAlerts = selectedId
+    ? outsideAlerts.filter((inc) => inc.incident_id === selectedId)
+    : outsideAlerts;
 
   const focusOnIncident = (incidentId) => {
     setSelectedId(incidentId);
@@ -181,7 +186,7 @@ export default function LiveMap({ focusIncidentId = null }) {
         ref={mapPanelRef}
         className={`${styles.mapPanel} ${isExpanded ? styles.mapPanelExpanded : ''}`}
       >
-        {outsideAlerts.length > 0 && (
+        {selectedIsOutside && (
           <div className={styles.outsideBanner}>
             ⚠️ {OUTSIDE_CITY_MESSAGE}
           </div>
@@ -436,25 +441,67 @@ export default function LiveMap({ focusIncidentId = null }) {
             );
           })}
 
-          {/* ── Outside city alerts — always visible on the map ── */}
-          {outsideAlerts.map((inc) => (
-            <Marker
-              key={`out-${inc.incident_id}`}
-              position={[inc.victim.lat, inc.victim.lng]}
-              icon={outsideIcon}
-              eventHandlers={{
-                click: () => focusOnIncident(inc.incident_id),
-              }}
-            >
-              <Popup>
-                <strong>⚠️ Outside service boundary — #{inc.incident_id}</strong>
-                <br />
-                {inc.user ? `${inc.user.first_name} ${inc.user.last_name}` : 'Unknown user'}
-                <br />
-                {OUTSIDE_CITY_MESSAGE}
-              </Popup>
-            </Marker>
-          ))}
+          {/* ── Outside city alerts — route still drawn past the boundary ── */}
+          {mapOutsideAlerts.map((inc) => {
+            const route = routes[inc.incident_id];
+            const isSelected = selectedId === inc.incident_id;
+            return (
+              <Fragment key={`out-${inc.incident_id}`}>
+                <Marker
+                  position={[inc.victim.lat, inc.victim.lng]}
+                  icon={outsideIcon}
+                  zIndexOffset={isSelected ? 1000 : 0}
+                  eventHandlers={{
+                    click: () => focusOnIncident(inc.incident_id),
+                  }}
+                >
+                  <Popup>
+                    <strong>⚠️ Outside service boundary — #{inc.incident_id}</strong>
+                    <br />
+                    {inc.user ? `${inc.user.first_name} ${inc.user.last_name}` : 'Unknown user'}
+                    <br />
+                    {OUTSIDE_CITY_MESSAGE}
+                    {route?.isRoad && (
+                      <>
+                        <br />
+                        <span style={{ fontSize: 12, color: '#e65100', fontWeight: 600 }}>
+                          🛣️ {formatDistance(route.distance)} · {formatDuration(route.duration)} via road
+                        </span>
+                      </>
+                    )}
+                  </Popup>
+                </Marker>
+
+                {inc.responder && !responderAtStation(inc) && (
+                  <Marker
+                    position={[inc.responder.latitude, inc.responder.longitude]}
+                    icon={responderIcon}
+                  >
+                    <Popup>
+                      <strong>
+                        🚑 {inc.responder.first_name} {inc.responder.last_name}
+                      </strong>
+                      <br />
+                      {inc.responder.responder_type}
+                    </Popup>
+                  </Marker>
+                )}
+
+                {route?.points && (
+                  <Polyline
+                    positions={route.points}
+                    pathOptions={{
+                      color: isSelected ? '#EF6C00' : '#ffcc80',
+                      weight: isSelected ? 7 : 5,
+                      opacity: isSelected ? 0.95 : 0.5,
+                      lineCap: 'round',
+                      lineJoin: 'round',
+                    }}
+                  />
+                )}
+              </Fragment>
+            );
+          })}
         </MapContainer>
 
         <button
@@ -617,7 +664,14 @@ export default function LiveMap({ focusIncidentId = null }) {
                   </div>
                 )}
                 {outside ? (
-                  <p className={styles.alertOutsideText}>{OUTSIDE_CITY_MESSAGE}</p>
+                  <>
+                    <p className={styles.alertOutsideText}>{OUTSIDE_CITY_MESSAGE}</p>
+                    {route?.isRoad && (
+                      <p className={styles.alertRoute}>
+                        🛣️ {formatDistance(route.distance)} · {formatDuration(route.duration)} via road
+                      </p>
+                    )}
+                  </>
                 ) : (
                   <>
                     {inc.responder ? (

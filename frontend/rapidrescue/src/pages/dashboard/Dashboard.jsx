@@ -9,7 +9,7 @@ import AssignResponderModal from '../../components/incidents/AssignResponderModa
 import ResponderModal from '../../components/responders/ResponderModal';
 import CallLogPage from '../../components/calllog/CallLogPage';
 import DispatchPage from '../../components/dispatch/DispatchPage';
-import { archiveIncident, restoreIncident, deleteIncident, permanentDeleteIncident } from '../../services/incidentService';
+import { archiveIncident, restoreIncident, deleteIncident, permanentDeleteIncident, updateIncidentStatus, getOutsideStatuses, OUTSIDE_STATUS_VALUES } from '../../services/incidentService';
 import { deleteResponder } from '../../services/responderService';
 import { fetchDispatchRecords, restoreDispatchRecord, permanentDeleteDispatchRecord } from '../../services/dispatchRecordService';
 import { fetchCallLogs, restoreCallLog, permanentDeleteCallLog } from '../../services/callLogService';
@@ -78,8 +78,8 @@ const STAT_COLORS = ['statRed', 'statOrange', 'statBlue', 'statYellow', 'statGre
 const INCIDENT_FILTER_TABS = [
   { id: 'pending', icon: '⏳', label: 'Pending' },
   { id: 'active', icon: '🚑', label: 'Active Response' },
-  { id: 'outside', icon: '⚠️', label: 'Outside' },
   { id: 'resolved', icon: '✅', label: 'Resolved' },
+  { id: 'outside', icon: '⚠️', label: 'Outside' },
   { id: 'cancelled', icon: '❌', label: 'Cancelled' },
 ];
 
@@ -184,6 +184,9 @@ function IncidentTableSection({
   onAssign,
   onShowMap,
   showAssignActions = false,
+  statusDropdown = false,
+  onStatusChange,
+  updatingStatusId = null,
   actions = {},
   hideTitle = false,
   selectable = false,
@@ -381,14 +384,28 @@ function IncidentTableSection({
                           <span style={{ color: '#bbb' }}>Unassigned</span>
                         )}
                       </td>
-                      <td>
-                        <span
-                          className={styles.statusBadge}
-                          style={{ background: STATUS_COLORS[inc.incident_status] || '#9E9E9E' }}
-                        >
-                          <span className={styles.statusDotBadge} />
-                          {inc.incident_status}
-                        </span>
+                      <td onClick={statusDropdown ? (e) => e.stopPropagation() : undefined}>
+                        {statusDropdown ? (
+                          <select
+                            className={styles.outsideStatusSelect}
+                            value={inc.incident_status === 'Pending' ? 'Outside' : inc.incident_status}
+                            disabled={updatingStatusId === inc.incident_id}
+                            onChange={(e) => onStatusChange?.(inc, e.target.value)}
+                            style={{ background: STATUS_COLORS[inc.incident_status === 'Pending' ? 'Outside' : inc.incident_status] || '#EF6C00' }}
+                          >
+                            {getOutsideStatuses(inc.incident_status).map((opt) => (
+                              <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span
+                            className={styles.statusBadge}
+                            style={{ background: STATUS_COLORS[inc.incident_status] || '#9E9E9E' }}
+                          >
+                            <span className={styles.statusDotBadge} />
+                            {inc.incident_status}
+                          </span>
+                        )}
                       </td>
                       <td>{inc.priority_level || 'Normal'}</td>
                       <td style={{ color: '#888', fontSize: 12 }}>{formatDate(inc.date_reported)}</td>
@@ -724,6 +741,7 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [editingIncident, setEditingIncident] = useState(null);
+  const [updatingStatusId, setUpdatingStatusId] = useState(null);
   const [assigningIncident, setAssigningIncident] = useState(null);
   const [liveMapFocusId, setLiveMapFocusId] = useState(null);
   const [responderModal, setResponderModal] = useState(null);
@@ -825,8 +843,25 @@ export default function Dashboard() {
     setActiveTab('live-map');
   };
 
+  const handleOutsideStatusChange = async (inc, nextStatus) => {
+    const current = inc.incident_status === 'Pending' ? 'Outside' : inc.incident_status;
+    if (nextStatus === current) return;
+    setUpdatingStatusId(inc.incident_id);
+    setError('');
+    try {
+      await updateIncidentStatus(inc.incident_id, nextStatus);
+      await fetchData();
+    } catch (err) {
+      setError(err.message || 'Failed to update status.');
+    } finally {
+      setUpdatingStatusId(null);
+    }
+  };
+
   const outsideIncidents = incidents.filter(
-    (i) => !['Archived', 'Deleted'].includes(i.incident_status) && isIncidentOutside(i)
+    (i) =>
+      !['Archived', 'Deleted'].includes(i.incident_status) &&
+      (isIncidentOutside(i) || OUTSIDE_STATUS_VALUES.includes(i.incident_status))
   );
   const pendingIncidents = incidents.filter(
     (i) => i.incident_status === 'Pending' && !isIncidentOutside(i)
@@ -887,6 +922,7 @@ export default function Dashboard() {
     setActiveTab('incidents');
     if (status === 'Resolved') setIncidentFilter('resolved');
     else if (status === 'Cancelled') setIncidentFilter('cancelled');
+    else if (OUTSIDE_STATUS_VALUES.includes(status)) setIncidentFilter('outside');
     else if (ACTIVE_RESPONSE_STATUSES.includes(status)) setIncidentFilter('active');
     else setIncidentFilter('pending');
   };
@@ -1370,7 +1406,7 @@ export default function Dashboard() {
                   : incidentFilter === 'cancelled'
                     ? 'Cancelled incidents can be archived or deleted from here.'
                     : incidentFilter === 'outside'
-                      ? 'Help requests from outside the Cabadbaran City service boundary.'
+                      ? 'Use the status dropdown: Outside → For Referral → Referred → Completed. The reporter sees this on My Alerts.'
                       : 'Click the buttons above to switch between incident groups.'}
               </p>
 
@@ -1421,6 +1457,9 @@ export default function Dashboard() {
                   onAssign={setAssigningIncident}
                   onShowMap={handleShowOnLiveMap}
                   showAssignActions
+                  statusDropdown
+                  onStatusChange={handleOutsideStatusChange}
+                  updatingStatusId={updatingStatusId}
                   hideTitle
                 />
               )}

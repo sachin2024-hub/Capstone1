@@ -29,8 +29,9 @@ function onData(data) {
   if (match && !updated) {
     updated = true;
     writeConnectionInfo({ tunnelUrl: match[0] });
+    updateMobileApi({ tunnelUrl: match[0], connectionMode: 'tunnel' });
     console.log('\n✅ Public URL ready:', match[0]);
-    console.log('📱 Phone on same WiFi can log in (no Expo reload needed)\n');
+    console.log('📱 Any phone can log in now — WiFi or mobile data\n');
   }
 }
 

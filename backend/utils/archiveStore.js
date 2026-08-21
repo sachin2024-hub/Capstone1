@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const FILE = path.join(__dirname, '..', 'data', 'archive-store.json');
-const SAVED_STATUSES = ['Pending', 'In Progress', 'En Route', 'Arrived', 'Resolved', 'Cancelled'];
+const SAVED_STATUSES = ['Pending', 'Outside', 'For Referral', 'Referred', 'Completed', 'In Progress', 'En Route', 'Arrived', 'Resolved', 'Cancelled'];
 
 function emptyStore() {
   return { incidents: {}, dispatch: [], callLogs: [] };

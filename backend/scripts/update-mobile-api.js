@@ -32,8 +32,12 @@ function updateMobileApi({ localIp, tunnelUrl, connectionMode } = {}) {
     );
   }
 
-  // Do not rewrite TUNNEL_URL here — it changes often and reloads Expo,
-  // which kicks the phone off login. Tunnel is stored in connection-info.json.
+  if (tunnelUrl) {
+    content = content.replace(
+      /export const TUNNEL_URL = '[^']*'/,
+      `export const TUNNEL_URL = '${tunnelUrl}'`
+    );
+  }
 
   if (connectionMode) {
     content = content.replace(
