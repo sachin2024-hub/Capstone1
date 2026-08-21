@@ -4,6 +4,7 @@
 const { spawn } = require('child_process');
 const http = require('http');
 const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const { getLocalIp, updateMobileApi, writeConnectionInfo } = require('./update-mobile-api');
 const { ensureCloudflared } = require('./ensure-cloudflared');
 
@@ -56,6 +57,38 @@ function launchBackend() {
   });
 
   return proc;
+}
+
+function startNamedTunnel(binPath, token, publicUrl) {
+  log('Starting named Cloudflare tunnel (fixed URL)...');
+
+  if (publicUrl) {
+    const clean = publicUrl.replace(/\/$/, '');
+    const ip = getLocalIp() || '192.168.1.11';
+    writeConnectionInfo({ localIp: ip, tunnelUrl: clean });
+    updateMobileApi({ tunnelUrl: clean, connectionMode: 'tunnel' });
+    log('');
+    log('==============================================');
+    log(`Fixed public URL: ${clean}`);
+    log('This URL stays the same after laptop restart.');
+    log('Laptop must still be ON with npm run start:all.');
+    log('==============================================');
+    log('');
+  }
+
+  const child = spawn(binPath, ['tunnel', 'run', '--token', token, '--no-autoupdate'], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+
+  child.stdout.on('data', (data) => process.stdout.write(data));
+  child.stderr.on('data', (data) => process.stdout.write(data));
+  child.on('error', (err) => log(`Tunnel error: ${err.message}`));
+  child.on('close', (code) => {
+    log(`Named tunnel stopped (exit ${code ?? 'unknown'}). Restarting in 5s...`);
+    setTimeout(() => startNamedTunnel(binPath, token, publicUrl), 5000);
+  });
+  return child;
 }
 
 function startTunnel(binPath) {
@@ -127,7 +160,13 @@ async function main() {
   try {
     log('Preparing Cloudflare tunnel (first run may download ~20MB)...');
     const binPath = await ensureCloudflared();
-    startTunnel(binPath);
+    const namedToken = process.env.CLOUDFLARE_TUNNEL_TOKEN;
+    const publicUrl = process.env.PUBLIC_URL;
+    if (namedToken) {
+      startNamedTunnel(binPath, namedToken, publicUrl);
+    } else {
+      startTunnel(binPath);
+    }
   } catch (err) {
     log(`Could not start public tunnel: ${err.message}`);
       log('Same-WiFi login still works at http://' + ip + ':5000');
