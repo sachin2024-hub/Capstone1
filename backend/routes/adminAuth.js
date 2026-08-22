@@ -3,7 +3,15 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const supabase = require('../config/supabase');
-const { isAdminBlocked, setAdminBlocked, isAdminArchived, setAdminArchived } = require('../utils/archiveStore');
+const {
+  isAdminBlocked,
+  setAdminBlocked,
+  isAdminArchived,
+  setAdminArchived,
+  getAdminBlockReason,
+  setAdminBlockReason,
+} = require('../utils/archiveStore');
+const { BLOCK_REASONS, blockedAccountMessage } = require('../utils/blockReasons');
 
 const ADMIN_ROLES = ['Admin', 'User'];
 
@@ -77,9 +85,11 @@ router.get('/list', async (req, res) => {
     if (error) return res.status(500).json({ message: error.message });
     const rows = (data || []).map((admin) => {
       const archived = isAdminArchived(admin.admin_id);
+      const blocked = isAdminBlocked(admin.admin_id);
       return {
         ...admin,
-        account_status: archived ? 'Deleted' : (isAdminBlocked(admin.admin_id) ? 'Blocked' : 'Active'),
+        account_status: archived ? 'Deleted' : (blocked ? 'Blocked' : 'Active'),
+        block_reason: !archived && blocked ? getAdminBlockReason(admin.admin_id) : null,
       };
     });
     return res.json(rows);
@@ -107,8 +117,16 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid username or password.' });
     }
 
-    if (isAdminArchived(data.admin_id) || isAdminBlocked(data.admin_id)) {
-      return res.status(403).json({ message: 'This admin account is blocked. Contact another administrator.' });
+    if (isAdminArchived(data.admin_id)) {
+      return res.status(403).json({
+        message: 'This admin account is no longer available. Contact another administrator.',
+      });
+    }
+
+    if (isAdminBlocked(data.admin_id)) {
+      return res.status(403).json({
+        message: blockedAccountMessage(getAdminBlockReason(data.admin_id)),
+      });
     }
 
     const isMatch = await bcrypt.compare(password, data.password);
@@ -138,7 +156,7 @@ const ADMIN_SAFE_FIELDS = 'admin_id, first_name, middle_name, last_name, usernam
 
 // PATCH /api/admin/:id — edit admin (must stay after /list, /register, /login)
 router.patch('/:id', async (req, res) => {
-  const { first_name, middle_name, last_name, username, role, contact_number, password, account_status } = req.body;
+  const { first_name, middle_name, last_name, username, role, contact_number, password, account_status, block_reason } = req.body;
   const updates = {};
 
   if (first_name !== undefined) updates.first_name = first_name.trim();
@@ -198,16 +216,25 @@ router.patch('/:id', async (req, res) => {
     if (account_status !== undefined) {
       if (account_status === 'Deleted') {
         setAdminArchived(req.params.id, true);
+        setAdminBlockReason(req.params.id, null);
       } else {
         setAdminArchived(req.params.id, false);
         setAdminBlocked(req.params.id, account_status === 'Blocked');
+        if (account_status === 'Blocked') {
+          const validReason = BLOCK_REASONS.some((r) => r.id === block_reason);
+          setAdminBlockReason(req.params.id, validReason ? block_reason : 'admin');
+        } else {
+          setAdminBlockReason(req.params.id, null);
+        }
       }
     }
 
     const archived = isAdminArchived(req.params.id);
+    const blocked = isAdminBlocked(req.params.id);
     return res.json({
       ...data,
-      account_status: archived ? 'Deleted' : (isAdminBlocked(req.params.id) ? 'Blocked' : 'Active'),
+      account_status: archived ? 'Deleted' : (blocked ? 'Blocked' : 'Active'),
+      block_reason: !archived && blocked ? getAdminBlockReason(req.params.id) : null,
     });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
@@ -225,6 +252,7 @@ router.delete('/:id', async (req, res) => {
     if (error) return res.status(500).json({ message: error.message });
     setAdminBlocked(req.params.id, false);
     setAdminArchived(req.params.id, false);
+    setAdminBlockReason(req.params.id, null);
     return res.json({ message: 'Admin deleted.' });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });

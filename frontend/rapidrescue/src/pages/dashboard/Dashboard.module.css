@@ -1288,6 +1288,46 @@
   background: #f8fafc;
 }
 
+.incidentRowUnread td {
+  background: #fff6f4;
+}
+
+.incidentRowUnread td:first-child {
+  box-shadow: inset 4px 0 0 #c1121f;
+}
+
+.incidentRowUnread td:last-child {
+  background: #fff6f4;
+}
+
+.incidentRowClickable.incidentRowUnread:hover td,
+.incidentRowClickable.incidentRowUnread:hover td:last-child {
+  background: #ffece8;
+}
+
+.incidentNewBadge {
+  display: inline-block;
+  margin-left: 6px;
+  background: #c1121f;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.incidentViewedMark {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+  vertical-align: middle;
+}
+
 .incidentTable th:last-child,
 .incidentTable td:last-child {
   position: sticky;
@@ -1418,4 +1458,24 @@
   .content { padding: 16px; }
   .userName { display: none; }
   .topbarClock { display: none; }
+}
+
+@media print {
+  .sidebar,
+  .topbar,
+  .refreshBtn,
+  .errorBanner {
+    display: none !important;
+  }
+
+  .wrapper,
+  .main,
+  .content {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+    width: 100% !important;
+    background: #fff !important;
+    padding: 0 !important;
+  }
 }

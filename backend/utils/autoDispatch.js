@@ -1,17 +1,20 @@
 const supabase = require('../config/supabase');
+const { listOccupiedResponders } = require('./responderBusy');
 
 async function autoDispatch(incidentId) {
+  const occupied = await listOccupiedResponders(incidentId);
   const { data: responders, error: respErr } = await supabase
     .from('responders')
     .select('*')
-    .eq('availability_status', 'Available')
-    .limit(1);
+    .eq('availability_status', 'Available');
 
-  if (respErr || !responders?.length) {
+  const free = (responders || []).filter((row) => !occupied.has(Number(row.responder_id)));
+
+  if (respErr || !free.length) {
     return null;
   }
 
-  const responder = responders[0];
+  const responder = free[0];
 
   const { data: dispatch, error: dispErr } = await supabase
     .from('dispatch')

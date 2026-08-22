@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
 
+const { listOccupiedResponders } = require('../utils/responderBusy');
+
 const VALID_TYPES = ['Dispatcher', '1st Responder', 'Ambulance', 'Fire Rescue', 'Police', 'Rescue Team'];
 const VALID_STATUSES = ['Available', 'Busy', 'Off Duty'];
 
@@ -14,7 +16,17 @@ router.get('/', async (req, res) => {
       .order('responder_id', { ascending: true });
 
     if (error) return res.status(500).json({ message: error.message });
-    return res.json(data);
+    const occupied = await listOccupiedResponders();
+    const rows = (data || []).map((row) => {
+      const busyOn = occupied.get(Number(row.responder_id));
+      return {
+        ...row,
+        occupied: Boolean(busyOn),
+        occupied_incident_id: busyOn || null,
+        availability_status: busyOn && row.availability_status !== 'Off Duty' ? 'Busy' : row.availability_status,
+      };
+    });
+    return res.json(rows);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }

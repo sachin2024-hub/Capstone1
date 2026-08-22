@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import styles from './ConfirmModal.module.css';
 
 export default function ConfirmModal({
@@ -6,9 +7,11 @@ export default function ConfirmModal({
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
   variant = 'danger',
+  reasonOptions,
   onConfirm,
   onCancel,
 }) {
+  const [reason, setReason] = useState('');
   const iconClass = {
     danger: styles.iconDanger,
     warning: styles.iconWarning,
@@ -36,11 +39,34 @@ export default function ConfirmModal({
         <div className={`${styles.iconWrap} ${iconClass}`}>{icon}</div>
         <h3 className={styles.title}>{title}</h3>
         <p className={styles.message}>{message}</p>
+        {reasonOptions?.length > 0 && (
+          <div className={styles.reasonBox}>
+            <p className={styles.reasonLabel}>Reason for blocking</p>
+            <div className={styles.reasonList}>
+              {reasonOptions.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`${styles.reasonItem} ${reason === item.id ? styles.reasonItemActive : ''}`}
+                  onClick={() => setReason(item.id)}
+                >
+                  <span className={styles.reasonName}>{item.label}</span>
+                  <span className={styles.reasonDetail}>{item.detail}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <div className={styles.actions}>
           <button type="button" className={styles.cancelBtn} onClick={onCancel}>
             {cancelLabel}
           </button>
-          <button type="button" className={`${styles.confirmBtn} ${confirmClass}`} onClick={onConfirm}>
+          <button
+            type="button"
+            className={`${styles.confirmBtn} ${confirmClass}`}
+            disabled={Boolean(reasonOptions?.length) && !reason}
+            onClick={() => onConfirm?.(reasonOptions?.length ? reason : undefined)}
+          >
             {confirmLabel}
           </button>
         </div>

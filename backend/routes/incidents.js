@@ -7,6 +7,7 @@ const { isWithinCabadbaran } = require('../config/cabadbaran');
 const { buildLocationAddress } = require('../utils/locationFormat');
 const { resolveLocationFromGps } = require('../utils/locationResolver');
 const { rememberStatus, takeSavedStatus, SAVED_STATUSES } = require('../utils/restoreStatus');
+const { listViewedIncidents, markIncidentViewed, clearIncidentViewed } = require('../utils/archiveStore');
 
 // POST /api/incidents/sos  - Send SOS emergency alert
 router.post('/sos', authenticateToken, async (req, res) => {
@@ -120,7 +121,7 @@ router.get('/my-incidents', authenticateToken, async (req, res) => {
       .select(`
         *,
         locations(*),
-        dispatch(dispatch_id, dispatch_status, dispatch_time, responders(first_name, last_name, responder_type))
+        dispatch(dispatch_id, responder_id, dispatch_status, dispatch_time, responders(responder_id, first_name, last_name, responder_type))
       `)
       .eq('user_id', user_id)
       .order('date_reported', { ascending: false });
@@ -144,7 +145,7 @@ router.get('/all', async (req, res) => {
         *,
         users(user_id, first_name, last_name, email, phone_number),
         locations(*),
-        dispatch(dispatch_id, dispatch_status, dispatch_time, responders(first_name, last_name, responder_type))
+        dispatch(dispatch_id, responder_id, dispatch_status, dispatch_time, responders(responder_id, first_name, last_name, responder_type))
       `)
       .order('date_reported', { ascending: false });
 
@@ -160,13 +161,28 @@ router.get('/all', async (req, res) => {
       registeredById = Object.fromEntries((userRows || []).map((u) => [String(u.user_id), u]));
     }
 
+    const viewedMap = listViewedIncidents();
     const rows = (data || []).map((inc) => {
       const nested = Array.isArray(inc.users) ? inc.users[0] : inc.users;
       const registered = registeredById[String(inc.user_id)] || nested || null;
-      return { ...inc, users: registered };
+      return {
+        ...inc,
+        users: registered,
+        viewed: Boolean(viewedMap[String(inc.incident_id)]),
+      };
     });
 
     return res.json(rows);
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+// PATCH /api/incidents/:id/viewed — admin opened this request
+router.patch('/:id/viewed', async (req, res) => {
+  try {
+    markIncidentViewed(req.params.id);
+    return res.json({ incident_id: Number(req.params.id) || req.params.id, viewed: true });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }
@@ -261,7 +277,7 @@ router.patch('/:id/status', async (req, res) => {
         .update(dispatchUpdate)
         .eq('dispatch_id', dispatch.dispatch_id);
 
-      if (incident_status === 'Resolved' || incident_status === 'Cancelled') {
+      if (incident_status === 'Resolved' || incident_status === 'Cancelled' || incident_status === 'Completed') {
         await supabase
           .from('responders')
           .update({ availability_status: 'Available' })
@@ -434,6 +450,7 @@ router.delete('/:id/permanent', async (req, res) => {
 
     if (error) return res.status(500).json({ message: error.message });
 
+    clearIncidentViewed(incidentId);
     return res.json({ message: 'Incident permanently removed.' });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });

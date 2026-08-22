@@ -3,6 +3,9 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const supabase = require('../config/supabase');
+const authenticateToken = require('../middleware/auth');
+const { getUserBlockReason, setUserBlockReason } = require('../utils/archiveStore');
+const { BLOCK_REASONS, blockedAccountMessage } = require('../utils/blockReasons');
 
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
@@ -124,6 +127,12 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid email or password.' });
     }
 
+    if (data.account_status === 'Blocked') {
+      return res.status(403).json({
+        message: blockedAccountMessage(getUserBlockReason(data.user_id)),
+      });
+    }
+
     if (data.account_status !== 'Active') {
       return res.status(403).json({ message: 'Your account is inactive. Contact support.' });
     }
@@ -171,6 +180,12 @@ router.post('/forgot-password/verify', async (req, res) => {
     if (!data) {
       return res.status(404).json({
         message: 'No account matches that email and mobile number.',
+      });
+    }
+
+    if (data.account_status === 'Blocked') {
+      return res.status(403).json({
+        message: blockedAccountMessage(getUserBlockReason(data.user_id)),
       });
     }
 
@@ -224,6 +239,79 @@ router.post('/forgot-password/reset', async (req, res) => {
   }
 });
 
+const USER_SAFE_FIELDS = 'user_id, first_name, middle_name, last_name, email, phone_number, address, account_status, date_registered';
+
+// PATCH /api/auth/profile — logged-in user updates own account
+router.patch('/profile', authenticateToken, async (req, res) => {
+  const user_id = req.user?.user_id;
+  if (!user_id) {
+    return res.status(401).json({ message: 'Access denied.' });
+  }
+
+  const { first_name, middle_name, last_name, email, phone_number, address, password, current_password } = req.body;
+  const updates = {};
+
+  if (first_name !== undefined) updates.first_name = String(first_name).trim();
+  if (middle_name !== undefined) updates.middle_name = String(middle_name).trim() || null;
+  if (last_name !== undefined) updates.last_name = String(last_name).trim();
+  if (email !== undefined) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const normalizedEmail = String(email).trim().toLowerCase();
+    if (!emailRegex.test(normalizedEmail)) {
+      return res.status(400).json({ message: 'Invalid email format.' });
+    }
+    updates.email = normalizedEmail;
+  }
+  if (phone_number !== undefined) updates.phone_number = String(phone_number).trim() || null;
+  if (address !== undefined) updates.address = String(address).trim() || null;
+
+  if (password) {
+    if (String(password).length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+    }
+    if (!current_password) {
+      return res.status(400).json({ message: 'Current password is required to set a new password.' });
+    }
+    const { data: existing, error: existingError } = await supabase
+      .from('users')
+      .select('password')
+      .eq('user_id', user_id)
+      .single();
+    if (existingError || !existing) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+    const matches = await bcrypt.compare(String(current_password), existing.password);
+    if (!matches) {
+      return res.status(401).json({ message: 'Current password is incorrect.' });
+    }
+    updates.password = await bcrypt.hash(String(password), 10);
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return res.status(400).json({ message: 'No fields to update.' });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .update(updates)
+      .eq('user_id', user_id)
+      .select(USER_SAFE_FIELDS)
+      .single();
+
+    if (error) {
+      if (error.code === '23505') {
+        return res.status(409).json({ message: 'Email or phone number already in use.' });
+      }
+      return res.status(500).json({ message: error.message });
+    }
+    if (!data) return res.status(404).json({ message: 'User not found.' });
+    return res.json({ message: 'Profile updated.', user: data });
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+});
+
 // GET /api/auth/users  - Get all users (for dashboard)
 router.get('/users', async (req, res) => {
   try {
@@ -233,18 +321,21 @@ router.get('/users', async (req, res) => {
       .order('date_registered', { ascending: false });
 
     if (error) return res.status(500).json({ message: error.message });
-    return res.json(data);
+    const rows = (data || []).map((u) => ({
+      ...u,
+      block_reason: u.account_status === 'Blocked' ? getUserBlockReason(u.user_id) : null,
+    }));
+    return res.json(rows);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }
 });
 
 const USER_STATUSES = ['Active', 'Inactive', 'Blocked', 'Deleted'];
-const USER_SAFE_FIELDS = 'user_id, first_name, middle_name, last_name, email, phone_number, address, account_status, date_registered';
 
 // PATCH /api/auth/users/:id — edit profile or block/unblock
 router.patch('/users/:id', async (req, res) => {
-  const { first_name, middle_name, last_name, email, phone_number, address, account_status, password } = req.body;
+  const { first_name, middle_name, last_name, email, phone_number, address, account_status, password, block_reason } = req.body;
   const updates = {};
 
   if (first_name !== undefined) updates.first_name = first_name.trim();
@@ -264,6 +355,13 @@ router.patch('/users/:id', async (req, res) => {
       return res.status(400).json({ message: 'Invalid status. Use Active, Inactive, Blocked, or Deleted.' });
     }
     updates.account_status = account_status;
+  }
+  if (account_status === 'Blocked') {
+    const validReason = BLOCK_REASONS.some((r) => r.id === block_reason);
+    setUserBlockReason(req.params.id, validReason ? block_reason : 'admin');
+  }
+  if (account_status === 'Active' || account_status === 'Deleted') {
+    setUserBlockReason(req.params.id, null);
   }
   if (password) {
     if (password.length < 6) {
@@ -291,7 +389,10 @@ router.patch('/users/:id', async (req, res) => {
       return res.status(500).json({ message: error.message });
     }
     if (!data) return res.status(404).json({ message: 'User not found.' });
-    return res.json(data);
+    return res.json({
+      ...data,
+      block_reason: data.account_status === 'Blocked' ? getUserBlockReason(data.user_id) : null,
+    });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }

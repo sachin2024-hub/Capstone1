@@ -230,6 +230,10 @@
   background: #fff8f8;
 }
 
+.clickableRow {
+  cursor: pointer;
+}
+
 .rowNum {
   width: 32px;
   text-align: center !important;

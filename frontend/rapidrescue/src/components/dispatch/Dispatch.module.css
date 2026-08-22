@@ -188,6 +188,10 @@
   background: #f8fbff;
 }
 
+.clickableRow {
+  cursor: pointer;
+}
+
 .rowNum {
   width: 36px;
   text-align: center !important;

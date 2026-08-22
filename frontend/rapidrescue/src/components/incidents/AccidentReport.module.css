@@ -1,0 +1,390 @@
+.report {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: #111827;
+}
+
+.subtitle {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.toolbarRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.rangeGroup {
+  display: flex;
+  background: #fff;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.rangeBtn {
+  border: none;
+  background: transparent;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.rangeBtnActive {
+  background: #c1121f;
+  color: #fff;
+}
+
+.printBtn {
+  height: 36px;
+  padding: 0 14px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+  color: #1e293b;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.printBtn:hover {
+  border-color: #c1121f;
+  color: #c1121f;
+}
+
+.printMeta {
+  display: none;
+  margin: 0;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.kpiGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.kpi {
+  background: #fff;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+
+.kpiValue {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: #111827;
+}
+
+.kpiLabel {
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.kpi_warn { border-left: 4px solid #f59e0b; }
+.kpi_info { border-left: 4px solid #1565c0; }
+.kpi_ok { border-left: 4px solid #16a34a; }
+.kpi_orange { border-left: 4px solid #ea580c; }
+.kpi_mute { border-left: 4px solid #94a3b8; }
+.kpi_danger { border-left: 4px solid #c1121f; }
+.kpi_dark { border-left: 4px solid #111827; }
+
+.rateRow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.rateCard {
+  background: #0f172a;
+  color: #fff;
+  border-radius: 12px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rateCard strong {
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.rateLabel {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.rateHint {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.donutGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.donutWrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.donutSvg {
+  display: block;
+}
+
+.donutValue {
+  font-size: 22px;
+  font-weight: 800;
+  fill: #0f172a;
+  font-family: Inter, system-ui, sans-serif;
+}
+
+.donutCenterLabel {
+  font-size: 10px;
+  font-weight: 700;
+  fill: #64748b;
+  font-family: Inter, system-ui, sans-serif;
+}
+
+.donutLegend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.donutLegend li {
+  display: grid;
+  grid-template-columns: 10px 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.legendDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.legendName {
+  font-weight: 700;
+  color: #334155;
+}
+
+.legendCount {
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.legendPct {
+  min-width: 42px;
+  text-align: right;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.chartNote {
+  margin: -6px 0 12px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 12px;
+}
+
+.card {
+  background: #fff;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 16px 18px 18px;
+}
+
+.card h4 {
+  margin: 0 0 14px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #334155;
+}
+
+.wide {
+  grid-column: 1 / -1;
+}
+
+.barList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.barRow {
+  display: grid;
+  grid-template-columns: minmax(90px, 140px) 1fr 28px 44px;
+  align-items: center;
+  gap: 8px;
+}
+
+.barLabel {
+  font-size: 12px;
+  font-weight: 700;
+  color: #334155;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.barTrack {
+  height: 10px;
+  background: #f1f5f9;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.barFill {
+  height: 100%;
+  border-radius: 999px;
+  min-width: 4px;
+}
+
+.barCount {
+  font-size: 12px;
+  font-weight: 800;
+  color: #0f172a;
+  text-align: right;
+}
+
+.barPct {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  text-align: right;
+}
+
+.columns {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 180px;
+}
+
+.col {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.colValue {
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+  min-height: 12px;
+}
+
+.colTrack {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.colBar {
+  width: 70%;
+  max-width: 18px;
+  border-radius: 6px 6px 2px 2px;
+  min-height: 2px;
+}
+
+.colLabel {
+  font-size: 9px;
+  font-weight: 700;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.emptyChart {
+  margin: 0;
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+.loadingBox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 40px 16px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.loader {
+  width: 18px;
+  height: 18px;
+  border: 2px solid #e5e7eb;
+  border-top-color: #c1121f;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 1100px) {
+  .kpiGrid { grid-template-columns: repeat(2, 1fr); }
+  .rateRow, .grid, .donutGrid { grid-template-columns: 1fr; }
+  .wide { grid-column: auto; }
+}
+
+@media print {
+  .toolbarRight { display: none; }
+  .printMeta { display: block; }
+  .card, .kpi, .rateCard { break-inside: avoid; }
+}

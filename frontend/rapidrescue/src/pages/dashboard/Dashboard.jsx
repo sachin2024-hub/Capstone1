@@ -3,8 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { logout, getStoredAdmin } from '../../services/authService';
 import api from '../../services/api';
 import ConfirmModal from '../../components/common/ConfirmModal';
+import RecordDetailsModal from '../../components/common/RecordDetailsModal';
 import LiveMap from '../../components/map/LiveMap';
 import IncidentStatusModal from '../../components/incidents/IncidentStatusModal';
+import AccidentReport from '../../components/incidents/AccidentReport';
 import AssignResponderModal from '../../components/incidents/AssignResponderModal';
 import ResponderModal from '../../components/responders/ResponderModal';
 import CallLogPage from '../../components/calllog/CallLogPage';
@@ -14,6 +16,7 @@ import { deleteResponder } from '../../services/responderService';
 import { fetchDispatchRecords, restoreDispatchRecord, permanentDeleteDispatchRecord } from '../../services/dispatchRecordService';
 import { fetchCallLogs, restoreCallLog, permanentDeleteCallLog } from '../../services/callLogService';
 import { STATUS_COLORS, PRIORITY_COLORS } from '../../constants/statusColors';
+import { BLOCK_REASONS } from '../../constants/blockReasons';
 import { formatDate } from '../../utils/formatDate';
 import { formatIncidentLocation } from '../../utils/locationFormat';
 import { isWithinCabadbaran } from '../../utils/geofence';
@@ -35,6 +38,10 @@ function isIncidentOutside(inc) {
   return !isWithinCabadbaran(Number(loc.latitude), Number(loc.longitude));
 }
 
+function isIncomingIncident(inc) {
+  return inc?.incident_status === 'Pending' || inc?.incident_status === 'Outside';
+}
+
 function useClock() {
   const [time, setTime] = useState(() => new Date());
   useEffect(() => {
@@ -51,6 +58,7 @@ const NAV_SECTIONS = [
       { id: 'dashboard', icon: '📊', label: 'Dashboard' },
       { id: 'incidents', icon: '🚨', label: 'Accident' },
       { id: 'live-map', icon: '🗺️', label: 'Live Map' },
+      { id: 'analytics', icon: '📈', label: 'Analytics' },
       { id: 'archive', icon: '📁', label: 'Archive' },
     ],
   },
@@ -404,10 +412,15 @@ function IncidentTableSection({
                 {pagedRows.map((inc) => {
                   const loc = Array.isArray(inc.locations) ? inc.locations[0] : inc.locations;
                   const assigned = getAssignedResponder(inc);
+                  const unread = isIncomingIncident(inc) && !inc.viewed;
+                  const rowClass = [
+                    onEdit ? styles.incidentRowClickable : '',
+                    unread ? styles.incidentRowUnread : '',
+                  ].filter(Boolean).join(' ') || undefined;
                   return (
                     <tr
                       key={inc.incident_id}
-                      className={onEdit ? styles.incidentRowClickable : undefined}
+                      className={rowClass}
                       onClick={onEdit ? () => onEdit(inc) : undefined}
                     >
                       {selectable && (
@@ -419,7 +432,16 @@ function IncidentTableSection({
                           />
                         </td>
                       )}
-                      <td><strong>#{inc.incident_id}</strong></td>
+                      <td>
+                        <strong>#{inc.incident_id}</strong>
+                        {isIncomingIncident(inc) && (
+                          unread ? (
+                            <span className={styles.incidentNewBadge}>New</span>
+                          ) : (
+                            <span className={styles.incidentViewedMark}>Viewed</span>
+                          )
+                        )}
+                      </td>
                       <td className={styles.compactCell}>{inc.incident_type}</td>
                       <td className={styles.descCell}>{inc.incident_description || '—'}</td>
                       <td>
@@ -930,6 +952,122 @@ const INPUT_STYLE = { height: 42, padding: '0 12px', border: '1.5px solid #E5E7E
 const ERR_BOX    = { background: '#fff5f5', border: '1.5px solid #fca5a5', borderLeft: '4px solid #C1121F', color: '#7f1d1d', borderRadius: 8, padding: '10px 12px', fontSize: 13, marginBottom: 12 };
 const SUC_BOX    = { background: '#f0fdf4', border: '1.5px solid #86efac', borderLeft: '4px solid #16a34a', color: '#14532d', borderRadius: 8, padding: '10px 12px', fontSize: 13, marginBottom: 12 };
 
+function UserDetailsModal({ user: target, onClose }) {
+  const blocked = target.account_status !== 'Active';
+  const reason = BLOCK_REASONS.find((r) => r.id === target.block_reason);
+  const fullName = [target.first_name, target.middle_name, target.last_name].filter(Boolean).join(' ');
+
+  return (
+    <div style={OVERLAY} onClick={onClose}>
+      <div style={MODAL_BOX} onClick={(e) => e.stopPropagation()}>
+        <div style={MODAL_HEAD}>
+          <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#111827' }}>
+            User Details — #{target.user_id}
+          </h3>
+          <button onClick={onClose} style={CLOSE_BTN} aria-label="Close">✕</button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <DetailCell label="Name" value={fullName || '—'} />
+          <DetailCell label="Status" value={blocked ? 'Blocked' : (target.account_status || 'Active')} />
+          <DetailCell label="Email" value={target.email || '—'} />
+          <DetailCell label="Mobile Number" value={target.phone_number || '—'} />
+          <DetailCell label="Address" value={target.address || '—'} wide />
+          <DetailCell label="Registered" value={formatDate(target.date_registered)} />
+        </div>
+        {blocked && (
+          <div style={{
+            marginTop: 16,
+            background: '#fff7ed',
+            border: '1.5px solid #fdba74',
+            borderLeft: '4px solid #c2410c',
+            borderRadius: 10,
+            padding: '12px 14px',
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.4, color: '#9a3412', textTransform: 'uppercase', marginBottom: 6 }}>
+              Why this account is blocked
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#7c2d12', marginBottom: 4 }}>
+              {reason?.label || 'Administrator decision'}
+            </div>
+            <div style={{ fontSize: 13, color: '#9a3412', lineHeight: 1.5 }}>
+              {reason?.detail || 'The administrator restricted this account.'}
+            </div>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={onClose}
+          style={{ marginTop: 18, width: '100%', height: 44, border: '1.5px solid #E5E7EB', borderRadius: 10, background: '#fff', color: '#374151', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AdminDetailsModal({ admin: target, onClose }) {
+  const blocked = target.account_status === 'Blocked';
+  const reason = BLOCK_REASONS.find((r) => r.id === target.block_reason);
+  const fullName = [target.first_name, target.middle_name, target.last_name].filter(Boolean).join(' ');
+
+  return (
+    <div style={OVERLAY} onClick={onClose}>
+      <div style={MODAL_BOX} onClick={(e) => e.stopPropagation()}>
+        <div style={MODAL_HEAD}>
+          <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#111827' }}>
+            Admin Details — #{target.admin_id}
+          </h3>
+          <button onClick={onClose} style={CLOSE_BTN} aria-label="Close">✕</button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <DetailCell label="Name" value={fullName || '—'} />
+          <DetailCell label="Status" value={blocked ? 'Blocked' : (target.account_status || 'Active')} />
+          <DetailCell label="Username" value={target.username ? `@${target.username}` : '—'} />
+          <DetailCell label="Role" value={target.role || '—'} />
+          <DetailCell label="Contact" value={target.contact_number || '—'} wide />
+        </div>
+        {blocked && (
+          <div style={{
+            marginTop: 16,
+            background: '#fff7ed',
+            border: '1.5px solid #fdba74',
+            borderLeft: '4px solid #c2410c',
+            borderRadius: 10,
+            padding: '12px 14px',
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.4, color: '#9a3412', textTransform: 'uppercase', marginBottom: 6 }}>
+              Why this account is blocked
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#7c2d12', marginBottom: 4 }}>
+              {reason?.label || 'Administrator decision'}
+            </div>
+            <div style={{ fontSize: 13, color: '#9a3412', lineHeight: 1.5 }}>
+              {reason?.detail || 'The administrator restricted this account.'}
+            </div>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={onClose}
+          style={{ marginTop: 18, width: '100%', height: 44, border: '1.5px solid #E5E7EB', borderRadius: 10, background: '#fff', color: '#374151', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DetailCell({ label, value, wide }) {
+  return (
+    <div style={{ gridColumn: wide ? '1 / -1' : undefined, background: '#F8FAFC', borderRadius: 10, padding: '10px 12px' }}>
+      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.4, color: '#94A3B8', textTransform: 'uppercase', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 13.5, fontWeight: 600, color: '#1E293B', wordBreak: 'break-word' }}>{value}</div>
+    </div>
+  );
+}
+
 function EditUserModal({ user: target, onClose, onSaved }) {
   const [form, setForm] = useState({
     first_name: target.first_name || '',
@@ -1126,12 +1264,15 @@ export default function Dashboard() {
   const [showAddAdmin, setShowAddAdmin] = useState(false);
   const [userSubTab, setUserSubTab] = useState('mobile');
   const [editingUser, setEditingUser] = useState(null);
+  const [viewingUser, setViewingUser] = useState(null);
+  const [viewingAdmin, setViewingAdmin] = useState(null);
   const [editingAdmin, setEditingAdmin] = useState(null);
   const [editingIncident, setEditingIncident] = useState(null);
   const [updatingStatusId, setUpdatingStatusId] = useState(null);
   const [assigningIncident, setAssigningIncident] = useState(null);
   const [liveMapFocusId, setLiveMapFocusId] = useState(null);
   const [responderModal, setResponderModal] = useState(null);
+  const [viewingResponder, setViewingResponder] = useState(null);
   const [incidentFilter, setIncidentFilter] = useState('pending');
   const [archiveModule, setArchiveModule] = useState('accident');
   const [archiveSelectedIds, setArchiveSelectedIds] = useState(() => new Set());
@@ -1231,8 +1372,33 @@ export default function Dashboard() {
   };
 
   const handleShowOnLiveMap = (inc) => {
+    markIncidentViewed(inc);
     setLiveMapFocusId(inc.incident_id);
     setActiveTab('live-map');
+  };
+
+  const markIncidentViewed = async (inc) => {
+    if (!inc?.incident_id || inc.viewed) return;
+    setIncidents((prev) =>
+      prev.map((row) =>
+        Number(row.incident_id) === Number(inc.incident_id) ? { ...row, viewed: true } : row
+      )
+    );
+    try {
+      await api.patch(`/incidents/${inc.incident_id}/viewed`);
+    } catch {
+      /* keep the optimistic viewed mark */
+    }
+  };
+
+  const handleOpenIncident = (inc) => {
+    markIncidentViewed(inc);
+    setEditingIncident(inc);
+  };
+
+  const handleAssignIncident = (inc) => {
+    markIncidentViewed(inc);
+    setAssigningIncident(inc);
   };
 
   const handleOutsideStatusChange = async (inc, nextStatus) => {
@@ -1242,6 +1408,7 @@ export default function Dashboard() {
     setError('');
     try {
       await updateIncidentStatus(inc.incident_id, nextStatus);
+      markIncidentViewed(inc);
       await fetchData();
     } catch (err) {
       setError(err.message || 'Failed to update status.');
@@ -1258,6 +1425,7 @@ export default function Dashboard() {
   const pendingIncidents = incidents.filter(
     (i) => i.incident_status === 'Pending' && !isIncidentOutside(i)
   );
+  const unviewedPendingCount = pendingIncidents.filter((i) => !i.viewed).length;
   const activeResponseIncidents = incidents.filter(
     (i) => ACTIVE_RESPONSE_STATUSES.includes(i.incident_status) && !isIncidentOutside(i)
   );
@@ -1570,15 +1738,17 @@ export default function Dashboard() {
     openConfirm({
       title: blocking ? 'Block this user?' : 'Unblock this user?',
       message: blocking
-        ? `${u.first_name} ${u.last_name} will not be able to log in to the mobile app.`
+        ? `${u.first_name} ${u.last_name} will not be able to log in. Choose the reason they will see on the mobile app.`
         : `${u.first_name} ${u.last_name} will be able to log in again.`,
       confirmLabel: blocking ? 'Block' : 'Unblock',
       variant: blocking ? 'warning' : 'info',
-      onConfirm: async () => {
+      reasonOptions: blocking ? BLOCK_REASONS : undefined,
+      onConfirm: async (reasonId) => {
         closeConfirm();
         try {
           await api.patch(`/auth/users/${u.user_id}`, {
             account_status: blocking ? 'Blocked' : 'Active',
+            ...(blocking ? { block_reason: reasonId || 'admin' } : {}),
           });
           await fetchData();
         } catch (err) {
@@ -1658,15 +1828,17 @@ export default function Dashboard() {
     openConfirm({
       title: blocking ? 'Block this admin?' : 'Unblock this admin?',
       message: blocking
-        ? `${a.first_name} ${a.last_name} will not be able to sign in to the admin panel.`
+        ? `${a.first_name} ${a.last_name} will not be able to sign in to the admin panel. Choose the reason they will see on login.`
         : `${a.first_name} ${a.last_name} will be able to sign in again.`,
       confirmLabel: blocking ? 'Block' : 'Unblock',
       variant: blocking ? 'warning' : 'info',
-      onConfirm: async () => {
+      reasonOptions: blocking ? BLOCK_REASONS : undefined,
+      onConfirm: async (reasonId) => {
         closeConfirm();
         try {
           await api.patch(`/admin/${a.admin_id}`, {
             account_status: blocking ? 'Blocked' : 'Active',
+            ...(blocking ? { block_reason: reasonId || 'admin' } : {}),
           });
           await fetchData();
         } catch (err) {
@@ -1802,8 +1974,8 @@ export default function Dashboard() {
                 >
                   <span className={styles.navIcon}>{item.icon}</span>
                   {sidebarOpen && <span className={styles.navLabel}>{item.label}</span>}
-                  {sidebarOpen && item.id === 'incidents' && stats.pending > 0 && (
-                    <span className={styles.navBadge}>{stats.pending}</span>
+                  {sidebarOpen && item.id === 'incidents' && unviewedPendingCount > 0 && (
+                    <span className={styles.navBadge}>{unviewedPendingCount}</span>
                   )}
                   {sidebarOpen && item.id === 'archive' && (archivedIncidents.length + deletedIncidents.length) > 0 && (
                     <span className={styles.navBadge}>{archivedIncidents.length + deletedIncidents.length}</span>
@@ -1848,15 +2020,15 @@ export default function Dashboard() {
             <button
               type="button"
               className={styles.notifBtn}
-              title="View pending accidents"
+              title="View new accident requests"
               onClick={() => {
                 setActiveTab('incidents');
                 setIncidentFilter('pending');
               }}
             >
               🔔
-              {stats.pending > 0 && (
-                <span className={styles.notifCount}>{stats.pending}</span>
+              {unviewedPendingCount > 0 && (
+                <span className={styles.notifCount}>{unviewedPendingCount}</span>
               )}
             </button>
           <div className={styles.userInfo}>
@@ -1977,6 +2149,16 @@ export default function Dashboard() {
             <LiveMap key="live-map" focusIncidentId={liveMapFocusId} />
           )}
 
+          {activeTab === 'analytics' && (
+            <div>
+              <div className={styles.tabHeader}>
+                <h2 className={styles.sectionTitle}>Analytics</h2>
+                <button className={styles.refreshBtn} onClick={fetchData}>🔄 Refresh</button>
+              </div>
+              <AccidentReport incidents={incidents} isLoading={isLoading} />
+            </div>
+          )}
+
           {/* ── INCIDENTS ────────────────────────────────── */}
           {activeTab === 'incidents' && (
             <div>
@@ -2006,7 +2188,9 @@ export default function Dashboard() {
                     ? 'Cancelled incidents can be archived or deleted from here.'
                     : incidentFilter === 'outside'
                       ? 'Use the status dropdown: Outside → For Referral → Referred → Completed. The reporter sees this on My Alerts.'
-                      : 'Click the buttons above to switch between incident groups.'}
+                      : incidentFilter === 'pending'
+                        ? 'NEW means this request has not been reviewed yet. Click the row to open details — it will be marked Viewed.'
+                        : 'Click the buttons above to switch between incident groups.'}
               </p>
 
               {incidentFilter === 'pending' && (
@@ -2016,10 +2200,10 @@ export default function Dashboard() {
                   rows={pendingIncidents}
                   isLoading={isLoading}
                   emptyMessage="📭 No pending incidents."
-                  onEdit={setEditingIncident}
+                  onEdit={handleOpenIncident}
                   onArchive={handleArchive}
                   onDelete={handleDelete}
-                  onAssign={setAssigningIncident}
+                  onAssign={handleAssignIncident}
                   onShowMap={handleShowOnLiveMap}
                   showAssignActions
                   hideTitle
@@ -2033,10 +2217,10 @@ export default function Dashboard() {
                   rows={activeResponseIncidents}
                   isLoading={isLoading}
                   emptyMessage="📭 No incidents in progress."
-                  onEdit={setEditingIncident}
+                  onEdit={handleOpenIncident}
                   onArchive={handleArchive}
                   onDelete={handleDelete}
-                  onAssign={setAssigningIncident}
+                  onAssign={handleAssignIncident}
                   onShowMap={handleShowOnLiveMap}
                   showAssignActions
                   hideTitle
@@ -2050,10 +2234,10 @@ export default function Dashboard() {
                   rows={outsideIncidents}
                   isLoading={isLoading}
                   emptyMessage="📭 No incidents outside the service boundary."
-                  onEdit={setEditingIncident}
+                  onEdit={handleOpenIncident}
                   onArchive={handleArchive}
                   onDelete={handleDelete}
-                  onAssign={setAssigningIncident}
+                  onAssign={handleAssignIncident}
                   onShowMap={handleShowOnLiveMap}
                   showAssignActions
                   statusDropdown
@@ -2070,7 +2254,7 @@ export default function Dashboard() {
                   rows={resolvedIncidents}
                   isLoading={isLoading}
                   emptyMessage="📭 No resolved incidents yet."
-                  onEdit={setEditingIncident}
+                  onEdit={handleOpenIncident}
                   onArchive={handleArchive}
                   onDelete={handleDelete}
                   onShowMap={handleShowOnLiveMap}
@@ -2087,7 +2271,7 @@ export default function Dashboard() {
                   rows={cancelledIncidents}
                   isLoading={isLoading}
                   emptyMessage="📭 No cancelled incidents."
-                  onEdit={setEditingIncident}
+                  onEdit={handleOpenIncident}
                   onArchive={handleArchive}
                   onDelete={handleDelete}
                   onShowMap={handleShowOnLiveMap}
@@ -2140,7 +2324,7 @@ export default function Dashboard() {
                     rows={archiveAccidentRows}
                     isLoading={isLoading}
                     emptyMessage="📭 No archived accidents yet."
-                    onEdit={setEditingIncident}
+                    onEdit={handleOpenIncident}
                     onArchive={handleArchive}
                     onDelete={handlePermanentDelete}
                     onRestore={handleRestore}
@@ -2357,7 +2541,11 @@ export default function Dashboard() {
                       </thead>
                       <tbody>
                         {responders.map((r) => (
-                          <tr key={r.responder_id}>
+                          <tr
+                            key={r.responder_id}
+                            className={styles.incidentRowClickable}
+                            onClick={() => setViewingResponder(r)}
+                          >
                             <td><strong>#{r.responder_id}</strong></td>
                             <td>
                               <div className={styles.userCell}>
@@ -2377,7 +2565,7 @@ export default function Dashboard() {
                                 {r.availability_status}
                               </span>
                             </td>
-                            <td>
+                            <td onClick={(e) => e.stopPropagation()}>
                               <div className={styles.actionGroup}>
                                 <button
                                   type="button"
@@ -2500,7 +2688,11 @@ export default function Dashboard() {
                           {filteredMobileUsers.map((u) => {
                             const blocked = u.account_status !== 'Active';
                             return (
-                            <tr key={u.user_id}>
+                            <tr
+                              key={u.user_id}
+                              className={styles.incidentRowClickable}
+                              onClick={() => setViewingUser(u)}
+                            >
                               <td><strong>#{u.user_id}</strong></td>
                               <td>
                                 <div className={styles.userCell}>
@@ -2516,9 +2708,14 @@ export default function Dashboard() {
                                   <span className={styles.statusDotBadge} />
                                   {blocked ? 'Blocked' : 'Active'}
                                 </span>
+                                {blocked && u.block_reason && (
+                                  <div style={{ fontSize: 11, color: '#9a3412', marginTop: 4, maxWidth: 160 }}>
+                                    {BLOCK_REASONS.find((r) => r.id === u.block_reason)?.label || u.block_reason}
+                                  </div>
+                                )}
                               </td>
                               <td style={{ color: '#888', fontSize: 12 }}>{formatDate(u.date_registered)}</td>
-                              <td>
+                              <td onClick={(e) => e.stopPropagation()}>
                                 <div className={styles.actionGroup}>
                                   <button type="button" className={styles.editBtn} onClick={() => setEditingUser(u)}>
                                     Edit
@@ -2582,7 +2779,11 @@ export default function Dashboard() {
                           {filteredAdmins.map((a) => {
                             const blocked = a.account_status === 'Blocked';
                             return (
-                            <tr key={a.admin_id}>
+                            <tr
+                              key={a.admin_id}
+                              className={styles.incidentRowClickable}
+                              onClick={() => setViewingAdmin(a)}
+                            >
                               <td><strong>#{a.admin_id}</strong></td>
                               <td>
                                 <div className={styles.userCell}>
@@ -2605,8 +2806,13 @@ export default function Dashboard() {
                                   <span className={styles.statusDotBadge} />
                                   {blocked ? 'Blocked' : 'Active'}
                                 </span>
+                                {blocked && a.block_reason && (
+                                  <div style={{ fontSize: 11, color: '#9a3412', marginTop: 4, maxWidth: 160 }}>
+                                    {BLOCK_REASONS.find((r) => r.id === a.block_reason)?.label || a.block_reason}
+                                  </div>
+                                )}
                               </td>
-                              <td>
+                              <td onClick={(e) => e.stopPropagation()}>
                                 <div className={styles.actionGroup}>
                                   <button type="button" className={styles.editBtn} onClick={() => setEditingAdmin(a)}>
                                     Edit
@@ -2658,6 +2864,24 @@ export default function Dashboard() {
           onAssigned={fetchData}
         />
       )}
+      {viewingResponder && (
+        <RecordDetailsModal
+          title={`Responder Details — #${viewingResponder.responder_id}`}
+          fields={[
+            { label: 'Name', value: [viewingResponder.first_name, viewingResponder.middle_name, viewingResponder.last_name].filter(Boolean).join(' ') },
+            { label: 'Type', value: viewingResponder.responder_type },
+            { label: 'Contact', value: viewingResponder.contact_number },
+            { label: 'Status', value: viewingResponder.availability_status },
+            { label: 'On call', value: viewingResponder.occupied ? `Yes — Accident #${viewingResponder.occupied_incident_id}` : 'No' },
+          ]}
+          onClose={() => setViewingResponder(null)}
+          onEdit={() => {
+            const responder = viewingResponder;
+            setViewingResponder(null);
+            setResponderModal({ mode: 'edit', responder });
+          }}
+        />
+      )}
       {responderModal && (
         <ResponderModal
           responder={responderModal.mode === 'edit' ? responderModal.responder : null}
@@ -2672,6 +2896,7 @@ export default function Dashboard() {
           confirmLabel={confirmModal.confirmLabel || 'Delete'}
           cancelLabel="Cancel"
           variant={confirmModal.variant || 'danger'}
+          reasonOptions={confirmModal.reasonOptions}
           onConfirm={confirmModal.onConfirm}
           onCancel={closeConfirm}
         />
@@ -2682,6 +2907,18 @@ export default function Dashboard() {
         <AddAdminModal
           onClose={() => setShowAddAdmin(false)}
           onCreated={() => { setShowAddAdmin(false); fetchData(); }}
+        />
+      )}
+      {viewingUser && (
+        <UserDetailsModal
+          user={viewingUser}
+          onClose={() => setViewingUser(null)}
+        />
+      )}
+      {viewingAdmin && (
+        <AdminDetailsModal
+          admin={viewingAdmin}
+          onClose={() => setViewingAdmin(null)}
         />
       )}
       {editingUser && (

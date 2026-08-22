@@ -397,8 +397,9 @@
   font-weight: 500;
   margin-bottom: 18px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
+  white-space: pre-wrap;
 }
 
 /* ─── Submit Button ───────────────────────────────────── */

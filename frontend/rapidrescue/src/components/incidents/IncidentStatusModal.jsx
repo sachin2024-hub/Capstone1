@@ -11,6 +11,8 @@ export default function IncidentStatusModal({ incident, responders = [], users =
   const currentStatus = incident?.incident_status || 'Pending';
   const dispatch = Array.isArray(incident?.dispatch) ? incident.dispatch[0] : incident?.dispatch;
   const responder = dispatch?.responders;
+  const assignedResponderId = responder?.responder_id || dispatch?.responder_id;
+  const isAssigned = Boolean(assignedResponderId || responder);
   const loc = Array.isArray(incident.locations) ? incident.locations[0] : incident.locations;
   const isOutside =
     OUTSIDE_STATUS_VALUES.includes(currentStatus) ||
@@ -24,7 +26,7 @@ export default function IncidentStatusModal({ incident, responders = [], users =
     isOutside && currentStatus === 'Pending' ? 'Outside' : currentStatus
   );
   const [responderId, setResponderId] = useState(
-    responder?.responder_id ? String(responder.responder_id) : ''
+    assignedResponderId ? String(assignedResponderId) : ''
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -45,13 +47,14 @@ export default function IncidentStatusModal({ incident, responders = [], users =
     : 'Unassigned';
   const selectedHint = availableStatuses.find((s) => s.value === status)?.hint;
   const availableResponders = (responders || []).filter((r) => {
-    const available = String(r.availability_status || '').toLowerCase() === 'available';
-    const isCurrent = responder && Number(r.responder_id) === Number(responder.responder_id);
-    return available || isCurrent;
+    const isCurrent = assignedResponderId && Number(r.responder_id) === Number(assignedResponderId);
+    if (isCurrent) return true;
+    if (r.occupied) return false;
+    return String(r.availability_status || '').toLowerCase() === 'available';
   });
 
   const handleSave = async () => {
-    if (!isOutside && !responderId) {
+    if (!isOutside && !isAssigned && !responderId) {
       setError('Assign a responder first before saving the status.');
       return;
     }
@@ -59,16 +62,12 @@ export default function IncidentStatusModal({ incident, responders = [], users =
     setSaving(true);
     setError('');
     try {
-      if (!isOutside) {
-        const alreadyAssigned = responder && String(responder.responder_id) === String(responderId);
-        if (!alreadyAssigned) {
-          await assignResponder(incident.incident_id, Number(responderId));
-        }
-        const afterAssign = !alreadyAssigned && currentStatus === 'Pending' ? 'In Progress' : currentStatus;
-        if (status !== afterAssign) {
-          await updateIncidentStatus(incident.incident_id, status);
-        }
-      } else if (status !== currentStatus) {
+      let statusNow = currentStatus;
+      if (!isOutside && !isAssigned && responderId) {
+        await assignResponder(incident.incident_id, Number(responderId));
+        if (statusNow === 'Pending') statusNow = 'In Progress';
+      }
+      if (status !== statusNow) {
         await updateIncidentStatus(incident.incident_id, status);
       }
       onUpdated?.();
@@ -164,25 +163,42 @@ export default function IncidentStatusModal({ incident, responders = [], users =
 
         {!isOutside && (
           <>
-            <label className={styles.label}>Assign responder</label>
-            <select
-              className={styles.select}
-              value={responderId}
-              onChange={(e) => setResponderId(e.target.value)}
-              disabled={saving}
-            >
-              <option value="">— Choose responder / ambulance —</option>
-              {availableResponders.map((r) => (
-                <option key={r.responder_id} value={r.responder_id}>
-                  {r.first_name} {r.last_name} — {r.responder_type}
-                </option>
-              ))}
-            </select>
-
-            {!responderId && (
-              <p className={styles.hint}>
-                Assign a responder first. Status cannot be saved while this accident is unassigned.
-              </p>
+            <label className={styles.label}>Assigned unit</label>
+            {isAssigned ? (
+              <>
+                <div className={styles.lockedAssign}>
+                  🚑 {assignedName}{responder?.responder_type ? ` — ${responder.responder_type}` : ''}
+                </div>
+                <p className={styles.lockHint}>
+                  This unit stays assigned. You can change status, but you cannot switch ambulance/responder.
+                </p>
+              </>
+            ) : (
+              <>
+                <select
+                  className={styles.select}
+                  value={responderId}
+                  onChange={(e) => setResponderId(e.target.value)}
+                  disabled={saving}
+                >
+                  <option value="">— Choose responder / ambulance —</option>
+                  {availableResponders.map((r) => (
+                    <option key={r.responder_id} value={r.responder_id}>
+                      {r.first_name} {r.last_name} — {r.responder_type}
+                    </option>
+                  ))}
+                </select>
+                {availableResponders.length === 0 && (
+                  <p className={styles.lockHint}>
+                    All units are on another call. They will appear again after that accident is Resolved.
+                  </p>
+                )}
+                {!responderId && (
+                  <p className={styles.hint}>
+                    Assign a responder first. Status cannot be saved while this accident is unassigned.
+                  </p>
+                )}
+              </>
             )}
           </>
         )}

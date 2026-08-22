@@ -5,7 +5,16 @@ const FILE = path.join(__dirname, '..', 'data', 'archive-store.json');
 const SAVED_STATUSES = ['Pending', 'Outside', 'For Referral', 'Referred', 'Completed', 'In Progress', 'En Route', 'Arrived', 'Resolved', 'Cancelled'];
 
 function emptyStore() {
-  return { incidents: {}, dispatch: [], callLogs: [], blockedAdmins: [], archivedAdmins: [] };
+  return {
+    incidents: {},
+    dispatch: [],
+    callLogs: [],
+    blockedAdmins: [],
+    archivedAdmins: [],
+    userBlockReasons: {},
+    adminBlockReasons: {},
+    viewedIncidents: {},
+  };
 }
 
 function loadStore() {
@@ -95,6 +104,54 @@ function setAdminArchived(id, archived) {
   else restoreId('archivedAdmins', id);
 }
 
+function getUserBlockReason(id) {
+  const reasons = loadStore().userBlockReasons || {};
+  return reasons[String(id)] || null;
+}
+
+function setUserBlockReason(id, reasonId) {
+  const store = loadStore();
+  store.userBlockReasons = store.userBlockReasons || {};
+  if (reasonId) store.userBlockReasons[String(id)] = reasonId;
+  else delete store.userBlockReasons[String(id)];
+  saveStore(store);
+}
+
+function getAdminBlockReason(id) {
+  const reasons = loadStore().adminBlockReasons || {};
+  return reasons[String(id)] || null;
+}
+
+function setAdminBlockReason(id, reasonId) {
+  const store = loadStore();
+  store.adminBlockReasons = store.adminBlockReasons || {};
+  if (reasonId) store.adminBlockReasons[String(id)] = reasonId;
+  else delete store.adminBlockReasons[String(id)];
+  saveStore(store);
+}
+
+function listViewedIncidents() {
+  return loadStore().viewedIncidents || {};
+}
+
+function isIncidentViewed(id) {
+  return Boolean(listViewedIncidents()[String(id)]);
+}
+
+function markIncidentViewed(id) {
+  const store = loadStore();
+  store.viewedIncidents = store.viewedIncidents || {};
+  store.viewedIncidents[String(id)] = new Date().toISOString();
+  saveStore(store);
+}
+
+function clearIncidentViewed(id) {
+  const store = loadStore();
+  store.viewedIncidents = store.viewedIncidents || {};
+  delete store.viewedIncidents[String(id)];
+  saveStore(store);
+}
+
 module.exports = {
   SAVED_STATUSES,
   rememberStatus,
@@ -107,4 +164,12 @@ module.exports = {
   setAdminBlocked,
   isAdminArchived,
   setAdminArchived,
+  getUserBlockReason,
+  setUserBlockReason,
+  getAdminBlockReason,
+  setAdminBlockReason,
+  listViewedIncidents,
+  isIncidentViewed,
+  markIncidentViewed,
+  clearIncidentViewed,
 };

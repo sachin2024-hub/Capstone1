@@ -3,6 +3,7 @@ const router = express.Router();
 const supabase = require('../config/supabase');
 const { CABADBARAN, RESPONDER_STATIONS, isWithinCabadbaran, CITY_HALL } = require('../config/cabadbaran');
 const { parseLocationAddress } = require('../utils/locationFormat');
+const { isResponderOccupied } = require('../utils/responderBusy');
 
 // GET /api/dispatch/all
 router.get('/all', async (req, res) => {
@@ -130,6 +131,12 @@ router.post('/assign', async (req, res) => {
       return res.status(404).json({ message: 'Responder not found.' });
     }
 
+    if (await isResponderOccupied(responderId, incidentId)) {
+      return res.status(400).json({
+        message: 'This ambulance/responder is already assigned to another request. It will show again after that accident is Resolved.',
+      });
+    }
+
     const { data: existingRows } = await supabase
       .from('dispatch')
       .select('dispatch_id, responder_id, dispatch_status')
@@ -141,18 +148,10 @@ router.post('/assign', async (req, res) => {
     const existing = existingRows?.[0];
 
     if (existing) {
-      if (existing.responder_id !== responderId) {
-        await supabase
-          .from('responders')
-          .update({ availability_status: 'Available' })
-          .eq('responder_id', existing.responder_id);
-
-        const { error: updateErr } = await supabase
-          .from('dispatch')
-          .update({ responder_id: responderId, dispatch_status: 'En Route' })
-          .eq('dispatch_id', existing.dispatch_id);
-
-        if (updateErr) return res.status(500).json({ message: updateErr.message });
+      if (Number(existing.responder_id) !== Number(responderId)) {
+        return res.status(400).json({
+          message: 'This accident already has an assigned responder. Status can change, but the unit stays the same.',
+        });
       }
     } else {
       const { error: insertErr } = await supabase

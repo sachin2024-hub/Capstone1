@@ -6,6 +6,7 @@ import {
 } from '../../services/callLogService';
 import CallLogModal from './CallLogModal';
 import ConfirmModal from '../common/ConfirmModal';
+import RecordDetailsModal from '../common/RecordDetailsModal';
 import styles from './CallLog.module.css';
 
 const COLUMNS = [
@@ -56,6 +57,7 @@ export default function CallLogPage({ onArchived }) {
   const [modalEntry, setModalEntry] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [viewing, setViewing] = useState(null);
 
   const teamInfo = CALL_LOG_TEAMS.find((t) => t.id === team) || CALL_LOG_TEAMS[0];
 
@@ -170,7 +172,11 @@ export default function CallLogPage({ onArchived }) {
               </thead>
               <tbody>
                 {entries.map((row, idx) => (
-                  <tr key={row.call_log_id}>
+                  <tr
+                    key={row.call_log_id}
+                    className={styles.clickableRow}
+                    onClick={() => setViewing(row)}
+                  >
                     <td className={styles.rowNum}>{idx + 1}</td>
                     {COLUMNS.map((col) => (
                       <td key={col.key} className={styles.cell}>
@@ -179,7 +185,7 @@ export default function CallLogPage({ onArchived }) {
                           : (row[col.key] ?? '—')}
                       </td>
                     ))}
-                    <td className={styles.actionCol}>
+                    <td className={styles.actionCol} onClick={(e) => e.stopPropagation()}>
                       <div className={styles.actionGroup}>
                         <button type="button" className={styles.editBtn} onClick={() => handleEdit(row)} title="Edit">
                           ✏️
@@ -215,6 +221,25 @@ export default function CallLogPage({ onArchived }) {
         </div>
       </div>
 
+      {viewing && (
+        <RecordDetailsModal
+          title={`Call Log Details — ${viewing.caller_name || 'Entry'}`}
+          fields={[
+            { label: 'Team', value: viewing.team || team },
+            { label: 'Date', value: viewing.log_date || logDate },
+            ...COLUMNS.map((col) => ({
+              label: col.label,
+              value: col.key === 'time_of_call' ? formatTime(viewing[col.key]) : viewing[col.key],
+              wide: ['nature_of_incident', 'chief_complaint', 'location_landmark', 'remarks'].includes(col.key),
+            })),
+          ]}
+          onClose={() => setViewing(null)}
+          onEdit={() => {
+            setViewing(null);
+            handleEdit(viewing);
+          }}
+        />
+      )}
       {showModal && (
         <CallLogModal
           entry={modalEntry}

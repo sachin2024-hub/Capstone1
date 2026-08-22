@@ -8,6 +8,7 @@ import { DISPATCH_COLORS } from '../../constants/statusColors';
 import { formatDate } from '../../utils/formatDate';
 import DispatchRecordModal from './DispatchRecordModal';
 import ConfirmModal from '../common/ConfirmModal';
+import RecordDetailsModal from '../common/RecordDetailsModal';
 import styles from './Dispatch.module.css';
 
 const RECORD_COLUMNS = [
@@ -55,6 +56,7 @@ export default function DispatchPage({ onArchived }) {
   const [modalEntry, setModalEntry] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [viewing, setViewing] = useState(null);
 
   const loadRecords = useCallback(async () => {
     setLoading(true);
@@ -193,12 +195,16 @@ export default function DispatchPage({ onArchived }) {
                 </thead>
                 <tbody>
                   {records.map((row, idx) => (
-                    <tr key={row.dispatch_record_id}>
+                    <tr
+                      key={row.dispatch_record_id}
+                      className={styles.clickableRow}
+                      onClick={() => setViewing({ type: 'record', row })}
+                    >
                       <td className={styles.rowNum}>{idx + 1}</td>
                       {RECORD_COLUMNS.map((col) => (
                         <td key={col.key}>{renderCell(row, col.key)}</td>
                       ))}
-                      <td className={styles.actionCol}>
+                      <td className={styles.actionCol} onClick={(e) => e.stopPropagation()}>
                         <div className={styles.actionGroup}>
                           <button type="button" className={styles.editBtn} onClick={() => handleEdit(row)} title="Edit">✏️</button>
                           <button
@@ -254,7 +260,11 @@ export default function DispatchPage({ onArchived }) {
                 </thead>
                 <tbody>
                   {dispatchLog.map((d) => (
-                    <tr key={d.dispatch_id}>
+                    <tr
+                      key={d.dispatch_id}
+                      className={styles.clickableRow}
+                      onClick={() => setViewing({ type: 'log', row: d })}
+                    >
                       <td><strong>#{d.dispatch_id}</strong></td>
                       <td>
                         <strong>#{d.incidents?.incident_id}</strong> — {d.incidents?.incident_type || '—'}
@@ -311,6 +321,40 @@ export default function DispatchPage({ onArchived }) {
         </div>
       )}
 
+      {viewing?.type === 'record' && (
+        <RecordDetailsModal
+          title={`Dispatch Details — ${viewing.row.vehicle || 'Vehicle'}`}
+          fields={[
+            { label: 'Date', value: viewing.row.log_date || logDate },
+            ...RECORD_COLUMNS.map((col) => ({
+              label: col.label,
+              value: renderCell(viewing.row, col.key),
+            })),
+          ]}
+          onClose={() => setViewing(null)}
+          onEdit={() => {
+            const entry = viewing.row;
+            setViewing(null);
+            handleEdit(entry);
+          }}
+        />
+      )}
+      {viewing?.type === 'log' && (
+        <RecordDetailsModal
+          title={`Dispatch Log — #${viewing.row.dispatch_id}`}
+          fields={[
+            { label: 'Incident', value: viewing.row.incidents?.incident_id ? `#${viewing.row.incidents.incident_id}` : '—' },
+            { label: 'Type', value: viewing.row.incidents?.incident_type },
+            { label: 'Reporter', value: viewing.row.incidents?.users ? `${viewing.row.incidents.users.first_name} ${viewing.row.incidents.users.last_name}` : '—' },
+            { label: 'Responder', value: viewing.row.responders ? `${viewing.row.responders.first_name} ${viewing.row.responders.last_name}` : '—' },
+            { label: 'Unit type', value: viewing.row.responders?.responder_type },
+            { label: 'Status', value: viewing.row.dispatch_status },
+            { label: 'Dispatch time', value: formatDate(viewing.row.dispatch_time) },
+            { label: 'Arrival', value: formatDate(viewing.row.arrival_time) },
+          ]}
+          onClose={() => setViewing(null)}
+        />
+      )}
       {showModal && (
         <DispatchRecordModal
           entry={modalEntry}
