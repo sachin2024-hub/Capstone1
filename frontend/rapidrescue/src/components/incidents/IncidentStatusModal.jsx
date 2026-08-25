@@ -46,6 +46,10 @@ export default function IncidentStatusModal({ incident, responders = [], users =
     ? `${responder.first_name} ${responder.last_name}`
     : 'Unassigned';
   const selectedHint = availableStatuses.find((s) => s.value === status)?.hint;
+  const isClosed =
+    ['Cancelled', 'Resolved', 'Completed', 'Archived'].includes(currentStatus) ||
+    ['Cancelled', 'Resolved', 'Completed', 'Archived'].includes(status);
+  const showAssignUnit = !isOutside && !isClosed;
   const availableResponders = (responders || []).filter((r) => {
     const isCurrent = assignedResponderId && Number(r.responder_id) === Number(assignedResponderId);
     if (isCurrent) return true;
@@ -54,7 +58,7 @@ export default function IncidentStatusModal({ incident, responders = [], users =
   });
 
   const handleSave = async () => {
-    if (!isOutside && !isAssigned && !responderId) {
+    if (showAssignUnit && !isAssigned && !responderId) {
       setError('Assign a responder first before saving the status.');
       return;
     }
@@ -116,7 +120,9 @@ export default function IncidentStatusModal({ incident, responders = [], users =
           </div>
           <div className={styles.detailCell}>
             <span className={styles.detailLabel}>Assigned</span>
-            <span className={styles.detailValue}>{assignedName}</span>
+            <span className={styles.detailValue}>
+              {isClosed && !responder ? '—' : assignedName}
+            </span>
           </div>
           <div className={styles.detailCell}>
             <span className={styles.detailLabel}>Status</span>
@@ -161,7 +167,7 @@ export default function IncidentStatusModal({ incident, responders = [], users =
           ))}
         </select>
 
-        {!isOutside && (
+        {showAssignUnit && (
           <>
             <label className={styles.label}>Assigned unit</label>
             {isAssigned ? (

@@ -136,6 +136,96 @@ router.get('/my-incidents', authenticateToken, async (req, res) => {
   }
 });
 
+const CLOSED_FOR_CANCEL = ['Resolved', 'Cancelled', 'Archived', 'Completed', 'Deleted'];
+
+function withCancelReason(description, reason) {
+  const base = String(description || '').replace(/\n?\[Cancelled by reporter\][\s\S]*$/i, '').trim();
+  const note = `[Cancelled by reporter] ${reason}`;
+  return base ? `${base}\n${note}` : note;
+}
+
+async function cancelOwnedIncident(req, res, incidentId, reason) {
+  const user_id = req.user?.user_id;
+  if (!user_id) {
+    return res.status(401).json({ message: 'Access denied.' });
+  }
+  if (!reason) {
+    return res.status(400).json({ message: 'Please provide a reason for cancelling this request.' });
+  }
+  if (reason.length > 300) {
+    return res.status(400).json({ message: 'Cancel reason must be 300 characters or less.' });
+  }
+
+  try {
+    const { data: existing, error: existingErr } = await supabase
+      .from('incidents')
+      .select('incident_id, user_id, incident_status, incident_description')
+      .eq('incident_id', incidentId)
+      .single();
+
+    if (existingErr || !existing) {
+      return res.status(404).json({ message: 'Incident not found.' });
+    }
+    if (String(existing.user_id) !== String(user_id)) {
+      return res.status(403).json({ message: 'You can only cancel your own requests.' });
+    }
+    if (CLOSED_FOR_CANCEL.includes(existing.incident_status)) {
+      return res.status(400).json({ message: 'This request can no longer be cancelled.' });
+    }
+
+    const { data: incident, error: incErr } = await supabase
+      .from('incidents')
+      .update({
+        incident_status: 'Cancelled',
+        incident_description: withCancelReason(existing.incident_description, reason),
+      })
+      .eq('incident_id', incidentId)
+      .select()
+      .single();
+
+    if (incErr) return res.status(500).json({ message: incErr.message });
+
+    const { data: dispatches } = await supabase
+      .from('dispatch')
+      .select('dispatch_id, responder_id')
+      .eq('incident_id', incidentId)
+      .order('dispatch_time', { ascending: false })
+      .limit(1);
+
+    const dispatch = dispatches?.[0];
+    if (dispatch) {
+      await supabase
+        .from('dispatch')
+        .update({ dispatch_status: 'Completed' })
+        .eq('dispatch_id', dispatch.dispatch_id);
+
+      if (dispatch.responder_id) {
+        await supabase
+          .from('responders')
+          .update({ availability_status: 'Available' })
+          .eq('responder_id', dispatch.responder_id);
+      }
+    }
+
+    return res.json({
+      message: 'Request cancelled.',
+      incident,
+    });
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+}
+
+// POST /api/incidents/cancel — reporter cancels their own request
+router.post('/cancel', authenticateToken, async (req, res) => {
+  const incidentId = Number(req.body?.incident_id || req.body?.id);
+  const reason = String(req.body?.reason || '').trim();
+  if (!incidentId) {
+    return res.status(400).json({ message: 'Incident ID is required.' });
+  }
+  return cancelOwnedIncident(req, res, incidentId, reason);
+});
+
 // GET /api/incidents/all  - Get all incidents (for dashboard)
 router.get('/all', async (req, res) => {
   try {
@@ -233,7 +323,7 @@ router.patch('/:id/status', async (req, res) => {
   try {
     const { data: existing, error: existingErr } = await supabase
       .from('incidents')
-      .select('incident_status')
+      .select('incident_status, incident_description')
       .eq('incident_id', incidentId)
       .single();
 
@@ -247,9 +337,15 @@ router.patch('/:id/status', async (req, res) => {
       });
     }
 
+    const updates = { incident_status };
+    const cancelReason = String(req.body?.reason || req.body?.cancel_reason || '').trim();
+    if (incident_status === 'Cancelled' && cancelReason) {
+      updates.incident_description = withCancelReason(existing.incident_description, cancelReason);
+    }
+
     const { data: incident, error: incErr } = await supabase
       .from('incidents')
-      .update({ incident_status })
+      .update(updates)
       .eq('incident_id', incidentId)
       .select()
       .single();
@@ -297,6 +393,13 @@ router.patch('/:id/status', async (req, res) => {
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }
+});
+
+// PATCH /api/incidents/:id/cancel — same as POST /cancel
+router.patch('/:id/cancel', authenticateToken, async (req, res) => {
+  const incidentId = Number(req.params.id);
+  const reason = String(req.body?.reason || '').trim();
+  return cancelOwnedIncident(req, res, incidentId, reason);
 });
 
 // PATCH /api/incidents/:id/archive — move incident to archive
