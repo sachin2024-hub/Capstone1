@@ -65,7 +65,7 @@ const NAV_SECTIONS = [
   {
     label: 'Operations',
     items: [
-      { id: 'responders', icon: '🚑', label: 'Responders' },
+      { id: 'responders', icon: '🚑', label: 'Ambulance' },
       { id: 'dispatch', icon: '📡', label: 'Dispatch' },
       { id: 'call-log', icon: '📋', label: 'Call Log' },
     ],
@@ -1927,7 +1927,7 @@ export default function Dashboard() {
   const statCards = [
     { label: 'Users',       value: stats.users,      icon: '👥', color: STAT_COLORS[0] },
     { label: 'Incidents',   value: stats.incidents,   icon: '🚨', color: STAT_COLORS[1] },
-    { label: 'Responders',  value: stats.responders,  icon: '🚑', color: STAT_COLORS[2] },
+    { label: 'Ambulance',  value: stats.responders,  icon: '🚑', color: STAT_COLORS[2] },
     { label: 'Pending',     value: stats.pending,     icon: '⏳', color: STAT_COLORS[3] },
     { label: 'Available',   value: stats.available,   icon: '✅', color: STAT_COLORS[4] },
     { label: 'Dispatches',  value: stats.dispatch,    icon: '📡', color: STAT_COLORS[5] },
@@ -2505,7 +2505,7 @@ export default function Dashboard() {
                     <strong>{stats.users}</strong>
                   </div>
                   <div className={styles.settingsRow}>
-                    <span>Responders</span>
+                    <span>Ambulance</span>
                     <strong>{stats.responders}</strong>
                   </div>
                 </div>
@@ -2517,7 +2517,7 @@ export default function Dashboard() {
           {activeTab === 'responders' && (
             <div>
               <div className={styles.tabHeader}>
-                <h2 className={styles.sectionTitle}>Responders</h2>
+                <h2 className={styles.sectionTitle}>Ambulance</h2>
                 <div className={styles.tabHeaderActions}>
                   <button
                     type="button"
