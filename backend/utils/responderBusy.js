@@ -2,6 +2,7 @@ const supabase = require('../config/supabase');
 
 const OPEN_INCIDENT_STATUSES = [
   'Pending',
+  'Dispatch',
   'In Progress',
   'En Route',
   'Arrived',

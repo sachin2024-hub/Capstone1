@@ -38,7 +38,7 @@ router.get('/live', async (req, res) => {
           responders(responder_id, first_name, last_name, responder_type, contact_number, availability_status)
         )
       `)
-      .in('incident_status', ['Pending', 'Outside', 'For Referral', 'Referred', 'In Progress'])
+      .in('incident_status', ['Pending', 'Outside', 'For Referral', 'Referred', 'Dispatch', 'In Progress', 'En Route'])
       .order('date_reported', { ascending: false });
 
     if (incErr) return res.status(500).json({ message: incErr.message });
@@ -168,7 +168,7 @@ router.post('/assign', async (req, res) => {
     if (incident.incident_status === 'Pending') {
       await supabase
         .from('incidents')
-        .update({ incident_status: 'In Progress' })
+        .update({ incident_status: 'Dispatch' })
         .eq('incident_id', incidentId);
     }
 

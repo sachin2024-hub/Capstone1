@@ -89,7 +89,7 @@ export default function AssignResponderModal({ incident, responders, onClose, on
               ))}
             </select>
             <p className={styles.hint}>
-              📱 Status will update to <strong>In Progress</strong> and the assigned team will be marked as Busy.
+              📱 Status will update to <strong>Dispatch</strong> and the assigned team will be marked as Busy.
             </p>
           </>
         )}

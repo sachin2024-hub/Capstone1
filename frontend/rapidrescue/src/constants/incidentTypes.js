@@ -24,7 +24,7 @@ export const INCIDENT_TYPE_GROUPS = [
     ],
   },
   {
-    category: 'Traffic Accident',
+    category: 'Vehicular Accident',
     options: [
       'Motorcycle (Solo)',
       'Motorcycle vs Car',
@@ -34,7 +34,7 @@ export const INCIDENT_TYPE_GROUPS = [
       'Car vs Tricycle',
       'Tricycle vs Tricycle',
       'Vehicle vs Pedestrian',
-      'Other Traffic Accident',
+      'Other Vehicular Accident',
     ],
   },
   {
@@ -93,3 +93,21 @@ export const INCIDENT_TYPE_GROUPS = [
     ],
   },
 ];
+
+/** Old records may still store "Traffic Accident". */
+export const INCIDENT_TYPE_ALIASES = {
+  'Vehicular Accident': ['Traffic Accident'],
+};
+
+export const INCIDENT_SUBTYPE_ALIASES = {
+  'Other Vehicular Accident': ['Other Traffic Accident'],
+};
+
+export function matchingTypeNames(category) {
+  return [category, ...(INCIDENT_TYPE_ALIASES[category] || [])];
+}
+
+export function matchingSubTypeNames(sub) {
+  return [sub, ...(INCIDENT_SUBTYPE_ALIASES[sub] || [])];
+}
+

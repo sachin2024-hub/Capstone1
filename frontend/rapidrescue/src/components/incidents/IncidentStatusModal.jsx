@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { getAvailableStatuses, getOutsideStatuses, OUTSIDE_STATUS_VALUES, updateIncidentStatus } from '../../services/incidentService';
+import { getStatusesForIncident, isReferralOnlyIncident, OUTSIDE_STATUS_VALUES, updateIncidentStatus } from '../../services/incidentService';
 import { assignResponder } from '../../services/dispatchService';
-import { STATUS_COLORS, PRIORITY_COLORS } from '../../constants/statusColors';
+import { displayIncidentStatus, statusColor } from '../../constants/statusColors';
 import { formatDate } from '../../utils/formatDate';
 import { formatIncidentLocation } from '../../utils/locationFormat';
 import { isWithinCabadbaran } from '../../utils/geofence';
+import ReporterInformationModal from './ReporterInformationModal';
 import styles from './IncidentStatusModal.module.css';
 
 export default function IncidentStatusModal({ incident, responders = [], users = [], onClose, onUpdated }) {
@@ -19,25 +20,34 @@ export default function IncidentStatusModal({ incident, responders = [], users =
     (loc?.latitude != null &&
       loc?.longitude != null &&
       !isWithinCabadbaran(Number(loc.latitude), Number(loc.longitude)));
-  const availableStatuses = isOutside
-    ? getOutsideStatuses(currentStatus)
-    : getAvailableStatuses(currentStatus);
-  const [status, setStatus] = useState(
-    isOutside && currentStatus === 'Pending' ? 'Outside' : currentStatus
-  );
+  const referralOnly = isReferralOnlyIncident(incident);
+  const availableStatuses = getStatusesForIncident(incident, currentStatus, isOutside);
+  const [status, setStatus] = useState(() => {
+    if (referralOnly) {
+      return currentStatus === 'Referred' ? 'Referred' : 'Pending';
+    }
+    return isOutside && currentStatus === 'Pending'
+      ? 'Outside'
+      : displayIncidentStatus(currentStatus);
+  });
+  const [cancelReason, setCancelReason] = useState('');
   const [responderId, setResponderId] = useState(
     assignedResponderId ? String(assignedResponderId) : ''
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [showReporter, setShowReporter] = useState(false);
 
   if (!incident) return null;
 
   const locationText = formatIncidentLocation(loc);
   const nestedUser = Array.isArray(incident.users) ? incident.users[0] : (incident.users || incident.user);
-  const registeredUser = (users || []).find(
+  const matchedUser = (users || []).find(
     (u) => Number(u.user_id) === Number(incident.user_id)
   ) || nestedUser;
+  const registeredUser = matchedUser
+    ? { ...matchedUser, user_id: matchedUser.user_id || incident.user_id }
+    : (incident.user_id ? { user_id: incident.user_id } : null);
   const reporterName = registeredUser
     ? `${registeredUser.first_name || ''} ${registeredUser.last_name || ''}`.trim() || '—'
     : '—';
@@ -46,10 +56,11 @@ export default function IncidentStatusModal({ incident, responders = [], users =
     ? `${responder.first_name} ${responder.last_name}`
     : 'Unassigned';
   const selectedHint = availableStatuses.find((s) => s.value === status)?.hint;
+  const existingCancelReason = String(incident.incident_description || '').match(/\[Cancelled(?: by reporter)?\]\s*([\s\S]+)$/i)?.[1]?.trim() || '';
   const isClosed =
     ['Cancelled', 'Resolved', 'Completed', 'Archived'].includes(currentStatus) ||
     ['Cancelled', 'Resolved', 'Completed', 'Archived'].includes(status);
-  const showAssignUnit = !isOutside && !isClosed;
+  const showAssignUnit = !referralOnly && !isOutside && !isClosed;
   const availableResponders = (responders || []).filter((r) => {
     const isCurrent = assignedResponderId && Number(r.responder_id) === Number(assignedResponderId);
     if (isCurrent) return true;
@@ -69,10 +80,19 @@ export default function IncidentStatusModal({ incident, responders = [], users =
       let statusNow = currentStatus;
       if (!isOutside && !isAssigned && responderId) {
         await assignResponder(incident.incident_id, Number(responderId));
-        if (statusNow === 'Pending') statusNow = 'In Progress';
+        if (statusNow === 'Pending') statusNow = 'Dispatch';
+      }
+      if (status === 'Cancelled' && !cancelReason.trim()) {
+        setError('Please enter why this incident is being cancelled.');
+        setSaving(false);
+        return;
       }
       if (status !== statusNow) {
-        await updateIncidentStatus(incident.incident_id, status);
+        await updateIncidentStatus(
+          incident.incident_id,
+          status,
+          status === 'Cancelled' ? { reason: cancelReason.trim() } : {}
+        );
       }
       onUpdated?.();
       onClose();
@@ -102,7 +122,18 @@ export default function IncidentStatusModal({ incident, responders = [], users =
           </div>
           <div className={styles.detailCell}>
             <span className={styles.detailLabel}>Reporter</span>
-            <span className={styles.detailValue}>{reporterName}</span>
+            <button
+              type="button"
+              className={styles.reporterTrigger}
+              onClick={() => setShowReporter(true)}
+              aria-label="View reporter information"
+              title="View reporter information"
+            >
+              <span className={styles.reporterTriggerName}>{reporterName}</span>
+              {registeredUser?.user_id ? (
+                <span className={styles.reporterTriggerId}>#{registeredUser.user_id}</span>
+              ) : null}
+            </button>
           </div>
           <div className={styles.detailCell}>
             <span className={styles.detailLabel}>Mobile Number</span>
@@ -128,21 +159,9 @@ export default function IncidentStatusModal({ incident, responders = [], users =
             <span className={styles.detailLabel}>Status</span>
             <span
               className={styles.previewBadge}
-              style={{ background: STATUS_COLORS[currentStatus] || '#9E9E9E' }}
+              style={{ background: statusColor(currentStatus) }}
             >
-              {currentStatus}
-            </span>
-          </div>
-          <div className={styles.detailCell}>
-            <span className={styles.detailLabel}>Priority</span>
-            <span
-              className={styles.previewBadge}
-              style={{
-                background: PRIORITY_COLORS[incident.priority_level] || PRIORITY_COLORS.Normal,
-                color: (incident.priority_level || 'Normal') === 'Normal' ? '#1a1a1a' : '#fff',
-              }}
-            >
-              {incident.priority_level || 'Normal'}
+              {displayIncidentStatus(currentStatus)}
             </span>
           </div>
           <div className={styles.detailCell}>
@@ -153,6 +172,12 @@ export default function IncidentStatusModal({ incident, responders = [], users =
             <span className={styles.detailLabel}>Description</span>
             <span className={styles.detailValue}>{incident.incident_description || '—'}</span>
           </div>
+          {existingCancelReason ? (
+            <div className={`${styles.detailCell} ${styles.detailCellFull}`}>
+              <span className={styles.detailLabel}>Cancel reason</span>
+              <span className={styles.detailValue}>{existingCancelReason}</span>
+            </div>
+          ) : null}
         </div>
 
         <label className={styles.label}>Status (visible to user on mobile)</label>
@@ -209,6 +234,21 @@ export default function IncidentStatusModal({ incident, responders = [], users =
           </>
         )}
 
+        {status === 'Cancelled' && (
+          <>
+            <label className={styles.label}>Reason for cancellation</label>
+            <textarea
+              className={styles.reasonBox}
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="Why is this incident being cancelled?"
+              maxLength={300}
+              rows={3}
+              disabled={saving}
+            />
+          </>
+        )}
+
         {selectedHint && (
           <p className={styles.hint}>
             📱 User will see: <strong>{selectedHint}</strong>
@@ -219,9 +259,9 @@ export default function IncidentStatusModal({ incident, responders = [], users =
           <span className={styles.previewLabel}>Preview:</span>
           <span
             className={styles.previewBadge}
-            style={{ background: STATUS_COLORS[status] || '#9E9E9E' }}
+            style={{ background: statusColor(status) }}
           >
-            {status}
+            {displayIncidentStatus(status)}
           </span>
         </div>
 
@@ -236,6 +276,13 @@ export default function IncidentStatusModal({ incident, responders = [], users =
           </button>
         </div>
       </div>
+
+      {showReporter && (
+        <ReporterInformationModal
+          user={registeredUser}
+          onClose={() => setShowReporter(false)}
+        />
+      )}
     </div>
   );
 }

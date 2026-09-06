@@ -33,7 +33,7 @@ async function autoDispatch(incidentId) {
 
   await supabase
     .from('incidents')
-    .update({ incident_status: 'In Progress' })
+    .update({ incident_status: 'Dispatch' })
     .eq('incident_id', incidentId);
 
   await supabase

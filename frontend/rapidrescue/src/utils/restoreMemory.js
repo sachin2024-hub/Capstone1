@@ -1,5 +1,5 @@
 const KEY = 'rr_incident_prev_status';
-const SAVED = ['Pending', 'Outside', 'For Referral', 'Referred', 'Completed', 'In Progress', 'En Route', 'Arrived', 'Resolved', 'Cancelled'];
+const SAVED = ['Pending', 'Outside', 'For Referral', 'Referred', 'Completed', 'Dispatch', 'In Progress', 'En Route', 'Arrived', 'Resolved', 'Cancelled'];
 
 function readMap() {
   try {

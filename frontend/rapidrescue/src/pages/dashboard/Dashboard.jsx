@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { logout, getStoredAdmin } from '../../services/authService';
 import api from '../../services/api';
@@ -11,22 +11,241 @@ import AssignResponderModal from '../../components/incidents/AssignResponderModa
 import ResponderModal from '../../components/responders/ResponderModal';
 import CallLogPage from '../../components/calllog/CallLogPage';
 import DispatchPage from '../../components/dispatch/DispatchPage';
-import { archiveIncident, restoreIncident, deleteIncident, permanentDeleteIncident, updateIncidentStatus, getOutsideStatuses, OUTSIDE_STATUS_VALUES } from '../../services/incidentService';
+import { archiveIncident, restoreIncident, deleteIncident, permanentDeleteIncident, updateIncidentStatus, getStatusesForIncident, OUTSIDE_STATUS_VALUES } from '../../services/incidentService';
 import { deleteResponder } from '../../services/responderService';
 import { fetchDispatchRecords, restoreDispatchRecord, permanentDeleteDispatchRecord } from '../../services/dispatchRecordService';
 import { fetchCallLogs, restoreCallLog, permanentDeleteCallLog } from '../../services/callLogService';
-import { STATUS_COLORS, PRIORITY_COLORS } from '../../constants/statusColors';
+import { STATUS_COLORS, displayIncidentStatus, statusColor } from '../../constants/statusColors';
 import { BLOCK_REASONS } from '../../constants/blockReasons';
 import { formatDate } from '../../utils/formatDate';
 import { formatIncidentLocation } from '../../utils/locationFormat';
 import { isWithinCabadbaran } from '../../utils/geofence';
 import { rememberIncidentStatus, peekIncidentStatus, takeIncidentStatus } from '../../utils/restoreMemory';
 import { APP_IMAGES } from '../../constants/images';
-import { INCIDENT_TYPE_GROUPS } from '../../constants/incidentTypes';
+import { INCIDENT_TYPE_GROUPS, matchingTypeNames, matchingSubTypeNames } from '../../constants/incidentTypes';
 import styles from './Dashboard.module.css';
 
-const ONGOING_STATUSES = ['Pending', 'In Progress', 'En Route', 'Arrived'];
-const ACTIVE_RESPONSE_STATUSES = ['In Progress', 'En Route', 'Arrived'];
+const ONGOING_STATUSES = ['Pending', 'Dispatch', 'In Progress', 'En Route', 'Arrived'];
+const ACTIVE_RESPONSE_STATUSES = ['Dispatch', 'In Progress', 'En Route', 'Arrived'];
+const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+function makeDateFilter(overrides = {}) {
+  const now = new Date();
+  return {
+    mode: 'all',
+    month: now.getMonth(),
+    year: now.getFullYear(),
+    date: null,
+    ...overrides,
+  };
+}
+
+function padDatePart(n) {
+  return String(n).padStart(2, '0');
+}
+
+function sameCalendarDay(a, b) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function collectFilterYears(...lists) {
+  const current = new Date().getFullYear();
+  const years = new Set();
+  for (let year = current - 7; year <= current + 1; year += 1) years.add(year);
+  lists.flat().forEach((row) => {
+    const raw = row?.date_reported || row?.dispatch_time || row?.created_at;
+    const date = new Date(raw);
+    if (!Number.isNaN(date.getTime())) years.add(date.getFullYear());
+  });
+  return [...years].sort((a, b) => b - a);
+}
+
+function calendarCells(year, month) {
+  const firstWeekday = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells = Array.from({ length: firstWeekday }, () => null);
+  for (let day = 1; day <= daysInMonth; day += 1) cells.push(day);
+  return cells;
+}
+
+function matchesIncidentDateRange(inc, filter) {
+  if (!filter || filter.mode === 'all') return true;
+  const reported = new Date(inc.date_reported);
+  if (Number.isNaN(reported.getTime())) return false;
+  const now = new Date();
+
+  if (filter.mode === 'date' && filter.date) {
+    const picked = new Date(`${filter.date}T00:00:00`);
+    return !Number.isNaN(picked.getTime()) && sameCalendarDay(reported, picked);
+  }
+  if (filter.mode === 'day') return sameCalendarDay(reported, now);
+  if (filter.mode === 'week') {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekday = start.getDay();
+    start.setDate(start.getDate() - (weekday === 0 ? 6 : weekday - 1));
+    return reported >= start && reported <= now;
+  }
+  if (filter.mode === 'month') {
+    return reported.getFullYear() === filter.year && reported.getMonth() === filter.month;
+  }
+  if (filter.mode === 'year') return reported.getFullYear() === filter.year;
+  return true;
+}
+
+function DateRangeFilter({ value, onChange, years }) {
+  const [open, setOpen] = useState(null);
+  const boxRef = useRef(null);
+  const monthName = new Date(value.year, value.month, 1).toLocaleDateString('en-US', { month: 'long' });
+  const today = new Date();
+  const monthActive = value.mode === 'month' || value.mode === 'date';
+
+  useEffect(() => {
+    const onDocClick = (e) => {
+      if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(null);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, []);
+
+  const setQuickMode = (mode) => {
+    onChange({ ...value, mode, date: null });
+    setOpen(null);
+  };
+
+  const shiftMonth = (delta) => {
+    const next = new Date(value.year, value.month + delta, 1);
+    onChange({
+      ...value,
+      mode: value.mode === 'date' ? 'month' : (value.mode === 'year' ? 'month' : value.mode),
+      month: next.getMonth(),
+      year: next.getFullYear(),
+      date: null,
+    });
+  };
+
+  return (
+    <div className={styles.dateSegmentedBar} ref={boxRef}>
+      <button
+        type="button"
+        className={`${styles.dateSegmentBtn} ${value.mode === 'all' ? styles.dateSegmentBtnActive : ''}`}
+        onClick={() => setQuickMode('all')}
+      >
+        <span className={styles.dateSegmentIcon}>🗂️</span>
+        All time
+      </button>
+      <button
+        type="button"
+        className={`${styles.dateSegmentBtn} ${value.mode === 'day' ? styles.dateSegmentBtnActive : ''}`}
+        onClick={() => setQuickMode('day')}
+      >
+        <span className={styles.dateSegmentIcon}>📅</span>
+        Today
+      </button>
+      <button
+        type="button"
+        className={`${styles.dateSegmentBtn} ${value.mode === 'week' ? styles.dateSegmentBtnActive : ''}`}
+        onClick={() => setQuickMode('week')}
+      >
+        <span className={styles.dateSegmentIcon}>📆</span>
+        This week
+      </button>
+
+      <div className={styles.datePickerWrap}>
+        <button
+          type="button"
+          className={`${styles.dateSegmentBtn} ${monthActive ? styles.dateSegmentBtnActive : ''}`}
+          onClick={() => {
+            onChange({ ...value, mode: value.mode === 'date' ? 'date' : 'month' });
+            setOpen((prev) => (prev === 'month' ? null : 'month'));
+          }}
+        >
+          <span className={styles.dateSegmentIcon}>🗓️</span>
+          {value.mode === 'date' && value.date
+            ? new Date(`${value.date}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+            : monthName}
+        </button>
+        <button
+          type="button"
+          className={`${styles.dateSegmentBtn} ${value.mode === 'year' ? styles.dateSegmentBtnActive : ''}`}
+          onClick={() => {
+            onChange({ ...value, mode: 'year', date: null });
+            setOpen((prev) => (prev === 'year' ? null : 'year'));
+          }}
+        >
+          <span className={styles.dateSegmentIcon}>📊</span>
+          {value.year}
+        </button>
+
+        {open === 'month' && (
+          <div className={styles.datePickerPop} role="dialog" aria-label="Pick a date">
+            <div className={styles.datePickerHead}>
+              <button type="button" className={styles.datePickerNav} onClick={() => shiftMonth(-1)} aria-label="Previous month">‹</button>
+              <strong>{monthName}</strong>
+              <select
+                className={styles.datePickerYearSelect}
+                value={value.year}
+                aria-label="Select year"
+                onChange={(e) => {
+                  onChange({ ...value, mode: 'month', year: Number(e.target.value), date: null });
+                }}
+              >
+                {years.map((year) => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+              <button type="button" className={styles.datePickerNav} onClick={() => shiftMonth(1)} aria-label="Next month">›</button>
+            </div>
+            <div className={styles.datePickerWeek}>
+              {WEEKDAYS.map((day) => <span key={day}>{day}</span>)}
+            </div>
+            <div className={styles.datePickerGrid}>
+              {calendarCells(value.year, value.month).map((day, idx) => {
+                if (day == null) return <span key={`e-${idx}`} />;
+                const iso = `${value.year}-${padDatePart(value.month + 1)}-${padDatePart(day)}`;
+                const isToday = sameCalendarDay(new Date(value.year, value.month, day), today);
+                const isSelected = value.mode === 'date' && value.date === iso;
+                return (
+                  <button
+                    key={iso}
+                    type="button"
+                    className={`${styles.datePickerDay} ${isToday ? styles.datePickerToday : ''} ${isSelected ? styles.datePickerDayActive : ''}`}
+                    onClick={() => {
+                      onChange({ ...value, mode: 'date', date: iso });
+                      setOpen(null);
+                    }}
+                  >
+                    {day}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {open === 'year' && (
+          <div className={`${styles.datePickerPop} ${styles.datePickerYearPop}`} role="listbox" aria-label="Pick a year">
+            <p className={styles.datePickerYearTitle}>Select year</p>
+            <div className={styles.datePickerYearGrid}>
+              {years.map((year) => (
+                <button
+                  key={year}
+                  type="button"
+                  className={`${styles.datePickerYearBtn} ${value.year === year ? styles.datePickerDayActive : ''}`}
+                  onClick={() => {
+                    onChange({ ...value, mode: 'year', year, date: null });
+                    setOpen(null);
+                  }}
+                >
+                  {year}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function formatLocation(loc) {
   return formatIncidentLocation(loc);
@@ -67,7 +286,6 @@ const NAV_SECTIONS = [
     items: [
       { id: 'responders', icon: '🚑', label: 'Ambulance' },
       { id: 'dispatch', icon: '📡', label: 'Dispatch' },
-      { id: 'call-log', icon: '📋', label: 'Call Log' },
     ],
   },
   {
@@ -88,20 +306,20 @@ const INCIDENT_FILTER_TABS = [
   { id: 'active', icon: '🚑', label: 'Active Response' },
   { id: 'resolved', icon: '✅', label: 'Resolved' },
   { id: 'outside', icon: '⚠️', label: 'Outside' },
+  { id: 'referred', icon: '📤', label: 'Referred' },
   { id: 'cancelled', icon: '❌', label: 'Cancelled' },
 ];
 
 const ARCHIVE_MODULE_TABS = [
   { id: 'accident', icon: '🚨', label: 'Accident' },
   { id: 'dispatch', icon: '📡', label: 'Dispatch' },
-  { id: 'call-log', icon: '📋', label: 'Call Log' },
   { id: 'users', icon: '👥', label: 'Users' },
 ];
 
 const DISPATCH_ARCHIVE_COLUMNS = [
   { key: 'dispatch_record_id', label: 'ID', render: (row) => <strong>#{row.dispatch_record_id}</strong> },
   { key: 'vehicle', label: 'Vehicle' },
-  { key: 'modulation', label: 'Modulation' },
+  { key: 'modulation', label: 'Destination' },
   { key: 'team_officer', label: 'T.O' },
   { key: 'time_dispatch', label: 'Time Dispatch' },
   { key: 'log_date', label: 'Date' },
@@ -178,23 +396,6 @@ function callLogSearchText(row) {
   ].filter(Boolean).join(' ');
 }
 
-function PriorityBadge({ level }) {
-  const label = level || 'Normal';
-  const isNormal = label === 'Normal';
-  return (
-    <span
-      className={styles.statusBadge}
-      style={{
-        background: PRIORITY_COLORS[label] || PRIORITY_COLORS.Normal,
-        color: isNormal ? '#1a1a1a' : '#fff',
-      }}
-    >
-      <span className={styles.statusDotBadge} style={isNormal ? { background: 'rgba(0,0,0,0.35)' } : undefined} />
-      {label}
-    </span>
-  );
-}
-
 function getAssignedResponder(inc) {
   const dispatch = Array.isArray(inc.dispatch) ? inc.dispatch[0] : inc.dispatch;
   return dispatch?.responders || null;
@@ -230,10 +431,16 @@ function incidentSearchText(inc) {
 function matchesIncidentType(inc, categoryFilter, subFilter) {
   if (!categoryFilter) return true;
   const t = inc.incident_type || '';
+  const categories = matchingTypeNames(categoryFilter);
   if (subFilter) {
-    return t === `${categoryFilter} — ${subFilter}` || t.includes(subFilter);
+    const subs = matchingSubTypeNames(subFilter);
+    return categories.some((cat) =>
+      subs.some((sub) => t === `${cat} — ${sub}` || t.includes(sub))
+    );
   }
-  return t === categoryFilter || t.startsWith(`${categoryFilter} —`) || t.startsWith(categoryFilter);
+  return categories.some(
+    (cat) => t === cat || t.startsWith(`${cat} —`) || t.startsWith(cat)
+  );
 }
 
 function IncidentTableSection({
@@ -303,7 +510,7 @@ function IncidentTableSection({
   const filteredIds = filteredRows.map((inc) => inc.incident_id);
   const selectedCount = filteredIds.filter((id) => selectedSet.has(id)).length;
   const allFilteredSelected = filteredIds.length > 0 && selectedCount === filteredIds.length;
-  const colCount = 9 + (selectable ? 1 : 0) + (hasActions ? 1 : 0);
+  const colCount = 8 + (selectable ? 1 : 0) + (hasActions ? 1 : 0);
 
   return (
     <div className={styles.incidentSection}>
@@ -404,7 +611,7 @@ function IncidentTableSection({
                     </th>
                   )}
                   <th>ID</th><th>Type</th><th>Description</th><th>Reporter</th>
-                  <th>Location</th><th>Assigned</th><th>Status</th><th>Priority</th><th>Date</th>
+                  <th>Location</th><th>Assigned</th><th>Status</th><th>Date</th>
                   {hasActions && <th>Action</th>}
                 </tr>
               </thead>
@@ -412,6 +619,10 @@ function IncidentTableSection({
                 {pagedRows.map((inc) => {
                   const loc = Array.isArray(inc.locations) ? inc.locations[0] : inc.locations;
                   const assigned = getAssignedResponder(inc);
+                  const statusOptions = getStatusesForIncident(inc, inc.incident_status, true);
+                  const statusValue = statusOptions.some((s) => s.value === inc.incident_status)
+                    ? inc.incident_status
+                    : (statusOptions[0]?.value || inc.incident_status);
                   const unread = isIncomingIncident(inc) && !inc.viewed;
                   const rowClass = [
                     onEdit ? styles.incidentRowClickable : '',
@@ -473,26 +684,25 @@ function IncidentTableSection({
                         {statusDropdown ? (
                           <select
                             className={styles.outsideStatusSelect}
-                            value={inc.incident_status === 'Pending' ? 'Outside' : inc.incident_status}
+                            value={statusValue}
                             disabled={updatingStatusId === inc.incident_id}
                             onChange={(e) => onStatusChange?.(inc, e.target.value)}
-                            style={{ background: STATUS_COLORS[inc.incident_status === 'Pending' ? 'Outside' : inc.incident_status] || '#EF6C00' }}
+                            style={{ background: statusColor(statusValue) }}
                           >
-                            {getOutsideStatuses(inc.incident_status).map((opt) => (
+                            {statusOptions.map((opt) => (
                               <option key={opt.value} value={opt.value}>{opt.label}</option>
                             ))}
                           </select>
                         ) : (
                           <span
                             className={styles.statusBadge}
-                            style={{ background: STATUS_COLORS[inc.incident_status] || '#9E9E9E' }}
+                            style={{ background: statusColor(inc.incident_status) }}
                           >
                             <span className={styles.statusDotBadge} />
-                            {inc.incident_status}
+                            {displayIncidentStatus(inc.incident_status)}
                           </span>
                         )}
                       </td>
-                      <td><PriorityBadge level={inc.priority_level} /></td>
                       <td style={{ color: '#888', fontSize: 12 }}>{formatDate(inc.date_reported)}</td>
                       {hasActions && (
                         <td onClick={(e) => e.stopPropagation()}>
@@ -1274,6 +1484,8 @@ export default function Dashboard() {
   const [responderModal, setResponderModal] = useState(null);
   const [viewingResponder, setViewingResponder] = useState(null);
   const [incidentFilter, setIncidentFilter] = useState('pending');
+  const [incidentDateFilter, setIncidentDateFilter] = useState(() => makeDateFilter());
+  const [dashboardDateFilter, setDashboardDateFilter] = useState(() => makeDateFilter());
   const [archiveModule, setArchiveModule] = useState('accident');
   const [archiveSelectedIds, setArchiveSelectedIds] = useState(() => new Set());
   const [archiveDispatchRows, setArchiveDispatchRows] = useState([]);
@@ -1410,6 +1622,7 @@ export default function Dashboard() {
       await updateIncidentStatus(inc.incident_id, nextStatus);
       markIncidentViewed(inc);
       await fetchData();
+      if (nextStatus === 'Referred') setIncidentFilter('referred');
     } catch (err) {
       setError(err.message || 'Failed to update status.');
     } finally {
@@ -1417,22 +1630,32 @@ export default function Dashboard() {
     }
   };
 
-  const outsideIncidents = incidents.filter(
+  const datedIncidents = incidents.filter((i) => matchesIncidentDateRange(i, incidentDateFilter));
+  const filterYears = useMemo(() => collectFilterYears(incidents, dispatches), [incidents, dispatches]);
+  const referredIncidents = datedIncidents.filter(
     (i) =>
       !['Archived', 'Deleted'].includes(i.incident_status) &&
+      i.incident_status === 'Referred'
+  );
+  const outsideIncidents = datedIncidents.filter(
+    (i) =>
+      !['Archived', 'Deleted'].includes(i.incident_status) &&
+      i.incident_status !== 'Referred' &&
       (isIncidentOutside(i) || OUTSIDE_STATUS_VALUES.includes(i.incident_status))
   );
-  const pendingIncidents = incidents.filter(
+  const pendingIncidents = datedIncidents.filter(
     (i) => i.incident_status === 'Pending' && !isIncidentOutside(i)
   );
-  const unviewedPendingCount = pendingIncidents.filter((i) => !i.viewed).length;
-  const activeResponseIncidents = incidents.filter(
+  const unviewedPendingCount = incidents.filter(
+    (i) => i.incident_status === 'Pending' && !isIncidentOutside(i) && !i.viewed
+  ).length;
+  const activeResponseIncidents = datedIncidents.filter(
     (i) => ACTIVE_RESPONSE_STATUSES.includes(i.incident_status) && !isIncidentOutside(i)
   );
-  const resolvedIncidents = incidents.filter(
+  const resolvedIncidents = datedIncidents.filter(
     (i) => i.incident_status === 'Resolved' && !isIncidentOutside(i)
   );
-  const cancelledIncidents = incidents.filter(
+  const cancelledIncidents = datedIncidents.filter(
     (i) => i.incident_status === 'Cancelled' && !isIncidentOutside(i)
   );
   const archivedIncidents = incidents.filter((i) => i.incident_status === 'Archived');
@@ -1444,6 +1667,7 @@ export default function Dashboard() {
     pending: pendingIncidents.length,
     active: activeResponseIncidents.length,
     outside: outsideIncidents.length,
+    referred: referredIncidents.length,
     resolved: resolvedIncidents.length,
     cancelled: cancelledIncidents.length,
   };
@@ -1505,8 +1729,9 @@ export default function Dashboard() {
     setActiveTab('incidents');
     if (status === 'Resolved') setIncidentFilter('resolved');
     else if (status === 'Cancelled') setIncidentFilter('cancelled');
+    else if (status === 'Referred') setIncidentFilter('referred');
     else if (OUTSIDE_STATUS_VALUES.includes(status)) setIncidentFilter('outside');
-    else if (ACTIVE_RESPONSE_STATUSES.includes(status)) setIncidentFilter('active');
+    else if (ACTIVE_RESPONSE_STATUSES.includes(status) || status === 'Dispatch') setIncidentFilter('active');
     else setIncidentFilter('pending');
   };
 
@@ -1924,14 +2149,33 @@ export default function Dashboard() {
   const clockStr = clock.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
   const dateStr  = clock.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' });
 
+  const dashboardIncidents = incidents.filter((i) => matchesIncidentDateRange(i, dashboardDateFilter));
+  const dashboardDispatches = dispatches.filter((d) =>
+    matchesIncidentDateRange({ date_reported: d.dispatch_time || d.created_at }, dashboardDateFilter)
+  );
   const statCards = [
-    { label: 'Users',       value: stats.users,      icon: '👥', color: STAT_COLORS[0] },
-    { label: 'Incidents',   value: stats.incidents,   icon: '🚨', color: STAT_COLORS[1] },
-    { label: 'Ambulance',  value: stats.responders,  icon: '🚑', color: STAT_COLORS[2] },
-    { label: 'Pending',     value: stats.pending,     icon: '⏳', color: STAT_COLORS[3] },
-    { label: 'Available',   value: stats.available,   icon: '✅', color: STAT_COLORS[4] },
-    { label: 'Dispatches',  value: stats.dispatch,    icon: '📡', color: STAT_COLORS[5] },
+    { label: 'Users', value: stats.users, icon: '👥', color: STAT_COLORS[0], tab: 'users' },
+    { label: 'Incidents', value: dashboardIncidents.length, icon: '🚨', color: STAT_COLORS[1], tab: 'incidents' },
+    { label: 'Ambulance', value: stats.responders, icon: '🚑', color: STAT_COLORS[2], tab: 'responders' },
+    {
+      label: 'Pending',
+      value: dashboardIncidents.filter((i) => i.incident_status === 'Pending').length,
+      icon: '⏳',
+      color: STAT_COLORS[3],
+      tab: 'incidents',
+      filter: 'pending',
+    },
+    { label: 'Available', value: stats.available, icon: '✅', color: STAT_COLORS[4], tab: 'responders' },
+    { label: 'Dispatches', value: dashboardDispatches.length, icon: '📡', color: STAT_COLORS[5], tab: 'dispatch' },
   ];
+
+  const openStatCard = (card) => {
+    if (card.filter) setIncidentFilter(card.filter);
+    if (card.tab === 'incidents' && dashboardDateFilter.mode !== 'all') {
+      setIncidentDateFilter({ ...dashboardDateFilter });
+    }
+    setActiveTab(card.tab);
+  };
 
   const TableLoader = () => (
     <div className={styles.loadingBox}>
@@ -2060,6 +2304,12 @@ export default function Dashboard() {
                 </button>
               </div>
 
+              <DateRangeFilter
+                value={dashboardDateFilter}
+                onChange={setDashboardDateFilter}
+                years={filterYears}
+              />
+
               {/* Banner */}
               <div className={styles.overviewBanner}>
                 <div className={styles.bannerText}>
@@ -2075,11 +2325,16 @@ export default function Dashboard() {
               {/* Stats */}
               <div className={styles.statsGrid}>
                 {statCards.map((card) => (
-                  <div key={card.label} className={`${styles.statCard} ${styles[card.color]}`}>
+                  <button
+                    key={card.label}
+                    type="button"
+                    className={`${styles.statCard} ${styles.statCardClickable} ${styles[card.color]}`}
+                    onClick={() => openStatCard(card)}
+                  >
                     <div className={styles.statIconBox}>
                       <span>{card.icon}</span>
-                </div>
-                  <div className={styles.statBody}>
+                    </div>
+                    <div className={styles.statBody}>
                       <div className={styles.statValue}>{isLoading ? '—' : card.value}</div>
                       <div className={styles.statLabel}>{card.label}</div>
                       {card.label === 'Pending' && !isLoading && card.value > 0 && (
@@ -2088,8 +2343,8 @@ export default function Dashboard() {
                       {card.label === 'Available' && !isLoading && (
                         <div className={`${styles.statTrend} ${styles.trendUp}`}>● Ready to respond</div>
                       )}
-                </div>
-                  </div>
+                    </div>
+                  </button>
                 ))}
               </div>
 
@@ -2107,11 +2362,11 @@ export default function Dashboard() {
                       <thead>
                         <tr>
                           <th>ID</th><th>Type</th><th>Reporter</th>
-                          <th>Status</th><th>Priority</th><th>Date</th>
+                          <th>Status</th><th>Date</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {incidents.slice(0, 6).map((inc) => (
+                        {dashboardIncidents.slice(0, 6).map((inc) => (
                           <tr key={inc.incident_id}>
                             <td><strong>#{inc.incident_id}</strong></td>
                             <td>{inc.incident_type}</td>
@@ -2123,18 +2378,17 @@ export default function Dashboard() {
                             <td>
                               <span
                                 className={styles.statusBadge}
-                                style={{ background: STATUS_COLORS[inc.incident_status] || '#9E9E9E' }}
+                                style={{ background: statusColor(inc.incident_status) }}
                               >
                                 <span className={styles.statusDotBadge} />
-                                {inc.incident_status}
+                                {displayIncidentStatus(inc.incident_status)}
                               </span>
                             </td>
-                            <td><PriorityBadge level={inc.priority_level} /></td>
                             <td style={{ color: '#888', fontSize: 12 }}>{formatDate(inc.date_reported)}</td>
                           </tr>
                         ))}
-                        {incidents.length === 0 && (
-                          <tr><td colSpan={6} className={styles.emptyRow}>📭 No incidents yet.</td></tr>
+                        {dashboardIncidents.length === 0 && (
+                          <tr><td colSpan={5} className={styles.emptyRow}>📭 No incidents yet.</td></tr>
                         )}
                       </tbody>
                     </table>
@@ -2167,12 +2421,18 @@ export default function Dashboard() {
                 <button className={styles.refreshBtn} onClick={fetchData}>🔄 Refresh</button>
               </div>
 
+              <DateRangeFilter
+                value={incidentDateFilter}
+                onChange={setIncidentDateFilter}
+                years={filterYears}
+              />
+
               <div className={styles.incidentFilterBar}>
                 {INCIDENT_FILTER_TABS.map((tab) => (
                   <button
                     key={tab.id}
                     type="button"
-                    className={`${styles.incidentFilterBtn} ${incidentFilter === tab.id ? styles.incidentFilterBtnActive : ''} ${tab.id === 'outside' && incidentFilter === 'outside' ? styles.incidentFilterBtnOutside : ''}`}
+                    className={`${styles.incidentFilterBtn} ${incidentFilter === tab.id ? styles.incidentFilterBtnActive : ''} ${tab.id === 'outside' && incidentFilter === 'outside' ? styles.incidentFilterBtnOutside : ''} ${tab.id === 'referred' && incidentFilter === 'referred' ? styles.incidentFilterBtnReferred : ''}`}
                     onClick={() => setIncidentFilter(tab.id)}
                   >
                     <span>{tab.icon} {tab.label}</span>
@@ -2188,6 +2448,8 @@ export default function Dashboard() {
                     ? 'Cancelled incidents can be archived or deleted from here.'
                     : incidentFilter === 'outside'
                       ? 'Use the status dropdown: Outside → For Referral → Referred → Completed. The reporter sees this on My Alerts.'
+                      : incidentFilter === 'referred'
+                        ? 'All incidents marked Referred are listed here. Referred is the final status — Completed is no longer available.'
                       : incidentFilter === 'pending'
                         ? 'NEW means this request has not been reviewed yet. Click the row to open details — it will be marked Viewed.'
                         : 'Click the buttons above to switch between incident groups.'}
@@ -2234,6 +2496,26 @@ export default function Dashboard() {
                   rows={outsideIncidents}
                   isLoading={isLoading}
                   emptyMessage="📭 No incidents outside the service boundary."
+                  onEdit={handleOpenIncident}
+                  onArchive={handleArchive}
+                  onDelete={handleDelete}
+                  onAssign={handleAssignIncident}
+                  onShowMap={handleShowOnLiveMap}
+                  showAssignActions
+                  statusDropdown
+                  onStatusChange={handleOutsideStatusChange}
+                  updatingStatusId={updatingStatusId}
+                  hideTitle
+                />
+              )}
+
+              {incidentFilter === 'referred' && (
+                <IncidentTableSection
+                  title="Referred"
+                  icon="📤"
+                  rows={referredIncidents}
+                  isLoading={isLoading}
+                  emptyMessage="📭 No referred incidents."
                   onEdit={handleOpenIncident}
                   onArchive={handleArchive}
                   onDelete={handleDelete}
@@ -2581,13 +2863,6 @@ export default function Dashboard() {
                                 >
                                   🗑️ Delete
                                 </button>
-                              <button
-                                  type="button"
-                                className={styles.smallBtn}
-                                onClick={() => setActiveTab('live-map')}
-                              >
-                                  🗺️ Map
-                              </button>
                               </div>
                             </td>
                           </tr>

@@ -2,10 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   fetchDispatchRecords,
   deleteDispatchRecord,
-  fetchDispatchLog,
 } from '../../services/dispatchRecordService';
-import { DISPATCH_COLORS } from '../../constants/statusColors';
-import { formatDate } from '../../utils/formatDate';
 import DispatchRecordModal from './DispatchRecordModal';
 import ConfirmModal from '../common/ConfirmModal';
 import RecordDetailsModal from '../common/RecordDetailsModal';
@@ -13,7 +10,7 @@ import styles from './Dispatch.module.css';
 
 const RECORD_COLUMNS = [
   { key: 'vehicle', label: 'VEHICLE' },
-  { key: 'modulation', label: 'MODULATION' },
+  { key: 'modulation', label: 'DESTINATION' },
   { key: 'team_officer', label: 'T.O' },
   { key: 'on_board', label: 'ON-BOARD' },
   { key: 'time_dispatch', label: 'TIME-DISPATCH' },
@@ -47,10 +44,8 @@ function renderCell(row, key) {
 }
 
 export default function DispatchPage({ onArchived }) {
-  const [view, setView] = useState('records');
   const [logDate, setLogDate] = useState(todayStr);
   const [records, setRecords] = useState([]);
-  const [dispatchLog, setDispatchLog] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [modalEntry, setModalEntry] = useState(null);
@@ -71,27 +66,9 @@ export default function DispatchPage({ onArchived }) {
     }
   }, [logDate]);
 
-  const loadDispatchLog = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const data = await fetchDispatchLog();
-      setDispatchLog(data);
-    } catch (err) {
-      setError(err.message || 'Failed to load dispatch log.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const load = useCallback(async () => {
-    if (view === 'records') await loadRecords();
-    else await loadDispatchLog();
-  }, [view, loadRecords, loadDispatchLog]);
-
   useEffect(() => {
-    load();
-  }, [load]);
+    loadRecords();
+  }, [loadRecords]);
 
   const handleAdd = () => {
     setModalEntry(null);
@@ -127,39 +104,19 @@ export default function DispatchPage({ onArchived }) {
     <div className={styles.page}>
       <div className={styles.toolbar}>
         <div className={styles.toolbarLeft}>
-          <div className={styles.tabBar}>
-            <button
-              type="button"
-              className={`${styles.tabBtn} ${view === 'records' ? styles.tabBtnActive : ''}`}
-              onClick={() => setView('records')}
-            >
-              🚑 Dispatch
-            </button>
-            <button
-              type="button"
-              className={`${styles.tabBtn} ${view === 'log' ? styles.tabBtnActive : ''}`}
-              onClick={() => setView('log')}
-            >
-              📋 Dispatch Log
-            </button>
-          </div>
-          {view === 'records' && (
-            <label className={styles.filterLabel}>
-              DATE
-              <input
-                type="date"
-                value={logDate}
-                onChange={(e) => setLogDate(e.target.value)}
-                className={styles.dateInput}
-              />
-            </label>
-          )}
+          <label className={styles.filterLabel}>
+            DATE
+            <input
+              type="date"
+              value={logDate}
+              onChange={(e) => setLogDate(e.target.value)}
+              className={styles.dateInput}
+            />
+          </label>
         </div>
         <div className={styles.toolbarRight}>
-          <button type="button" className={styles.refreshBtn} onClick={load}>🔄 Refresh</button>
-          {view === 'records' && (
-            <button type="button" className={styles.addBtn} onClick={handleAdd}>➕ Add Dispatch</button>
-          )}
+          <button type="button" className={styles.refreshBtn} onClick={loadRecords}>🔄 Refresh</button>
+          <button type="button" className={styles.addBtn} onClick={handleAdd}>➕ Add Dispatch</button>
         </div>
       </div>
 
@@ -172,8 +129,7 @@ export default function DispatchPage({ onArchived }) {
         </div>
       )}
 
-      {view === 'records' ? (
-        <div className={styles.sheet}>
+      <div className={styles.sheet}>
           <div className={styles.sheetHeader}>
             <h2 className={styles.sheetTitle}>VEHICLE DISPATCH</h2>
             <span className={styles.sheetDate}>DATE: <strong>{dateLabel}</strong></span>
@@ -198,7 +154,7 @@ export default function DispatchPage({ onArchived }) {
                     <tr
                       key={row.dispatch_record_id}
                       className={styles.clickableRow}
-                      onClick={() => setViewing({ type: 'record', row })}
+                      onClick={() => setViewing(row)}
                     >
                       <td className={styles.rowNum}>{idx + 1}</td>
                       {RECORD_COLUMNS.map((col) => (
@@ -236,123 +192,23 @@ export default function DispatchPage({ onArchived }) {
             <span className={styles.entryCount}>{records.length} record{records.length === 1 ? '' : 's'}</span>
           </div>
         </div>
-      ) : (
-        <div className={styles.sheet}>
-          <div className={styles.sheetHeader}>
-            <h2 className={styles.sheetTitle}>DISPATCH LOG</h2>
-            <span className={styles.sheetDate}>Incident &amp; Responder Assignments</span>
-          </div>
 
-          <div className={styles.tableScroll}>
-            {loading ? (
-              <div className={styles.loadingBox}>Loading dispatch log...</div>
-            ) : (
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>INCIDENT</th>
-                    <th>RESPONDER</th>
-                    <th>STATUS</th>
-                    <th>DISPATCH TIME</th>
-                    <th>ARRIVAL</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dispatchLog.map((d) => (
-                    <tr
-                      key={d.dispatch_id}
-                      className={styles.clickableRow}
-                      onClick={() => setViewing({ type: 'log', row: d })}
-                    >
-                      <td><strong>#{d.dispatch_id}</strong></td>
-                      <td>
-                        <strong>#{d.incidents?.incident_id}</strong> — {d.incidents?.incident_type || '—'}
-                        {d.incidents?.users && (
-                          <span className={styles.subText}>
-                            {d.incidents.users.first_name} {d.incidents.users.last_name}
-                          </span>
-                        )}
-                      </td>
-                      <td>
-                        {d.responders ? (
-                          <div className={styles.userCell}>
-                            <div className={styles.userAvatar}>{d.responders.first_name?.charAt(0)}</div>
-                            <div>
-                              <span className={styles.userName2}>
-                                {d.responders.first_name} {d.responders.last_name}
-                              </span>
-                              <span className={styles.subText}>{d.responders.responder_type}</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <span style={{ color: '#bbb' }}>—</span>
-                        )}
-                      </td>
-                      <td>
-                        <span
-                          className={styles.statusBadge}
-                          style={{ background: DISPATCH_COLORS[d.dispatch_status] || '#9E9E9E' }}
-                        >
-                          <span className={styles.statusDotBadge} />
-                          {d.dispatch_status}
-                        </span>
-                      </td>
-                      <td style={{ color: '#888', fontSize: 12 }}>{formatDate(d.dispatch_time)}</td>
-                      <td style={{ color: '#888', fontSize: 12 }}>{formatDate(d.arrival_time)}</td>
-                    </tr>
-                  ))}
-                  {dispatchLog.length === 0 && (
-                    <tr>
-                      <td colSpan={6} className={styles.emptyRow}>
-                        📭 No dispatches yet. Press SOS on mobile to trigger.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          <div className={styles.sheetFooter}>
-            <span>CDRRMO — Dispatch Activity Log</span>
-            <span className={styles.entryCount}>{dispatchLog.length} entr{dispatchLog.length === 1 ? 'y' : 'ies'}</span>
-          </div>
-        </div>
-      )}
-
-      {viewing?.type === 'record' && (
+      {viewing && (
         <RecordDetailsModal
-          title={`Dispatch Details — ${viewing.row.vehicle || 'Vehicle'}`}
+          title={`Dispatch Details — ${viewing.vehicle || 'Vehicle'}`}
           fields={[
-            { label: 'Date', value: viewing.row.log_date || logDate },
+            { label: 'Date', value: viewing.log_date || logDate },
             ...RECORD_COLUMNS.map((col) => ({
               label: col.label,
-              value: renderCell(viewing.row, col.key),
+              value: renderCell(viewing, col.key),
             })),
           ]}
           onClose={() => setViewing(null)}
           onEdit={() => {
-            const entry = viewing.row;
+            const entry = viewing;
             setViewing(null);
             handleEdit(entry);
           }}
-        />
-      )}
-      {viewing?.type === 'log' && (
-        <RecordDetailsModal
-          title={`Dispatch Log — #${viewing.row.dispatch_id}`}
-          fields={[
-            { label: 'Incident', value: viewing.row.incidents?.incident_id ? `#${viewing.row.incidents.incident_id}` : '—' },
-            { label: 'Type', value: viewing.row.incidents?.incident_type },
-            { label: 'Reporter', value: viewing.row.incidents?.users ? `${viewing.row.incidents.users.first_name} ${viewing.row.incidents.users.last_name}` : '—' },
-            { label: 'Responder', value: viewing.row.responders ? `${viewing.row.responders.first_name} ${viewing.row.responders.last_name}` : '—' },
-            { label: 'Unit type', value: viewing.row.responders?.responder_type },
-            { label: 'Status', value: viewing.row.dispatch_status },
-            { label: 'Dispatch time', value: formatDate(viewing.row.dispatch_time) },
-            { label: 'Arrival', value: formatDate(viewing.row.arrival_time) },
-          ]}
-          onClose={() => setViewing(null)}
         />
       )}
       {showModal && (

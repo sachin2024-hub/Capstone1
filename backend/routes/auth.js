@@ -6,13 +6,22 @@ const supabase = require('../config/supabase');
 const authenticateToken = require('../middleware/auth');
 const { getUserBlockReason, setUserBlockReason } = require('../utils/archiveStore');
 const { BLOCK_REASONS, blockedAccountMessage } = require('../utils/blockReasons');
+const { saveValidId, attachIdentity, removeValidId, loadIdImage, IDENTITY_COLUMNS, isMissingColumnError } = require('../utils/identityStore');
+const { verifyIdImage } = require('../utils/idScanner');
 
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
-  const { first_name, middle_name, last_name, phone_number, email, password, address } = req.body;
+  const { first_name, middle_name, last_name, phone_number, email, password, address, id_type, id_number, id_image } = req.body;
 
   if (!first_name || !last_name || !email || !password) {
     return res.status(400).json({ message: 'First name, last name, email, and password are required.' });
+  }
+
+  if (!String(id_type || '').trim() || !id_image) {
+    return res.status(400).json({
+      field: 'id_image',
+      message: 'Please take a photo of your valid ID to finish registration.',
+    });
   }
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -58,6 +67,14 @@ router.post('/register', async (req, res) => {
       }
     }
 
+    const scan = await verifyIdImage(String(id_type).trim(), id_image);
+    if (!scan.match) {
+      return res.status(400).json({
+        field: 'id_image',
+        message: scan.message || 'The ID photo does not match the ID type you selected.',
+      });
+    }
+
     const { data, error } = await supabase
       .from('users')
       .insert([
@@ -92,6 +109,21 @@ router.post('/register', async (req, res) => {
       return res.status(500).json({ message: error.message });
     }
 
+    let identity;
+    try {
+      identity = await saveValidId(data.user_id, {
+        id_type,
+        id_number,
+        id_image,
+      });
+    } catch (idErr) {
+      await supabase.from('users').delete().eq('user_id', data.user_id);
+      return res.status(400).json({
+        field: 'id_image',
+        message: idErr.message || 'Could not save your valid ID photo.',
+      });
+    }
+
     const token = jwt.sign(
       { user_id: data.user_id, email: data.email },
       process.env.JWT_SECRET,
@@ -100,7 +132,7 @@ router.post('/register', async (req, res) => {
 
     return res.status(201).json({
       message: 'Registration successful!',
-      user: data,
+      user: { ...data, ...identity },
       token,
     });
   } catch (err) {
@@ -152,7 +184,7 @@ router.post('/login', async (req, res) => {
 
     return res.json({
       message: 'Login successful!',
-      user: userWithoutPassword,
+      user: attachIdentity(userWithoutPassword),
       token,
     });
   } catch (err) {
@@ -240,6 +272,7 @@ router.post('/forgot-password/reset', async (req, res) => {
 });
 
 const USER_SAFE_FIELDS = 'user_id, first_name, middle_name, last_name, email, phone_number, address, account_status, date_registered';
+const USER_SAFE_FIELDS_WITH_ID = `${USER_SAFE_FIELDS}, ${IDENTITY_COLUMNS}`;
 
 // PATCH /api/auth/profile — logged-in user updates own account
 router.patch('/profile', authenticateToken, async (req, res) => {
@@ -296,17 +329,33 @@ router.patch('/profile', authenticateToken, async (req, res) => {
       .from('users')
       .update(updates)
       .eq('user_id', user_id)
-      .select(USER_SAFE_FIELDS)
+      .select(USER_SAFE_FIELDS_WITH_ID)
       .single();
 
     if (error) {
+      if (isMissingColumnError(error)) {
+        const retry = await supabase
+          .from('users')
+          .update(updates)
+          .eq('user_id', user_id)
+          .select(USER_SAFE_FIELDS)
+          .single();
+        if (retry.error) {
+          if (retry.error.code === '23505') {
+            return res.status(409).json({ message: 'Email or phone number already in use.' });
+          }
+          return res.status(500).json({ message: retry.error.message });
+        }
+        if (!retry.data) return res.status(404).json({ message: 'User not found.' });
+        return res.json({ message: 'Profile updated.', user: attachIdentity(retry.data) });
+      }
       if (error.code === '23505') {
         return res.status(409).json({ message: 'Email or phone number already in use.' });
       }
       return res.status(500).json({ message: error.message });
     }
     if (!data) return res.status(404).json({ message: 'User not found.' });
-    return res.json({ message: 'Profile updated.', user: data });
+    return res.json({ message: 'Profile updated.', user: attachIdentity(data) });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }
@@ -315,14 +364,21 @@ router.patch('/profile', authenticateToken, async (req, res) => {
 // GET /api/auth/users  - Get all users (for dashboard)
 router.get('/users', async (req, res) => {
   try {
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('users')
-      .select('user_id, first_name, middle_name, last_name, email, phone_number, address, account_status, date_registered')
+      .select(USER_SAFE_FIELDS_WITH_ID)
       .order('date_registered', { ascending: false });
+
+    if (error && isMissingColumnError(error)) {
+      ({ data, error } = await supabase
+        .from('users')
+        .select(USER_SAFE_FIELDS)
+        .order('date_registered', { ascending: false }));
+    }
 
     if (error) return res.status(500).json({ message: error.message });
     const rows = (data || []).map((u) => ({
-      ...u,
+      ...attachIdentity(u),
       block_reason: u.account_status === 'Blocked' ? getUserBlockReason(u.user_id) : null,
     }));
     return res.json(rows);
@@ -332,6 +388,19 @@ router.get('/users', async (req, res) => {
 });
 
 const USER_STATUSES = ['Active', 'Inactive', 'Blocked', 'Deleted'];
+
+// GET /api/auth/users/:id/id-image — valid ID photo from database
+router.get('/users/:id/id-image', async (req, res) => {
+  try {
+    const image = await loadIdImage(req.params.id);
+    if (!image) return res.status(404).json({ message: 'No valid ID photo found.' });
+    res.set('Content-Type', image.mime);
+    res.set('Cache-Control', 'private, max-age=30');
+    return res.send(image.buffer);
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+});
 
 // PATCH /api/auth/users/:id — edit profile or block/unblock
 router.patch('/users/:id', async (req, res) => {
@@ -379,10 +448,29 @@ router.patch('/users/:id', async (req, res) => {
       .from('users')
       .update(updates)
       .eq('user_id', req.params.id)
-      .select(USER_SAFE_FIELDS)
+      .select(USER_SAFE_FIELDS_WITH_ID)
       .single();
 
     if (error) {
+      if (isMissingColumnError(error)) {
+        const retry = await supabase
+          .from('users')
+          .update(updates)
+          .eq('user_id', req.params.id)
+          .select(USER_SAFE_FIELDS)
+          .single();
+        if (retry.error) {
+          if (retry.error.code === '23505') {
+            return res.status(409).json({ message: 'Email or phone number already in use.' });
+          }
+          return res.status(500).json({ message: retry.error.message });
+        }
+        if (!retry.data) return res.status(404).json({ message: 'User not found.' });
+        return res.json({
+          ...attachIdentity(retry.data),
+          block_reason: retry.data.account_status === 'Blocked' ? getUserBlockReason(retry.data.user_id) : null,
+        });
+      }
       if (error.code === '23505') {
         return res.status(409).json({ message: 'Email or phone number already in use.' });
       }
@@ -390,7 +478,7 @@ router.patch('/users/:id', async (req, res) => {
     }
     if (!data) return res.status(404).json({ message: 'User not found.' });
     return res.json({
-      ...data,
+      ...attachIdentity(data),
       block_reason: data.account_status === 'Blocked' ? getUserBlockReason(data.user_id) : null,
     });
   } catch (err) {
@@ -414,10 +502,22 @@ router.delete('/users/:id', async (req, res) => {
       }
       return res.status(500).json({ message: error.message });
     }
+    await removeValidId(req.params.id);
     return res.json({ message: 'User deleted.' });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }
+});
+
+// POST /api/auth/scan-id
+router.post('/scan-id', async (req, res) => {
+  const { id_type, image } = req.body;
+  if (!id_type || !image) {
+    return res.status(400).json({ match: false, message: 'id_type and image are required.' });
+  }
+
+  const result = await verifyIdImage(String(id_type).trim(), image);
+  return res.json(result);
 });
 
 module.exports = router;

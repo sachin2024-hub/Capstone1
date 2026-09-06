@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { INCIDENT_TYPE_GROUPS } from '../../constants/incidentTypes';
-import { PRIORITY_COLORS, STATUS_COLORS } from '../../constants/statusColors';
+import { INCIDENT_TYPE_GROUPS, matchingTypeNames } from '../../constants/incidentTypes';
+import { STATUS_COLORS } from '../../constants/statusColors';
 import { OUTSIDE_STATUS_VALUES } from '../../services/incidentService';
 import { parseLocationAddress } from '../../utils/locationFormat';
 import { isWithinCabadbaran } from '../../utils/geofence';
@@ -13,7 +13,7 @@ const RANGES = [
   { id: '30d', label: 'Last 30 days' },
 ];
 
-const ACTIVE_STATUSES = ['In Progress', 'En Route', 'Arrived'];
+const ACTIVE_STATUSES = ['Dispatch', 'In Progress', 'En Route', 'Arrived'];
 const HIDDEN_STATUSES = ['Archived', 'Deleted'];
 const TYPE_COLORS = ['#c1121f', '#e53935', '#fb8c00', '#1565c0', '#6d28d9', '#0f766e', '#b45309', '#334155'];
 
@@ -66,10 +66,13 @@ function isOutsideTab(inc) {
 
 function incidentCategory(type) {
   const t = String(type || '').trim() || 'Other Emergency';
-  const group = INCIDENT_TYPE_GROUPS.find(
-    (g) => t === g.category || t.startsWith(`${g.category} —`) || t.startsWith(g.category)
+  const group = INCIDENT_TYPE_GROUPS.find((g) =>
+    matchingTypeNames(g.category).some(
+      (name) => t === name || t.startsWith(`${name} —`) || t.startsWith(name)
+    )
   );
   if (group) return group.category;
+  if (t.startsWith('Traffic Accident')) return 'Vehicular Accident';
   if (t.includes(' — ')) return t.split(' — ')[0];
   return t;
 }
@@ -274,7 +277,6 @@ export default function AccidentReport({ incidents = [], isLoading = false }) {
     const resolved = rows.filter((inc) => inc.incident_status === 'Resolved' && !isGpsOutside(inc));
     const cancelled = rows.filter((inc) => inc.incident_status === 'Cancelled' && !isGpsOutside(inc));
     const outside = rows.filter((inc) => isOutsideTab(inc));
-    const critical = rows.filter((inc) => inc.priority_level === 'Critical');
     const unreviewed = pending.filter((inc) => !inc.viewed);
     const stillOpen = pending.length + active.length + outside.length;
     const resolutionRate = rows.length ? (resolved.length / rows.length) * 100 : 0;
@@ -297,7 +299,6 @@ export default function AccidentReport({ incidents = [], isLoading = false }) {
       resolved: resolved.length,
       cancelled: cancelled.length,
       outside: outside.length,
-      critical: critical.length,
       unreviewed: unreviewed.length,
       stillOpen,
       resolutionRate,
@@ -311,18 +312,9 @@ export default function AccidentReport({ incidents = [], isLoading = false }) {
         { label: 'Outside', count: outside.length, color: STATUS_COLORS.Outside },
         { label: 'Cancelled', count: cancelled.length, color: STATUS_COLORS.Cancelled },
       ],
-      prioritySlices: [
-        { label: 'Critical', count: rows.filter((inc) => inc.priority_level === 'Critical').length, color: PRIORITY_COLORS.Critical },
-        { label: 'High', count: rows.filter((inc) => (inc.priority_level || 'Normal') === 'High').length, color: PRIORITY_COLORS.High },
-        { label: 'Normal', count: rows.filter((inc) => (inc.priority_level || 'Normal') === 'Normal').length, color: PRIORITY_COLORS.Normal },
-      ],
       typeSlices: types.map((item) => ({
         ...item,
         color: typeColorMap[item.label],
-      })),
-      priorities: ['Critical', 'High', 'Normal'].map((label) => ({
-        label,
-        count: rows.filter((inc) => (inc.priority_level || 'Normal') === label).length,
       })),
       statuses: countBy(rows, (inc) => inc.incident_status),
       barangays: countBy(rows, barangayOf),
@@ -356,7 +348,6 @@ export default function AccidentReport({ incidents = [], isLoading = false }) {
     { label: 'Resolved', value: report.resolved, tone: 'ok' },
     { label: 'Outside', value: report.outside, tone: 'orange' },
     { label: 'Cancelled', value: report.cancelled, tone: 'mute' },
-    { label: 'Critical', value: report.critical, tone: 'danger' },
     { label: 'Not reviewed', value: report.unreviewed, tone: 'danger' },
   ];
 
@@ -428,14 +419,6 @@ export default function AccidentReport({ incidents = [], isLoading = false }) {
           <h4>Status share</h4>
           <DonutChart
             items={report.statusSlices}
-            centerValue={report.total}
-            centerLabel="requests"
-          />
-        </section>
-        <section className={styles.card}>
-          <h4>Priority share</h4>
-          <DonutChart
-            items={report.prioritySlices}
             centerValue={report.total}
             centerLabel="requests"
           />

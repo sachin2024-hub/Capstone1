@@ -4,7 +4,8 @@ export const STATUS_COLORS = {
   'For Referral': '#2196F3',
   Referred: '#9C27B0',
   Completed: '#4CAF50',
-  'In Progress': '#2196F3',
+  Dispatch: '#1565C0',
+  'In Progress': '#1565C0',
   'En Route': '#1565C0',
   Arrived: '#2E7D32',
   Resolved: '#4CAF50',
@@ -12,6 +13,16 @@ export const STATUS_COLORS = {
   Archived: '#757575',
   Deleted: '#B71C1C',
 };
+
+export function displayIncidentStatus(status) {
+  if (status === 'In Progress' || status === 'En Route') return 'Dispatch';
+  return status || 'Pending';
+}
+
+export function statusColor(status) {
+  const label = displayIncidentStatus(status);
+  return STATUS_COLORS[label] || STATUS_COLORS[status] || '#9E9E9E';
+}
 
 export const PRIORITY_COLORS = {
   Normal: '#FFC107',

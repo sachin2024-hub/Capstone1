@@ -62,8 +62,8 @@ export default function DispatchRecordModal({ entry, logDate, onClose, onSaved }
               <input value={form.vehicle} onChange={(e) => set('vehicle', e.target.value)} placeholder="Ambulance 1" />
             </label>
             <label>
-              Modulation
-              <input value={form.modulation} onChange={(e) => set('modulation', e.target.value)} />
+              Destination
+              <input value={form.modulation} onChange={(e) => set('modulation', e.target.value)} placeholder="Hospital / destination" />
             </label>
             <label>
               T.O

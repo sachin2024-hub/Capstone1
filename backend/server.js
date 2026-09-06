@@ -53,7 +53,8 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use('/uploads/valid-ids', express.static(path.join(__dirname, 'data', 'valid-ids')));
 
 app.get('/', (req, res) => {
   res.json({ message: 'RapidRescue API is running.' });

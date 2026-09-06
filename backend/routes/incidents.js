@@ -8,6 +8,7 @@ const { buildLocationAddress } = require('../utils/locationFormat');
 const { resolveLocationFromGps } = require('../utils/locationResolver');
 const { rememberStatus, takeSavedStatus, SAVED_STATUSES } = require('../utils/restoreStatus');
 const { listViewedIncidents, markIncidentViewed, clearIncidentViewed } = require('../utils/archiveStore');
+const { attachIdentity, isMissingColumnError } = require('../utils/identityStore');
 
 // POST /api/incidents/sos  - Send SOS emergency alert
 router.post('/sos', authenticateToken, async (req, res) => {
@@ -138,9 +139,10 @@ router.get('/my-incidents', authenticateToken, async (req, res) => {
 
 const CLOSED_FOR_CANCEL = ['Resolved', 'Cancelled', 'Archived', 'Completed', 'Deleted'];
 
-function withCancelReason(description, reason) {
-  const base = String(description || '').replace(/\n?\[Cancelled by reporter\][\s\S]*$/i, '').trim();
-  const note = `[Cancelled by reporter] ${reason}`;
+function withCancelReason(description, reason, by = 'reporter') {
+  const tag = by === 'admin' ? '[Cancelled]' : '[Cancelled by reporter]';
+  const base = String(description || '').replace(/\n?\[Cancelled(?: by reporter)?\][\s\S]*$/i, '').trim();
+  const note = `${tag} ${reason}`;
   return base ? `${base}\n${note}` : note;
 }
 
@@ -233,7 +235,7 @@ router.get('/all', async (req, res) => {
       .from('incidents')
       .select(`
         *,
-        users(user_id, first_name, last_name, email, phone_number),
+        users(user_id, first_name, middle_name, last_name, email, phone_number, address),
         locations(*),
         dispatch(dispatch_id, responder_id, dispatch_status, dispatch_time, responders(responder_id, first_name, last_name, responder_type))
       `)
@@ -244,17 +246,23 @@ router.get('/all', async (req, res) => {
     const userIds = [...new Set((data || []).map((inc) => inc.user_id).filter(Boolean))];
     let registeredById = {};
     if (userIds.length) {
-      const { data: userRows } = await supabase
+      let { data: userRows, error: userErr } = await supabase
         .from('users')
-        .select('user_id, first_name, last_name, email, phone_number')
+        .select('user_id, first_name, middle_name, last_name, email, phone_number, address, id_type, id_number, verification_status')
         .in('user_id', userIds);
+      if (userErr && isMissingColumnError(userErr)) {
+        ({ data: userRows } = await supabase
+          .from('users')
+          .select('user_id, first_name, middle_name, last_name, email, phone_number, address')
+          .in('user_id', userIds));
+      }
       registeredById = Object.fromEntries((userRows || []).map((u) => [String(u.user_id), u]));
     }
 
     const viewedMap = listViewedIncidents();
     const rows = (data || []).map((inc) => {
       const nested = Array.isArray(inc.users) ? inc.users[0] : inc.users;
-      const registered = registeredById[String(inc.user_id)] || nested || null;
+      const registered = attachIdentity(registeredById[String(inc.user_id)] || nested || null);
       return {
         ...inc,
         users: registered,
@@ -278,18 +286,28 @@ router.patch('/:id/viewed', async (req, res) => {
   }
 });
 
-const CITY_FLOW = ['Pending', 'In Progress', 'En Route', 'Arrived', 'Resolved', 'Cancelled', 'Archived', 'Deleted'];
+const CITY_FLOW = ['Pending', 'Dispatch', 'Arrived', 'Resolved', 'Cancelled', 'Archived', 'Deleted'];
 const OUTSIDE_FLOW = ['Outside', 'For Referral', 'Referred', 'Completed', 'Archived', 'Deleted'];
-const VALID_STATUSES = [...new Set([...CITY_FLOW, ...OUTSIDE_FLOW])];
+const LEGACY_CITY_STATUSES = ['In Progress', 'En Route'];
+const VALID_STATUSES = [...new Set([...CITY_FLOW, ...OUTSIDE_FLOW, ...LEGACY_CITY_STATUSES])];
+
+function normalizeCityStatus(status) {
+  if (status === 'In Progress' || status === 'En Route') return 'Dispatch';
+  return status;
+}
 
 function canMoveStatus(from, to) {
-  if (from === to) return true;
+  const fromN = normalizeCityStatus(from);
+  const toN = normalizeCityStatus(to);
+  if (fromN === toN) return true;
   if (from === 'Pending' && ['Outside', 'For Referral', 'Referred', 'Completed'].includes(to)) {
     return true;
   }
-  const flow = OUTSIDE_FLOW.includes(from) ? OUTSIDE_FLOW : CITY_FLOW;
-  const currentIdx = flow.indexOf(from);
-  const nextIdx = flow.indexOf(to);
+  const fromFlow = OUTSIDE_FLOW.includes(from) ? from : fromN;
+  const toFlow = OUTSIDE_FLOW.includes(to) ? to : toN;
+  const flow = OUTSIDE_FLOW.includes(fromFlow) ? OUTSIDE_FLOW : CITY_FLOW;
+  const currentIdx = flow.indexOf(fromFlow);
+  const nextIdx = flow.indexOf(toFlow);
   if (currentIdx < 0 || nextIdx < 0) return false;
   return nextIdx >= currentIdx;
 }
@@ -300,6 +318,7 @@ const DISPATCH_STATUS_MAP = {
   'For Referral': 'Assigned',
   Referred: 'Assigned',
   Completed: 'Completed',
+  Dispatch: 'En Route',
   'In Progress': 'En Route',
   'En Route': 'En Route',
   Arrived: 'Arrived',
@@ -339,8 +358,14 @@ router.patch('/:id/status', async (req, res) => {
 
     const updates = { incident_status };
     const cancelReason = String(req.body?.reason || req.body?.cancel_reason || '').trim();
-    if (incident_status === 'Cancelled' && cancelReason) {
-      updates.incident_description = withCancelReason(existing.incident_description, cancelReason);
+    if (incident_status === 'Cancelled') {
+      if (!cancelReason) {
+        return res.status(400).json({ message: 'Please provide a reason for cancellation.' });
+      }
+      if (cancelReason.length > 300) {
+        return res.status(400).json({ message: 'Cancel reason must be 300 characters or less.' });
+      }
+      updates.incident_description = withCancelReason(existing.incident_description, cancelReason, 'admin');
     }
 
     const { data: incident, error: incErr } = await supabase
@@ -378,7 +403,7 @@ router.patch('/:id/status', async (req, res) => {
           .from('responders')
           .update({ availability_status: 'Available' })
           .eq('responder_id', dispatch.responder_id);
-      } else if (['In Progress', 'En Route', 'Arrived'].includes(incident_status)) {
+      } else if (['Dispatch', 'In Progress', 'En Route', 'Arrived'].includes(incident_status)) {
         await supabase
           .from('responders')
           .update({ availability_status: 'Busy' })
