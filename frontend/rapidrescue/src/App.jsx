@@ -1,6 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/auth/Login';
-import Register from './pages/auth/Register';
 import Dashboard from './pages/dashboard/Dashboard';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import { isAuthenticated } from './services/authService';
@@ -14,7 +13,7 @@ export default function App() {
           element={<Navigate to={isAuthenticated() ? '/dashboard' : '/login'} replace />}
         />
         <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
+        <Route path="/register" element={<Navigate to="/login" replace />} />
         <Route
           path="/dashboard"
           element={

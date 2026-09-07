@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
 const { archiveId, restoreId, listArchived } = require('../utils/archiveStore');
+const { logActivity } = require('../utils/activityLogger');
 
 const FIELDS = [
   'vehicle',
@@ -67,6 +68,13 @@ router.post('/', async (req, res) => {
       .single();
 
     if (error) return res.status(500).json({ message: error.message });
+    logActivity(req, {
+      action: 'dispatch_record.create',
+      entity_type: 'dispatch_record',
+      entity_id: row.dispatch_record_id,
+      target: row.vehicle || `Dispatch #${row.dispatch_record_id}`,
+      details: `Added dispatch record${row.vehicle ? ` for ${row.vehicle}` : ''}${row.location ? ` at ${row.location}` : ''}.`,
+    });
     return res.status(201).json(row);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
@@ -88,6 +96,13 @@ router.put('/:id', async (req, res) => {
 
     if (error) return res.status(500).json({ message: error.message });
     if (!row) return res.status(404).json({ message: 'Dispatch record not found.' });
+    logActivity(req, {
+      action: 'dispatch_record.update',
+      entity_type: 'dispatch_record',
+      entity_id: row.dispatch_record_id,
+      target: row.vehicle || `Dispatch #${row.dispatch_record_id}`,
+      details: `Updated dispatch record #${row.dispatch_record_id}${row.vehicle ? ` (${row.vehicle})` : ''}.`,
+    });
     return res.json(row);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
@@ -97,6 +112,13 @@ router.put('/:id', async (req, res) => {
 // PATCH /api/dispatch-records/:id/restore
 router.patch('/:id/restore', async (req, res) => {
   restoreId('dispatch', req.params.id);
+  logActivity(req, {
+    action: 'dispatch_record.restore',
+    entity_type: 'dispatch_record',
+    entity_id: req.params.id,
+    target: `Dispatch #${req.params.id}`,
+    details: `Restored dispatch record #${req.params.id}.`,
+  });
   return res.json({ message: 'Dispatch record restored.' });
 });
 
@@ -111,10 +133,24 @@ router.delete('/:id', async (req, res) => {
         .eq('dispatch_record_id', req.params.id);
 
       if (error) return res.status(500).json({ message: error.message });
+      logActivity(req, {
+        action: 'dispatch_record.delete',
+        entity_type: 'dispatch_record',
+        entity_id: req.params.id,
+        target: `Dispatch #${req.params.id}`,
+        details: `Permanently deleted dispatch record #${req.params.id}.`,
+      });
       return res.json({ message: 'Dispatch record permanently deleted.' });
     }
 
     archiveId('dispatch', req.params.id);
+    logActivity(req, {
+      action: 'dispatch_record.archive',
+      entity_type: 'dispatch_record',
+      entity_id: req.params.id,
+      target: `Dispatch #${req.params.id}`,
+      details: `Moved dispatch record #${req.params.id} to Archive.`,
+    });
     return res.json({ message: 'Dispatch record moved to Archive.' });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });

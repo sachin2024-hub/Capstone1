@@ -3,6 +3,7 @@ const router = express.Router();
 const supabase = require('../config/supabase');
 
 const { listOccupiedResponders } = require('../utils/responderBusy');
+const { logActivity } = require('../utils/activityLogger');
 
 const VALID_TYPES = ['Dispatcher', '1st Responder', 'Ambulance', 'Fire Rescue', 'Police', 'Rescue Team'];
 const VALID_STATUSES = ['Available', 'Busy', 'Off Duty'];
@@ -64,6 +65,13 @@ router.post('/', async (req, res) => {
       .single();
 
     if (error) return res.status(500).json({ message: error.message });
+    logActivity(req, {
+      action: 'responder.create',
+      entity_type: 'responder',
+      entity_id: data.responder_id,
+      target: `${data.first_name} ${data.last_name}`,
+      details: `Added ${data.responder_type} ${data.first_name} ${data.last_name}.`,
+    });
     return res.status(201).json(data);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
@@ -113,6 +121,13 @@ router.patch('/:id', async (req, res) => {
 
     if (error) return res.status(500).json({ message: error.message });
     if (!data) return res.status(404).json({ message: 'Responder not found.' });
+    logActivity(req, {
+      action: 'responder.update',
+      entity_type: 'responder',
+      entity_id: data.responder_id,
+      target: `${data.first_name} ${data.last_name}`,
+      details: `Updated ${data.responder_type} ${data.first_name} ${data.last_name}${updates.availability_status ? ` (status: ${updates.availability_status})` : ''}.`,
+    });
     return res.json(data);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
@@ -175,6 +190,13 @@ router.delete('/:id', async (req, res) => {
 
     if (error) return res.status(500).json({ message: error.message });
 
+    logActivity(req, {
+      action: 'responder.delete',
+      entity_type: 'responder',
+      entity_id: responderId,
+      target: `Responder #${responderId}`,
+      details: `Deleted responder #${responderId}.`,
+    });
     return res.json({ message: 'Responder deleted successfully.' });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });

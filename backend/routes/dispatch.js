@@ -4,6 +4,7 @@ const supabase = require('../config/supabase');
 const { CABADBARAN, RESPONDER_STATIONS, isWithinCabadbaran, CITY_HALL } = require('../config/cabadbaran');
 const { parseLocationAddress } = require('../utils/locationFormat');
 const { isResponderOccupied } = require('../utils/responderBusy');
+const { logActivity } = require('../utils/activityLogger');
 
 // GET /api/dispatch/all
 router.get('/all', async (req, res) => {
@@ -189,6 +190,14 @@ router.post('/assign', async (req, res) => {
       .single();
 
     if (fetchErr) return res.status(500).json({ message: fetchErr.message });
+
+    logActivity(req, {
+      action: 'incident.assign',
+      entity_type: 'incident',
+      entity_id: incidentId,
+      target: `Incident #${incidentId}`,
+      details: `Assigned ${responder.first_name} ${responder.last_name} (${responder.responder_type}) to accident #${incidentId}.`,
+    });
 
     return res.json({
       message: `${responder.first_name} ${responder.last_name} assigned successfully.`,

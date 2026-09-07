@@ -1,3 +1,40 @@
+/* ─── Animations ─────────────────────────────────────── */
+@keyframes dashFadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes dashFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes dashFadeDown {
+  from { opacity: 0; transform: translateY(-14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes dashSlideRight {
+  from { opacity: 0; transform: translateX(-14px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes dashPop {
+  0%   { opacity: 0; transform: scale(0.9) translateY(14px); }
+  70%  { opacity: 1; transform: scale(1.02) translateY(0); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes dashSheen {
+  0%   { transform: translateX(-120%) skewX(-18deg); }
+  100% { transform: translateX(320%) skewX(-18deg); }
+}
+
+@keyframes dashDrift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%      { transform: translate(14px, 16px) scale(1.08); }
+}
+
 /* ─── Layout ─────────────────────────────────────────── */
 .wrapper {
   display: flex;
@@ -34,19 +71,24 @@
 }
 
 .sidebarLogo {
-  width: 38px;
-  height: 38px;
-  border-radius: 11px;
-  background: linear-gradient(135deg, #ef5350, #c62828);
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #fff;
   color: #fff;
-  font-size: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 4px 12px rgba(229, 57, 53, 0.4);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.18), 0 4px 12px rgba(0, 0, 0, 0.35);
   overflow: hidden;
   padding: 0;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
+}
+
+.sidebarHeader:hover .sidebarLogo {
+  transform: scale(1.08) rotate(-5deg);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.26), 0 6px 18px rgba(0, 0, 0, 0.45);
 }
 
 .sidebarLogoImg {
@@ -119,16 +161,25 @@
   font-weight: 500;
   font-family: 'Inter', system-ui, sans-serif;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
   white-space: nowrap;
   width: calc(100% - 8px);
   text-align: left;
   position: relative;
+  animation: dashSlideRight 0.4s ease-out backwards;
 }
 
+.navSection .navItem:nth-of-type(1) { animation-delay: 0.06s; }
+.navSection .navItem:nth-of-type(2) { animation-delay: 0.11s; }
+.navSection .navItem:nth-of-type(3) { animation-delay: 0.16s; }
+.navSection .navItem:nth-of-type(4) { animation-delay: 0.21s; }
+.navSection .navItem:nth-of-type(5) { animation-delay: 0.26s; }
+.navSection .navItem:nth-of-type(6) { animation-delay: 0.31s; }
+
 .navItem:hover:not(.navItemActive) {
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.95);
+  transform: translateX(3px);
 }
 
 .navItemActive {
@@ -147,6 +198,7 @@
   width: 3px;
   border-radius: 0 3px 3px 0;
   background: linear-gradient(180deg, #ff8a80, #e53935);
+  box-shadow: 0 0 10px rgba(229, 57, 53, 0.75);
 }
 
 .navIcon {
@@ -155,6 +207,11 @@
   width: 22px;
   text-align: center;
   line-height: 1;
+  transition: transform 0.2s ease;
+}
+
+.navItem:hover .navIcon {
+  transform: scale(1.16);
 }
 
 .navLabel {
@@ -230,6 +287,7 @@
   top: 0;
   z-index: 100;
   box-shadow: 0 1px 6px rgba(0,0,0,0.05);
+  animation: dashFadeDown 0.45s ease-out backwards;
 }
 
 .toggleBtn {
@@ -244,13 +302,18 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
 }
 
 .toggleBtn:hover {
   border-color: #e53935;
   background: #fff5f5;
   color: #e53935;
+  transform: scale(1.08);
+}
+
+.toggleBtn:active {
+  transform: scale(0.94);
 }
 
 .topbarLeft {
@@ -321,12 +384,17 @@
   align-items: center;
   justify-content: center;
   font-size: 16px;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
 }
 
 .notifBtn:hover {
   border-color: #e53935;
   background: #fff5f5;
+  transform: scale(1.08);
+}
+
+.notifBtn:active {
+  transform: scale(0.94);
 }
 
 .notifCount {
@@ -366,6 +434,12 @@
   justify-content: center;
   flex-shrink: 0;
   box-shadow: 0 2px 8px rgba(229,57,53,0.35);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.userInfo:hover .avatar {
+  transform: scale(1.07);
+  box-shadow: 0 4px 14px rgba(229,57,53,0.45);
 }
 
 .userName {
@@ -407,6 +481,7 @@
   align-items: center;
   justify-content: space-between;
   margin-bottom: 14px;
+  animation: dashFadeUp 0.45s ease-out backwards;
 }
 
 /* sub-tabs under Users section */
@@ -460,12 +535,18 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  transition: border-color 0.2s, color 0.2s;
+  transition: border-color 0.2s ease, color 0.2s ease, box-shadow 0.22s ease, transform 0.2s ease;
 }
 
 .refreshBtn:hover {
   border-color: #e53935;
   color: #e53935;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(229, 57, 53, 0.16);
+}
+
+.refreshBtn:active {
+  transform: translateY(0) scale(0.97);
 }
 
 .tabHeaderActions {
@@ -530,22 +611,59 @@
 
 /* ─── Overview Banner ─────────────────────────────────── */
 .overviewBanner {
-  background: #c62828;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(120deg, #b71c1c 0%, #d32f2f 48%, #e53935 100%);
   border-radius: 18px;
-  padding: 22px 26px;
+  padding: 24px 26px;
   margin-bottom: 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
   color: #fff;
-  box-shadow: 0 4px 16px rgba(198, 40, 40, 0.28);
+  box-shadow: 0 10px 30px rgba(198, 40, 40, 0.32);
+  animation: dashFadeUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.12s backwards;
+}
+
+/* soft floating orbs */
+.overviewBanner::before {
+  content: '';
+  position: absolute;
+  width: 240px;
+  height: 240px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.09);
+  top: -110px;
+  right: 12%;
+  pointer-events: none;
+  animation: dashDrift 15s ease-in-out infinite;
+}
+
+.overviewBanner::after {
+  content: '';
+  position: absolute;
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.07);
+  bottom: -85px;
+  left: 34%;
+  pointer-events: none;
+  animation: dashDrift 19s ease-in-out infinite reverse;
+}
+
+.bannerText {
+  position: relative;
+  z-index: 1;
 }
 
 .bannerText h3 {
   font-size: 20px;
   font-weight: 800;
   margin: 0 0 4px;
+  letter-spacing: -0.2px;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
 }
 
 .bannerText p {
@@ -559,6 +677,8 @@
   display: flex;
   gap: 10px;
   flex-shrink: 0;
+  position: relative;
+  z-index: 1;
 }
 
 .bannerBtn {
@@ -566,16 +686,24 @@
   border: none;
   color: #b71c1c;
   border-radius: 9px;
-  padding: 9px 16px;
+  padding: 10px 16px;
   font-size: 13px;
   font-weight: 700;
   font-family: 'Inter', system-ui, sans-serif;
   cursor: pointer;
   white-space: nowrap;
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.22s ease, background 0.2s ease;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.14);
 }
 
 .bannerBtn:hover {
-  background: #ffebee;
+  background: #fff;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
+}
+
+.bannerBtn:active {
+  transform: translateY(0) scale(0.97);
 }
 
 /* ─── Stats Grid ──────────────────────────────────────── */
@@ -587,6 +715,8 @@
 }
 
 .statCard {
+  position: relative;
+  overflow: hidden;
   background: #fff;
   border-radius: 16px;
   padding: 22px 20px;
@@ -595,12 +725,48 @@
   gap: 16px;
   box-shadow: 0 1px 8px rgba(0,0,0,0.06);
   border: 1px solid #f0f0f0;
-  transition: transform 0.15s, box-shadow 0.15s;
+  transition:
+    transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.28s ease,
+    border-color 0.28s ease;
+  animation: dashPop 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.statsGrid .statCard:nth-child(1) { animation-delay: 0.18s; }
+.statsGrid .statCard:nth-child(2) { animation-delay: 0.25s; }
+.statsGrid .statCard:nth-child(3) { animation-delay: 0.32s; }
+.statsGrid .statCard:nth-child(4) { animation-delay: 0.39s; }
+.statsGrid .statCard:nth-child(5) { animation-delay: 0.46s; }
+.statsGrid .statCard:nth-child(6) { animation-delay: 0.53s; }
+
+/* light sweep that runs across the card on hover */
+.statCard::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 45%;
+  height: 100%;
+  background: linear-gradient(
+    100deg,
+    rgba(255,255,255,0) 0%,
+    rgba(255,255,255,0.55) 50%,
+    rgba(255,255,255,0) 100%
+  );
+  transform: translateX(-120%) skewX(-18deg);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.statCard:hover::after {
+  opacity: 1;
+  animation: dashSheen 0.75s ease-out;
 }
 
 .statCard:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  transform: translateY(-5px);
+  box-shadow: 0 14px 32px rgba(17, 24, 39, 0.13);
+  border-color: #e8eaee;
 }
 
 .statCardClickable {
@@ -608,6 +774,10 @@
   text-align: left;
   font-family: inherit;
   cursor: pointer;
+}
+
+.statCardClickable:active {
+  transform: translateY(-1px) scale(0.985);
 }
 
 .statCardClickable:focus-visible {
@@ -624,6 +794,11 @@
   justify-content: center;
   font-size: 24px;
   flex-shrink: 0;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
+}
+
+.statCard:hover .statIconBox {
+  transform: scale(1.12) rotate(-6deg);
 }
 
 .statRed .statIconBox   { background: #fff5f5; }
@@ -632,6 +807,37 @@
 .statGreen .statIconBox  { background: #f0fdf4; }
 .statBlue .statIconBox   { background: #eff8ff; }
 .statPurple .statIconBox { background: #faf5ff; }
+
+/* coloured glow that matches each card's accent on hover */
+.statRed:hover    { box-shadow: 0 14px 32px rgba(229, 57, 53, 0.20); }
+.statOrange:hover { box-shadow: 0 14px 32px rgba(234, 88, 12, 0.20); }
+.statYellow:hover { box-shadow: 0 14px 32px rgba(217, 119, 6, 0.20); }
+.statGreen:hover  { box-shadow: 0 14px 32px rgba(22, 163, 74, 0.20); }
+.statBlue:hover   { box-shadow: 0 14px 32px rgba(37, 99, 235, 0.20); }
+.statPurple:hover { box-shadow: 0 14px 32px rgba(147, 51, 234, 0.20); }
+
+/* thin accent strip that grows on hover */
+.statCard::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 0;
+  border-radius: 0 4px 4px 0;
+  transition: height 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+
+.statCard:hover::before { height: 62%; }
+
+.statRed::before    { background: linear-gradient(180deg, #ff8a80, #e53935); }
+.statOrange::before { background: linear-gradient(180deg, #fdba74, #ea580c); }
+.statYellow::before { background: linear-gradient(180deg, #fcd34d, #d97706); }
+.statGreen::before  { background: linear-gradient(180deg, #6ee7b7, #16a34a); }
+.statBlue::before   { background: linear-gradient(180deg, #93c5fd, #2563eb); }
+.statPurple::before { background: linear-gradient(180deg, #d8b4fe, #9333ea); }
 
 .statBody {
   flex: 1;
@@ -644,7 +850,15 @@
   color: #111;
   line-height: 1;
   letter-spacing: -1px;
+  transition: color 0.25s ease;
 }
+
+.statRed:hover .statValue    { color: #c62828; }
+.statOrange:hover .statValue { color: #c2410c; }
+.statYellow:hover .statValue { color: #b45309; }
+.statGreen:hover .statValue  { color: #15803d; }
+.statBlue:hover .statValue   { color: #1d4ed8; }
+.statPurple:hover .statValue { color: #7e22ce; }
 
 .statLabel {
   font-size: 12.5px;
@@ -674,6 +888,12 @@
   border: 1px solid #f0f0f0;
   overflow: hidden;
   margin-bottom: 20px;
+  transition: box-shadow 0.3s ease;
+  animation: dashFadeUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.55s backwards;
+}
+
+.tableCard:hover {
+  box-shadow: 0 8px 26px rgba(17, 24, 39, 0.09);
 }
 
 .tableCardHeader {
@@ -705,9 +925,13 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  transition: color 0.15s;
+  transition: color 0.2s ease, gap 0.2s ease, transform 0.2s ease;
 }
-.viewAllBtn:hover { color: #c62828; }
+.viewAllBtn:hover {
+  color: #c62828;
+  gap: 8px;
+  transform: translateX(2px);
+}
 
 .tableWrapper {
   overflow-x: auto;
@@ -737,14 +961,28 @@
   color: #333;
   border-bottom: 1px solid #f7f7f7;
   vertical-align: middle;
+  transition: background 0.18s ease;
 }
 
 .table tr:last-child td {
   border-bottom: none;
 }
 
+.table tbody tr {
+  animation: dashFadeIn 0.4s ease-out backwards;
+}
+
+.table tbody tr:nth-child(1) { animation-delay: 0.02s; }
+.table tbody tr:nth-child(2) { animation-delay: 0.06s; }
+.table tbody tr:nth-child(3) { animation-delay: 0.10s; }
+.table tbody tr:nth-child(4) { animation-delay: 0.14s; }
+.table tbody tr:nth-child(5) { animation-delay: 0.18s; }
+.table tbody tr:nth-child(6) { animation-delay: 0.22s; }
+.table tbody tr:nth-child(7) { animation-delay: 0.26s; }
+.table tbody tr:nth-child(8) { animation-delay: 0.30s; }
+
 .table tr:hover td {
-  background: #fafafa;
+  background: #fafbfc;
 }
 
 .descCell {
@@ -1244,6 +1482,7 @@
   box-shadow: inset 0 1px 3px rgba(0,0,0,0.06);
   flex-wrap: wrap;
   position: relative;
+  animation: dashFadeUp 0.5s ease-out 0.06s backwards;
 }
 
 .datePickerWrap {
@@ -1416,12 +1655,13 @@
   font-family: inherit;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.18s, color 0.18s, box-shadow 0.18s;
+  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
 .dateSegmentBtn:hover {
   background: rgba(229, 57, 53, 0.07);
   color: #e53935;
+  transform: translateY(-1px);
 }
 
 .dateSegmentBtnActive {
@@ -1430,6 +1670,7 @@
   font-weight: 800;
   box-shadow: 0 2px 8px rgba(0,0,0,0.10), 0 1px 2px rgba(0,0,0,0.06);
   border-radius: 10px;
+  transform: none;
 }
 
 .dateSegmentBtnActive:hover {
@@ -1733,11 +1974,147 @@
   .bannerActions { flex-wrap: wrap; }
 }
 
+/* ─── Activity Logs ──────────────────────────────────── */
+.logIntro {
+  margin: -4px 0 16px;
+  color: #64748b;
+  font-size: 13.5px;
+}
+
+.logStatRow {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.logStat {
+  background: #fff;
+  border: 1px solid #eef0f4;
+  border-radius: 14px;
+  padding: 12px 16px;
+  min-width: 140px;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.04);
+}
+
+.logStat strong {
+  display: block;
+  font-size: 22px;
+  font-weight: 800;
+  color: #111;
+  line-height: 1.1;
+}
+
+.logStat span {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.logDateInput {
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #334155;
+  background: #fff;
+}
+
+.logTime {
+  white-space: nowrap;
+  color: #64748b;
+  font-size: 12.5px;
+}
+
+.logWho {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.logWho strong {
+  color: #111;
+}
+
+.logWho span {
+  font-size: 11px;
+  color: #e53935;
+  font-weight: 700;
+}
+
+.logBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.logToneDanger {
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.logToneOk {
+  background: #ecfdf5;
+  color: #15803d;
+}
+
+.logToneWarn {
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.logToneInfo {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.logDetails {
+  color: #334155;
+  line-height: 1.45;
+  max-width: 420px;
+}
+
+.emptyState {
+  padding: 36px 24px;
+  text-align: center;
+  color: #64748b;
+  font-size: 14px;
+}
+
 @media (max-width: 640px) {
   .statsGrid { grid-template-columns: 1fr 1fr; }
   .content { padding: 16px; }
   .userName { display: none; }
   .topbarClock { display: none; }
+}
+
+/* Respect users who prefer no motion */
+@media (prefers-reduced-motion: reduce) {
+  .topbar,
+  .tabHeader,
+  .navItem,
+  .overviewBanner,
+  .overviewBanner::before,
+  .overviewBanner::after,
+  .statCard,
+  .statCard::after,
+  .tableCard,
+  .dateSegmentedBar,
+  .table tbody tr {
+    animation: none !important;
+  }
+
+  .statCard:hover,
+  .navItem:hover,
+  .bannerBtn:hover,
+  .refreshBtn:hover,
+  .dateSegmentBtn:hover {
+    transform: none !important;
+  }
 }
 
 @media print {
@@ -1746,6 +2123,15 @@
   .refreshBtn,
   .errorBanner {
     display: none !important;
+  }
+
+  .statCard,
+  .tableCard,
+  .overviewBanner,
+  .table tbody tr,
+  .navItem,
+  .tabHeader {
+    animation: none !important;
   }
 
   .wrapper,

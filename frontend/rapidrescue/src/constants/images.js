@@ -1,5 +1,5 @@
 export const APP_IMAGES = {
-  logo: '/images/ambulance1.jpg',
+  logo: '/images/Logo_CDRRMO.png',
   ambulances: [
     '/images/ambulance1.jpg',
     '/images/ambulance2.jpg',

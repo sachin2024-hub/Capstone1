@@ -12,6 +12,7 @@ const {
   setAdminBlockReason,
 } = require('../utils/archiveStore');
 const { BLOCK_REASONS, blockedAccountMessage } = require('../utils/blockReasons');
+const { logActivity } = require('../utils/activityLogger');
 
 const ADMIN_ROLES = ['Admin', 'User'];
 
@@ -63,6 +64,14 @@ router.post('/register', async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
+
+    logActivity(req, {
+      action: 'admin.create',
+      entity_type: 'admin',
+      entity_id: data.admin_id,
+      target: `@${data.username}`,
+      details: `Created admin account @${data.username} (${data.first_name} ${data.last_name}) with role ${data.role}.`,
+    });
 
     return res.status(201).json({
       message: 'Admin account created successfully!',
@@ -141,6 +150,17 @@ router.post('/login', async (req, res) => {
     );
 
     const { password: _pwd, ...adminWithoutPassword } = data;
+
+    logActivity(req, {
+      admin_id: data.admin_id,
+      username: data.username,
+      role: data.role,
+      action: 'admin.login',
+      entity_type: 'admin',
+      entity_id: data.admin_id,
+      target: `@${data.username}`,
+      details: `Signed in to the admin control panel as ${data.role}.`,
+    });
 
     return res.json({
       message: 'Login successful!',
@@ -231,9 +251,36 @@ router.patch('/:id', async (req, res) => {
 
     const archived = isAdminArchived(req.params.id);
     const blocked = isAdminBlocked(req.params.id);
+    const status = archived ? 'Deleted' : (blocked ? 'Blocked' : 'Active');
+    const changed = Object.keys(updates);
+    let action = 'admin.update';
+    let details = `Updated admin @${data.username}.`;
+    if (account_status === 'Blocked') {
+      action = 'admin.block';
+      details = `Blocked admin @${data.username}${block_reason ? ` (reason: ${block_reason})` : ''}.`;
+    } else if (account_status === 'Deleted') {
+      action = 'admin.archive';
+      details = `Moved admin @${data.username} to archive.`;
+    } else if (account_status === 'Active' && !changed.length) {
+      action = 'admin.restore';
+      details = `Restored admin @${data.username} to Active.`;
+    } else if (updates.password) {
+      details = `Changed password and profile for admin @${data.username}.`;
+    } else if (changed.length) {
+      details = `Updated admin @${data.username} fields: ${changed.filter((k) => k !== 'password').join(', ') || 'profile'}.`;
+    }
+
+    logActivity(req, {
+      action,
+      entity_type: 'admin',
+      entity_id: req.params.id,
+      target: `@${data.username}`,
+      details,
+    });
+
     return res.json({
       ...data,
-      account_status: archived ? 'Deleted' : (blocked ? 'Blocked' : 'Active'),
+      account_status: status,
       block_reason: !archived && blocked ? getAdminBlockReason(req.params.id) : null,
     });
   } catch (err) {
@@ -253,6 +300,13 @@ router.delete('/:id', async (req, res) => {
     setAdminBlocked(req.params.id, false);
     setAdminArchived(req.params.id, false);
     setAdminBlockReason(req.params.id, null);
+    logActivity(req, {
+      action: 'admin.delete',
+      entity_type: 'admin',
+      entity_id: req.params.id,
+      target: `Admin #${req.params.id}`,
+      details: `Permanently deleted admin #${req.params.id}.`,
+    });
     return res.json({ message: 'Admin deleted.' });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });

@@ -9,6 +9,7 @@ const { resolveLocationFromGps } = require('../utils/locationResolver');
 const { rememberStatus, takeSavedStatus, SAVED_STATUSES } = require('../utils/restoreStatus');
 const { listViewedIncidents, markIncidentViewed, clearIncidentViewed } = require('../utils/archiveStore');
 const { attachIdentity, isMissingColumnError } = require('../utils/identityStore');
+const { logActivity } = require('../utils/activityLogger');
 
 // POST /api/incidents/sos  - Send SOS emergency alert
 router.post('/sos', authenticateToken, async (req, res) => {
@@ -411,6 +412,14 @@ router.patch('/:id/status', async (req, res) => {
       }
     }
 
+    logActivity(req, {
+      action: 'incident.status',
+      entity_type: 'incident',
+      entity_id: incidentId,
+      target: `Incident #${incidentId}`,
+      details: `Changed accident #${incidentId} status from ${existing.incident_status} to ${incident_status}${cancelReason ? ` (reason: ${cancelReason})` : ''}.`,
+    });
+
     return res.json({
       message: 'Status updated successfully.',
       incident,
@@ -479,6 +488,13 @@ router.patch('/:id/archive', async (req, res) => {
         .eq('responder_id', dispatch.responder_id);
     }
 
+    logActivity(req, {
+      action: 'incident.archive',
+      entity_type: 'incident',
+      entity_id: incidentId,
+      target: `Incident #${incidentId}`,
+      details: `Archived accident #${incidentId}.`,
+    });
     return res.json({ message: 'Incident archived.', incident });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
@@ -521,6 +537,13 @@ router.patch('/:id/restore', async (req, res) => {
 
     if (error) return res.status(500).json({ message: error.message });
 
+    logActivity(req, {
+      action: 'incident.restore',
+      entity_type: 'incident',
+      entity_id: incidentId,
+      target: `Incident #${incidentId}`,
+      details: `Restored accident #${incidentId} to ${nextStatus}.`,
+    });
     return res.json({ message: `Incident restored to ${nextStatus}.`, incident });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
@@ -579,6 +602,13 @@ router.delete('/:id/permanent', async (req, res) => {
     if (error) return res.status(500).json({ message: error.message });
 
     clearIncidentViewed(incidentId);
+    logActivity(req, {
+      action: 'incident.delete',
+      entity_type: 'incident',
+      entity_id: incidentId,
+      target: `Incident #${incidentId}`,
+      details: `Permanently deleted accident #${incidentId}.`,
+    });
     return res.json({ message: 'Incident permanently removed.' });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
@@ -616,6 +646,13 @@ router.delete('/:id', async (req, res) => {
 
     if (error) return res.status(500).json({ message: error.message });
 
+    logActivity(req, {
+      action: 'incident.soft_delete',
+      entity_type: 'incident',
+      entity_id: incidentId,
+      target: `Incident #${incidentId}`,
+      details: `Moved accident #${incidentId} to Deleted.`,
+    });
     return res.json({ message: 'Incident moved to Deleted.', incident });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });

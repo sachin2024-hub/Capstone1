@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { logout, getStoredAdmin } from '../../services/authService';
 import api from '../../services/api';
+import { logAdminLogout } from '../../services/activityLogService';
+import ActivityLogsPage from '../../components/logs/ActivityLogsPage';
 import ConfirmModal from '../../components/common/ConfirmModal';
 import RecordDetailsModal from '../../components/common/RecordDetailsModal';
 import LiveMap from '../../components/map/LiveMap';
@@ -292,6 +294,7 @@ const NAV_SECTIONS = [
     label: 'Administration',
     items: [
       { id: 'users', icon: '👥', label: 'Users' },
+      { id: 'activity-logs', icon: '📋', label: 'Activity Logs' },
       { id: 'settings', icon: '⚙️', label: 'Settings' },
     ],
   },
@@ -1575,8 +1578,9 @@ export default function Dashboard() {
       message: 'Are you sure you want to log out of RapidRescue?',
       confirmLabel: 'Log Out',
       variant: 'logout',
-      onConfirm: () => {
+      onConfirm: async () => {
         setConfirmModal(null);
+        await logAdminLogout();
         logout();
         navigate('/login');
       },
@@ -2192,7 +2196,7 @@ export default function Dashboard() {
       <aside className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : styles.sidebarClosed}`}>
         <div className={styles.sidebarHeader}>
           <div className={styles.sidebarLogo}>
-            <img src={APP_IMAGES.logo} alt="" className={styles.sidebarLogoImg} />
+            <img src={APP_IMAGES.logo} alt="CDRRMO Cabadbaran" className={styles.sidebarLogoImg} />
           </div>
           {sidebarOpen && (
             <div className={styles.sidebarBrand}>
@@ -2722,6 +2726,8 @@ export default function Dashboard() {
               )}
             </div>
           )}
+
+          {activeTab === 'activity-logs' && <ActivityLogsPage />}
 
           {/* ── SETTINGS ───────────────────────────────────── */}
           {activeTab === 'settings' && (

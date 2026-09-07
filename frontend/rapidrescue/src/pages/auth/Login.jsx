@@ -1,8 +1,15 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { login } from '../../services/authService';
 import { APP_IMAGES } from '../../constants/images';
 import styles from './Auth.module.css';
+
+const FEATURES = [
+  { icon: '📊', label: 'Monitor all incidents' },
+  { icon: '👥', label: 'Manage users & responders' },
+  { icon: '🚒', label: 'Dispatch emergency units fast' },
+  { icon: '🗺️', label: 'Live GPS tracking & routing' },
+];
 
 export default function Login() {
   const navigate = useNavigate();
@@ -39,7 +46,11 @@ export default function Login() {
       <div className={styles.leftPanel}>
         <div className={styles.brandBox}>
           <div className={styles.brandLogoWrap}>
-            <img src={APP_IMAGES.logo} alt="RapidRescue" className={styles.brandLogoImg} />
+            <img
+              src={APP_IMAGES.logo}
+              alt="CDRRMO Cabadbaran City"
+              className={styles.brandLogoImg}
+            />
           </div>
           <h1 className={styles.brandName}>RapidRescue</h1>
           <p className={styles.brandTagline}>Admin Control Panel</p>
@@ -48,22 +59,12 @@ export default function Login() {
           <div className={styles.brandDivider} />
 
           <div className={styles.features}>
-            <div className={styles.feature}>
-              <span className={styles.featureIcon}>📊</span>
-              <span>Monitor all incidents</span>
-            </div>
-            <div className={styles.feature}>
-              <span className={styles.featureIcon}>👥</span>
-              <span>Manage users &amp; responders</span>
-            </div>
-            <div className={styles.feature}>
-              <span className={styles.featureIcon}>🚒</span>
-              <span>Dispatch emergency units fast</span>
-            </div>
-            <div className={styles.feature}>
-              <span className={styles.featureIcon}>🗺️</span>
-              <span>Live GPS tracking &amp; routing</span>
-            </div>
+            {FEATURES.map((f) => (
+              <div key={f.label} className={styles.feature}>
+                <span className={styles.featureIcon}>{f.icon}</span>
+                <span>{f.label}</span>
+              </div>
+            ))}
           </div>
 
           <div className={styles.statsRow}>
@@ -81,21 +82,33 @@ export default function Login() {
             </div>
           </div>
 
-          <div className={styles.imageShowcase}>
-            {APP_IMAGES.showcase.map((src) => (
-              <div key={src} className={styles.showcaseItem}>
-                <img src={src} alt="" className={styles.showcaseImg} />
-              </div>
-            ))}
-          </div>
-
           <p className={styles.panelFooter}>🏥 Powered by Cabadbaran City DRRMO</p>
         </div>
       </div>
 
       {/* ── Right Panel ────────────────────────────── */}
-      <div className={styles.rightPanel}>
+      <div className={`${styles.rightPanel} ${styles.rightPanelHero}`}>
+        {/* Animated photo slideshow behind the form */}
+        <div className={styles.slideshow} aria-hidden="true">
+          {APP_IMAGES.showcase.map((src, i) => (
+            <div
+              key={src}
+              className={styles.slide}
+              style={{ animationDelay: `${i * 6}s`, backgroundImage: `url(${src})` }}
+            />
+          ))}
+          <div className={styles.slideOverlay} />
+        </div>
+
         <div className={styles.formCard}>
+          <div className={styles.formLogoWrap}>
+            <img
+              src={APP_IMAGES.logo}
+              alt="CDRRMO Cabadbaran City"
+              className={styles.formLogoImg}
+            />
+          </div>
+
           <div className={styles.adminBadge}>🔐 Admin Access</div>
           <h2 className={styles.formTitle}>Welcome Back</h2>
           <p className={styles.formSubtitle}>Sign in to the admin control panel</p>
@@ -141,6 +154,7 @@ export default function Login() {
                   type="button"
                   className={styles.eyeBtn}
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
                   {showPassword ? '🙈' : '👁️'}
                 </button>
@@ -155,19 +169,6 @@ export default function Login() {
               )}
             </button>
           </form>
-
-          <div className={styles.divider}>
-            <div className={styles.dividerLine} />
-            <span className={styles.dividerText}>or</span>
-            <div className={styles.dividerLine} />
-          </div>
-
-          <p className={styles.switchText}>
-            No admin account?{' '}
-            <Link to="/register" className={styles.switchLink}>
-              Register Now
-            </Link>
-          </p>
         </div>
       </div>
     </div>

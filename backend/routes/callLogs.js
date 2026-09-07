@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
 const { archiveId, restoreId, listArchived } = require('../utils/archiveStore');
+const { logActivity } = require('../utils/activityLogger');
 
 const CALL_LOG_FIELDS = [
   'log_date', 'team', 'caller_name', 'time_of_call', 'cp_number',
@@ -85,6 +86,13 @@ router.post('/', async (req, res) => {
       .single();
 
     if (error) return res.status(500).json({ message: error.message });
+    logActivity(req, {
+      action: 'call_log.create',
+      entity_type: 'call_log',
+      entity_id: row.call_log_id,
+      target: row.caller_name || `Call log #${row.call_log_id}`,
+      details: `Added call log${row.caller_name ? ` for ${row.caller_name}` : ''}${row.nature_of_incident ? ` (${row.nature_of_incident})` : ''}.`,
+    });
     return res.status(201).json(normalizeRow(row));
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
@@ -122,6 +130,13 @@ router.patch('/:id', async (req, res) => {
 
     if (error) return res.status(500).json({ message: error.message });
     if (!row) return res.status(404).json({ message: 'Call log entry not found.' });
+    logActivity(req, {
+      action: 'call_log.update',
+      entity_type: 'call_log',
+      entity_id: row.call_log_id,
+      target: row.caller_name || `Call log #${row.call_log_id}`,
+      details: `Updated call log #${row.call_log_id}${row.caller_name ? ` (${row.caller_name})` : ''}.`,
+    });
     return res.json(normalizeRow(row));
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
@@ -131,6 +146,13 @@ router.patch('/:id', async (req, res) => {
 // PATCH /api/call-logs/:id/restore
 router.patch('/:id/restore', async (req, res) => {
   restoreId('callLogs', req.params.id);
+  logActivity(req, {
+    action: 'call_log.restore',
+    entity_type: 'call_log',
+    entity_id: req.params.id,
+    target: `Call log #${req.params.id}`,
+    details: `Restored call log #${req.params.id}.`,
+  });
   return res.json({ message: 'Call log restored.' });
 });
 
@@ -145,10 +167,24 @@ router.delete('/:id', async (req, res) => {
         .eq('call_log_id', req.params.id);
 
       if (error) return res.status(500).json({ message: error.message });
+      logActivity(req, {
+        action: 'call_log.delete',
+        entity_type: 'call_log',
+        entity_id: req.params.id,
+        target: `Call log #${req.params.id}`,
+        details: `Permanently deleted call log #${req.params.id}.`,
+      });
       return res.json({ message: 'Call log entry permanently deleted.' });
     }
 
     archiveId('callLogs', req.params.id);
+    logActivity(req, {
+      action: 'call_log.archive',
+      entity_type: 'call_log',
+      entity_id: req.params.id,
+      target: `Call log #${req.params.id}`,
+      details: `Moved call log #${req.params.id} to Archive.`,
+    });
     return res.json({ message: 'Call log entry moved to Archive.' });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });

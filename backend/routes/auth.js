@@ -8,6 +8,7 @@ const { getUserBlockReason, setUserBlockReason } = require('../utils/archiveStor
 const { BLOCK_REASONS, blockedAccountMessage } = require('../utils/blockReasons');
 const { saveValidId, attachIdentity, removeValidId, loadIdImage, IDENTITY_COLUMNS, isMissingColumnError } = require('../utils/identityStore');
 const { verifyIdImage } = require('../utils/idScanner');
+const { logActivity } = require('../utils/activityLogger');
 
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
@@ -129,6 +130,15 @@ router.post('/register', async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: '365d' }
     );
+
+    logActivity(req, {
+      username: 'Mobile user',
+      action: 'user.register',
+      entity_type: 'user',
+      entity_id: data.user_id,
+      target: `${data.first_name} ${data.last_name}`.trim(),
+      details: `${data.first_name} ${data.last_name} registered a mobile account (${data.email}${identity?.id_type ? `, ID: ${identity.id_type}` : ''}).`,
+    });
 
     return res.status(201).json({
       message: 'Registration successful!',
@@ -466,6 +476,14 @@ router.patch('/users/:id', async (req, res) => {
           return res.status(500).json({ message: retry.error.message });
         }
         if (!retry.data) return res.status(404).json({ message: 'User not found.' });
+        const retryName = `${retry.data.first_name || ''} ${retry.data.last_name || ''}`.trim() || `User #${req.params.id}`;
+        logActivity(req, {
+          action: account_status === 'Blocked' ? 'user.block' : account_status === 'Deleted' ? 'user.archive' : 'user.update',
+          entity_type: 'user',
+          entity_id: req.params.id,
+          target: retryName,
+          details: `Updated mobile user ${retryName}.`,
+        });
         return res.json({
           ...attachIdentity(retry.data),
           block_reason: retry.data.account_status === 'Blocked' ? getUserBlockReason(retry.data.user_id) : null,
@@ -477,6 +495,31 @@ router.patch('/users/:id', async (req, res) => {
       return res.status(500).json({ message: error.message });
     }
     if (!data) return res.status(404).json({ message: 'User not found.' });
+    const name = `${data.first_name || ''} ${data.last_name || ''}`.trim() || `User #${req.params.id}`;
+    let action = 'user.update';
+    let details = `Updated mobile user ${name}.`;
+    if (account_status === 'Blocked') {
+      action = 'user.block';
+      details = `Blocked mobile user ${name}${block_reason ? ` (reason: ${block_reason})` : ''}.`;
+    } else if (account_status === 'Deleted') {
+      action = 'user.archive';
+      details = `Moved mobile user ${name} to archive.`;
+    } else if (account_status === 'Active' && Object.keys(updates).length === 1) {
+      action = 'user.restore';
+      details = `Restored mobile user ${name} to Active.`;
+    } else if (updates.password) {
+      details = `Changed password/profile for mobile user ${name}.`;
+    } else {
+      const fields = Object.keys(updates).filter((k) => k !== 'password' && k !== 'account_status');
+      if (fields.length) details = `Updated ${name}: ${fields.join(', ')}.`;
+    }
+    logActivity(req, {
+      action,
+      entity_type: 'user',
+      entity_id: req.params.id,
+      target: name,
+      details,
+    });
     return res.json({
       ...attachIdentity(data),
       block_reason: data.account_status === 'Blocked' ? getUserBlockReason(data.user_id) : null,
@@ -503,6 +546,13 @@ router.delete('/users/:id', async (req, res) => {
       return res.status(500).json({ message: error.message });
     }
     await removeValidId(req.params.id);
+    logActivity(req, {
+      action: 'user.delete',
+      entity_type: 'user',
+      entity_id: req.params.id,
+      target: `User #${req.params.id}`,
+      details: `Permanently deleted mobile user #${req.params.id}.`,
+    });
     return res.json({ message: 'User deleted.' });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
