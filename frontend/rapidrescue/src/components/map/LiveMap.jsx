@@ -12,11 +12,28 @@ import MapFocusOnClick from './MapFocusOnClick';
 import { victimIcon, responderIcon, outsideIcon, cityHallIcon, stationIcon } from './mapIcons';
 import { fetchRoute, formatDistance, formatDuration } from './routeService';
 import { parseLocationAddress, formatAreaLabel } from '../../utils/locationFormat';
+import StreetViewModal from './StreetViewModal';
 import styles from './LiveMap.module.css';
 
 const DRRMO_HQ = CITY_HALL;
 
-export default function LiveMap({ focusIncidentId = null }) {
+function victimPlaceLabel(inc) {
+  if (!inc?.victim) return 'Victim / Help location';
+  const parsed = parseLocationAddress(inc.victim.address);
+  return formatAreaLabel({
+    purok: inc.victim.purok || parsed.purok,
+    area: inc.victim.area || parsed.area,
+    barangay: inc.victim.barangay || parsed.barangay,
+  }) || inc.victim.address || 'Victim / Help location';
+}
+
+function stopPopupClick(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  e.nativeEvent?.stopImmediatePropagation?.();
+}
+
+export default function LiveMap({ focusIncidentId = null, onViewDetails }) {
   const [liveIncidents, setLiveIncidents] = useState([]);
   const [routes, setRoutes] = useState({});
   const [selectedId, setSelectedId] = useState(focusIncidentId);
@@ -27,6 +44,7 @@ export default function LiveMap({ focusIncidentId = null }) {
   const [mapError, setMapError] = useState('');
   const [focusRequestId, setFocusRequestId] = useState(0);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [streetViewTarget, setStreetViewTarget] = useState(null);
   const hasAutoSelected = useRef(false);
   const mapPanelRef = useRef(null);
 
@@ -120,6 +138,64 @@ export default function LiveMap({ focusIncidentId = null }) {
     setSelectedId(incidentId);
     setFocusRequestId((n) => n + 1);
   };
+
+  const openStreetView = (inc) => {
+    if (!inc?.victim) return;
+    setStreetViewTarget({
+      incidentId: inc.incident_id,
+      lat: inc.victim.lat,
+      lng: inc.victim.lng,
+      label: `#${inc.incident_id} · ${victimPlaceLabel(inc)}`,
+    });
+  };
+
+  const openDirections = (inc) => {
+    if (!inc?.victim) return;
+    const origin = inc.responder
+      ? `${inc.responder.latitude},${inc.responder.longitude}`
+      : `${DRRMO_HQ.lat},${DRRMO_HQ.lng}`;
+    const dest = `${inc.victim.lat},${inc.victim.lng}`;
+    window.open(
+      `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&travelmode=driving`,
+      '_blank',
+      'noopener,noreferrer'
+    );
+  };
+
+  const renderVictimActions = (inc) => (
+    <div className={styles.popupActions}>
+      <button
+        type="button"
+        className={`${styles.popupBtn} ${styles.popupBtnDetails}`}
+        onClick={(e) => {
+          stopPopupClick(e);
+          onViewDetails?.(inc.incident_id);
+        }}
+      >
+        View Details
+      </button>
+      <button
+        type="button"
+        className={`${styles.popupBtn} ${styles.popupBtnStreet}`}
+        onClick={(e) => {
+          stopPopupClick(e);
+          openStreetView(inc);
+        }}
+      >
+        View Nearby Street View
+      </button>
+      <button
+        type="button"
+        className={`${styles.popupBtn} ${styles.popupBtnDir}`}
+        onClick={(e) => {
+          stopPopupClick(e);
+          openDirections(inc);
+        }}
+      >
+        Directions
+      </button>
+    </div>
+  );
 
   // Active dispatches for CDRRMO HQ popup — scoped to selected incident
   const activeDispatches = mapIncidents.filter((inc) => inc.responder);
@@ -384,6 +460,7 @@ export default function LiveMap({ focusIncidentId = null }) {
                           </span>
                         </>
                       )}
+                      {renderVictimActions(inc)}
                     </div>
                   </Popup>
                 </Marker>
@@ -469,6 +546,7 @@ export default function LiveMap({ focusIncidentId = null }) {
                         </span>
                       </>
                     )}
+                    {renderVictimActions(inc)}
                   </Popup>
                 </Marker>
 
@@ -697,11 +775,40 @@ export default function LiveMap({ focusIncidentId = null }) {
                     </p>
                   </>
                 )}
+                {selectedId === inc.incident_id && (
+                  <span
+                    className={styles.alertStreetBtn}
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      openStreetView(inc);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openStreetView(inc);
+                      }
+                    }}
+                  >
+                    🚶 Street View
+                  </span>
+                )}
               </button>
             );
           })
         )}
       </div>
+
+      {streetViewTarget && (
+        <StreetViewModal
+          target={streetViewTarget}
+          onClose={() => setStreetViewTarget(null)}
+          portalTarget={isExpanded ? mapPanelRef.current : null}
+        />
+      )}
     </div>
   );
 }

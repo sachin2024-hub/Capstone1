@@ -37,3 +37,30 @@ export function formatDuration(seconds) {
   if (mins < 1) return '< 1 min';
   return `${mins} min`;
 }
+
+export async function nearestRoadPoint(lat, lng) {
+  const url = `https://router.project-osrm.org/nearest/v1/driving/${lng},${lat}?number=1`;
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    const wp = data?.waypoints?.[0];
+    if (!wp?.location) return null;
+    const [roadLng, roadLat] = wp.location;
+    return {
+      lat: Number(roadLat),
+      lng: Number(roadLng),
+      distance: Number(wp.distance) || 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function headingBetween(from, to) {
+  const φ1 = (from.lat * Math.PI) / 180;
+  const φ2 = (to.lat * Math.PI) / 180;
+  const Δλ = ((to.lng - from.lng) * Math.PI) / 180;
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}

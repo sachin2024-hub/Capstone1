@@ -2404,7 +2404,14 @@ export default function Dashboard() {
 
           {/* ── LIVE MAP ─────────────────────────────────── */}
           {activeTab === 'live-map' && (
-            <LiveMap key="live-map" focusIncidentId={liveMapFocusId} />
+            <LiveMap
+              key="live-map"
+              focusIncidentId={liveMapFocusId}
+              onViewDetails={(incidentId) => {
+                const inc = incidents.find((row) => Number(row.incident_id) === Number(incidentId));
+                if (inc) handleOpenIncident(inc);
+              }}
+            />
           )}
 
           {activeTab === 'analytics' && (
