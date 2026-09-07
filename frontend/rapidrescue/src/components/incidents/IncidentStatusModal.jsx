@@ -6,6 +6,7 @@ import { formatDate } from '../../utils/formatDate';
 import { formatIncidentLocation } from '../../utils/locationFormat';
 import { isWithinCabadbaran } from '../../utils/geofence';
 import ReporterInformationModal from './ReporterInformationModal';
+import { userProfilePhotoUrl } from '../../utils/mediaUrl';
 import styles from './IncidentStatusModal.module.css';
 
 export default function IncidentStatusModal({ incident, responders = [], users = [], onClose, onUpdated }) {
@@ -52,6 +53,7 @@ export default function IncidentStatusModal({ incident, responders = [], users =
     ? `${registeredUser.first_name || ''} ${registeredUser.last_name || ''}`.trim() || '—'
     : '—';
   const reporterPhone = registeredUser?.phone_number || '';
+  const reporterPhoto = userProfilePhotoUrl(registeredUser);
   const assignedName = responder
     ? `${responder.first_name} ${responder.last_name}`
     : 'Unassigned';
@@ -129,10 +131,23 @@ export default function IncidentStatusModal({ incident, responders = [], users =
               aria-label="View reporter information"
               title="View reporter information"
             >
-              <span className={styles.reporterTriggerName}>{reporterName}</span>
-              {registeredUser?.user_id ? (
-                <span className={styles.reporterTriggerId}>#{registeredUser.user_id}</span>
-              ) : null}
+              {reporterPhoto ? (
+                <img
+                  src={reporterPhoto}
+                  alt=""
+                  className={styles.reporterAvatarImg}
+                />
+              ) : (
+                <span className={styles.reporterAvatar} aria-hidden="true">
+                  {(registeredUser?.first_name || '?').charAt(0).toUpperCase()}
+                </span>
+              )}
+              <span className={styles.reporterTriggerMeta}>
+                <span className={styles.reporterTriggerName}>{reporterName}</span>
+                {registeredUser?.user_id ? (
+                  <span className={styles.reporterTriggerId}>#{registeredUser.user_id}</span>
+                ) : null}
+              </span>
             </button>
           </div>
           <div className={styles.detailCell}>

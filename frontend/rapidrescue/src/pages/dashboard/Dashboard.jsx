@@ -6,6 +6,9 @@ import { logAdminLogout } from '../../services/activityLogService';
 import ActivityLogsPage from '../../components/logs/ActivityLogsPage';
 import ConfirmModal from '../../components/common/ConfirmModal';
 import RecordDetailsModal from '../../components/common/RecordDetailsModal';
+import TablePager from '../../components/common/TablePager';
+import { resolvePageSize, usePersistedPageSize } from '../../components/common/tablePageSize';
+import { userProfilePhotoUrl } from '../../utils/mediaUrl';
 import LiveMap from '../../components/map/LiveMap';
 import IncidentStatusModal from '../../components/incidents/IncidentStatusModal';
 import AccidentReport from '../../components/incidents/AccidentReport';
@@ -409,7 +412,6 @@ function hasIncidentLocation(inc) {
   return Boolean(loc?.latitude && loc?.longitude);
 }
 
-const INCIDENT_PAGE_SIZE = 8;
 
 function incidentSearchText(inc) {
   const loc = Array.isArray(inc.locations) ? inc.locations[0] : inc.locations;
@@ -487,6 +489,7 @@ function IncidentTableSection({
   const [categoryFilter, setCategoryFilter] = useState('');
   const [subFilter, setSubFilter] = useState('');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = usePersistedPageSize('incidents');
 
   const subOptions = INCIDENT_TYPE_GROUPS.find((g) => g.category === categoryFilter)?.options || [];
 
@@ -499,16 +502,17 @@ function IncidentTableSection({
     });
   }, [rows, search, categoryFilter, subFilter]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / INCIDENT_PAGE_SIZE));
+  const rowLimit = resolvePageSize(pageSize, filteredRows.length);
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / rowLimit));
   const currentPage = Math.min(page, totalPages);
   const pagedRows = filteredRows.slice(
-    (currentPage - 1) * INCIDENT_PAGE_SIZE,
-    currentPage * INCIDENT_PAGE_SIZE
+    (currentPage - 1) * rowLimit,
+    currentPage * rowLimit
   );
 
   useEffect(() => {
     setPage(1);
-  }, [search, categoryFilter, subFilter]);
+  }, [search, categoryFilter, subFilter, pageSize]);
 
   const filteredIds = filteredRows.map((inc) => inc.incident_id);
   const selectedCount = filteredIds.filter((id) => selectedSet.has(id)).length;
@@ -660,10 +664,17 @@ function IncidentTableSection({
                       <td className={styles.descCell}>{inc.incident_description || '—'}</td>
                       <td>
                         {inc.users ? (
-                          <div>
-                            <div>{`${inc.users.first_name} ${inc.users.last_name}`}</div>
-                            <div style={{ color: '#1565c0', fontSize: 12, fontWeight: 700 }}>
-                              {inc.users.phone_number || '—'}
+                          <div className={styles.userCell}>
+                            {userProfilePhotoUrl(inc.users) ? (
+                              <img src={userProfilePhotoUrl(inc.users)} alt="" className={styles.userAvatarImg} />
+                            ) : (
+                              <div className={styles.userAvatar}>{inc.users.first_name?.charAt(0)?.toUpperCase() || '?'}</div>
+                            )}
+                            <div>
+                              <div>{`${inc.users.first_name} ${inc.users.last_name}`}</div>
+                              <div style={{ color: '#1565c0', fontSize: 12, fontWeight: 700 }}>
+                                {inc.users.phone_number || '—'}
+                              </div>
                             </div>
                           </div>
                         ) : <span style={{ color: '#bbb' }}>—</span>}
@@ -798,39 +809,19 @@ function IncidentTableSection({
             </table>
           </div>
         )}
-        {!isLoading && filteredRows.length > 0 && (
-          <div className={styles.paginationBar}>
-            <span className={styles.paginationInfo}>
-              Showing {(currentPage - 1) * INCIDENT_PAGE_SIZE + 1}–
-              {Math.min(currentPage * INCIDENT_PAGE_SIZE, filteredRows.length)} of {filteredRows.length}
-            </span>
-            <div className={styles.paginationBtns}>
-              <button
-                type="button"
-                className={styles.pageBtn}
-                disabled={currentPage <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              >
-                Previous
-              </button>
-              <span className={styles.pageNum}>Page {currentPage} of {totalPages}</span>
-              <button
-                type="button"
-                className={styles.pageBtn}
-                disabled={currentPage >= totalPages}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              >
-                Next
-              </button>
-            </div>
-          </div>
+        {!isLoading && (
+          <TablePager
+            page={currentPage}
+            pageSize={pageSize}
+            total={filteredRows.length}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         )}
       </div>
     </div>
   );
 }
-
-const ARCHIVE_RECORD_PAGE_SIZE = 8;
 
 function ArchiveRecordsTable({
   rows,
@@ -848,6 +839,7 @@ function ArchiveRecordsTable({
 }) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = usePersistedPageSize('archive-records');
   const selectedSet = selectedIds || new Set();
 
   const filteredRows = useMemo(() => {
@@ -856,16 +848,17 @@ function ArchiveRecordsTable({
     return rows.filter((row) => (getSearchText?.(row) || '').toLowerCase().includes(q));
   }, [rows, search, getSearchText]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / ARCHIVE_RECORD_PAGE_SIZE));
+  const rowLimit = resolvePageSize(pageSize, filteredRows.length);
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / rowLimit));
   const currentPage = Math.min(page, totalPages);
   const pagedRows = filteredRows.slice(
-    (currentPage - 1) * ARCHIVE_RECORD_PAGE_SIZE,
-    currentPage * ARCHIVE_RECORD_PAGE_SIZE
+    (currentPage - 1) * rowLimit,
+    currentPage * rowLimit
   );
 
   useEffect(() => {
     setPage(1);
-  }, [search]);
+  }, [search, pageSize]);
 
   const filteredIds = filteredRows.map((row) => row[idKey]);
   const selectedCount = filteredIds.filter((id) => selectedSet.has(id)).length;
@@ -989,32 +982,14 @@ function ArchiveRecordsTable({
             </table>
           </div>
         )}
-        {!isLoading && filteredRows.length > 0 && (
-          <div className={styles.paginationBar}>
-            <span className={styles.paginationInfo}>
-              Showing {(currentPage - 1) * ARCHIVE_RECORD_PAGE_SIZE + 1}–
-              {Math.min(currentPage * ARCHIVE_RECORD_PAGE_SIZE, filteredRows.length)} of {filteredRows.length}
-            </span>
-            <div className={styles.paginationBtns}>
-              <button
-                type="button"
-                className={styles.pageBtn}
-                disabled={currentPage <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              >
-                Previous
-              </button>
-              <span className={styles.pageNum}>Page {currentPage} of {totalPages}</span>
-              <button
-                type="button"
-                className={styles.pageBtn}
-                disabled={currentPage >= totalPages}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              >
-                Next
-              </button>
-            </div>
-          </div>
+        {!isLoading && (
+          <TablePager
+            page={currentPage}
+            pageSize={pageSize}
+            total={filteredRows.length}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         )}
       </div>
     </div>
@@ -1497,6 +1472,10 @@ export default function Dashboard() {
   const [confirmModal, setConfirmModal] = useState(null);
   const [userSearch, setUserSearch] = useState('');
   const [userStatusFilter, setUserStatusFilter] = useState('all');
+  const [userPage, setUserPage] = useState(1);
+  const [userPageSize, setUserPageSize] = usePersistedPageSize('users');
+  const [responderPage, setResponderPage] = useState(1);
+  const [responderPageSize, setResponderPageSize] = usePersistedPageSize('responders');
   const [archiveUserTab, setArchiveUserTab] = useState('mobile');
 
   const fetchData = useCallback(async ({ showLoader = false } = {}) => {
@@ -1571,6 +1550,14 @@ export default function Dashboard() {
   useEffect(() => {
     setArchiveSelectedIds(new Set());
   }, [archiveModule, archiveUserTab]);
+
+  useEffect(() => {
+    setUserPage(1);
+  }, [userSubTab, userSearch, userStatusFilter, userPageSize]);
+
+  useEffect(() => {
+    setResponderPage(1);
+  }, [responderPageSize]);
 
   const handleLogout = () => {
     setConfirmModal({
@@ -1697,6 +1684,25 @@ export default function Dashboard() {
     if (userQuery && !adminSearchText(a).toLowerCase().includes(userQuery)) return false;
     return true;
   });
+  const userRows = userSubTab === 'mobile' ? filteredMobileUsers : filteredAdmins;
+  const userLimit = resolvePageSize(userPageSize, userRows.length);
+  const userTotalPages = Math.max(1, Math.ceil(userRows.length / userLimit));
+  const userCurrentPage = Math.min(userPage, userTotalPages);
+  const pagedMobileUsers = filteredMobileUsers.slice(
+    (userCurrentPage - 1) * userLimit,
+    userCurrentPage * userLimit
+  );
+  const pagedAdmins = filteredAdmins.slice(
+    (userCurrentPage - 1) * userLimit,
+    userCurrentPage * userLimit
+  );
+  const responderLimit = resolvePageSize(responderPageSize, responders.length);
+  const responderTotalPages = Math.max(1, Math.ceil(responders.length / responderLimit));
+  const responderCurrentPage = Math.min(responderPage, responderTotalPages);
+  const pagedResponders = responders.slice(
+    (responderCurrentPage - 1) * responderLimit,
+    responderCurrentPage * responderLimit
+  );
 
   const archiveModuleCounts = {
     accident: archivedIncidents.length + deletedIncidents.length,
@@ -2835,7 +2841,7 @@ export default function Dashboard() {
                         </tr>
                       </thead>
                       <tbody>
-                        {responders.map((r) => (
+                        {pagedResponders.map((r) => (
                           <tr
                             key={r.responder_id}
                             className={styles.incidentRowClickable}
@@ -2886,6 +2892,15 @@ export default function Dashboard() {
                       </tbody>
                     </table>
                   </div>
+                )}
+                {!isLoading && (
+                  <TablePager
+                    page={responderCurrentPage}
+                    pageSize={responderPageSize}
+                    total={responders.length}
+                    onPageChange={setResponderPage}
+                    onPageSizeChange={setResponderPageSize}
+                  />
                 )}
               </div>
             </div>
@@ -2973,7 +2988,7 @@ export default function Dashboard() {
                           </tr>
                         </thead>
                         <tbody>
-                          {filteredMobileUsers.map((u) => {
+                          {pagedMobileUsers.map((u) => {
                             const blocked = u.account_status !== 'Active';
                             return (
                             <tr
@@ -2984,7 +2999,11 @@ export default function Dashboard() {
                               <td><strong>#{u.user_id}</strong></td>
                               <td>
                                 <div className={styles.userCell}>
-                                  <div className={styles.userAvatar}>{u.first_name?.charAt(0).toUpperCase()}</div>
+                                  {userProfilePhotoUrl(u) ? (
+                                    <img src={userProfilePhotoUrl(u)} alt="" className={styles.userAvatarImg} />
+                                  ) : (
+                                    <div className={styles.userAvatar}>{u.first_name?.charAt(0).toUpperCase()}</div>
+                                  )}
                                   <span className={styles.userName2}>{u.first_name} {u.last_name}</span>
                                 </div>
                               </td>
@@ -3030,6 +3049,15 @@ export default function Dashboard() {
                       </table>
                     </div>
                   )}
+                  {!isLoading && (
+                    <TablePager
+                      page={userCurrentPage}
+                      pageSize={userPageSize}
+                      total={filteredMobileUsers.length}
+                      onPageChange={setUserPage}
+                      onPageSizeChange={setUserPageSize}
+                    />
+                  )}
                 </div>
               )}
 
@@ -3064,7 +3092,7 @@ export default function Dashboard() {
                           </tr>
                         </thead>
                         <tbody>
-                          {filteredAdmins.map((a) => {
+                          {pagedAdmins.map((a) => {
                             const blocked = a.account_status === 'Blocked';
                             return (
                             <tr
@@ -3126,6 +3154,15 @@ export default function Dashboard() {
                         </tbody>
                       </table>
                     </div>
+                  )}
+                  {!isLoading && (
+                    <TablePager
+                      page={userCurrentPage}
+                      pageSize={userPageSize}
+                      total={filteredAdmins.length}
+                      onPageChange={setUserPage}
+                      onPageSizeChange={setUserPageSize}
+                    />
                   )}
                 </div>
               )}

@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
+import TablePager from '../common/TablePager';
+import { resolvePageSize, usePersistedPageSize } from '../common/tablePageSize';
 import {
   fetchDispatchRecords,
   deleteDispatchRecord,
@@ -52,6 +54,8 @@ export default function DispatchPage({ onArchived }) {
   const [showModal, setShowModal] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [viewing, setViewing] = useState(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = usePersistedPageSize('dispatch');
 
   const loadRecords = useCallback(async () => {
     setLoading(true);
@@ -69,6 +73,15 @@ export default function DispatchPage({ onArchived }) {
   useEffect(() => {
     loadRecords();
   }, [loadRecords]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [logDate, pageSize]);
+
+  const rowLimit = resolvePageSize(pageSize, records.length);
+  const totalPages = Math.max(1, Math.ceil(records.length / rowLimit));
+  const currentPage = Math.min(page, totalPages);
+  const pagedRecords = records.slice((currentPage - 1) * rowLimit, currentPage * rowLimit);
 
   const handleAdd = () => {
     setModalEntry(null);
@@ -150,13 +163,13 @@ export default function DispatchPage({ onArchived }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {records.map((row, idx) => (
+                  {pagedRecords.map((row, idx) => (
                     <tr
                       key={row.dispatch_record_id}
                       className={styles.clickableRow}
                       onClick={() => setViewing(row)}
                     >
-                      <td className={styles.rowNum}>{idx + 1}</td>
+                      <td className={styles.rowNum}>{(currentPage - 1) * rowLimit + idx + 1}</td>
                       {RECORD_COLUMNS.map((col) => (
                         <td key={col.key}>{renderCell(row, col.key)}</td>
                       ))}
@@ -191,6 +204,15 @@ export default function DispatchPage({ onArchived }) {
             <span>CDRRMO — Vehicle Dispatch Sheet</span>
             <span className={styles.entryCount}>{records.length} record{records.length === 1 ? '' : 's'}</span>
           </div>
+          {!loading && (
+            <TablePager
+              page={currentPage}
+              pageSize={pageSize}
+              total={records.length}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+            />
+          )}
         </div>
 
       {viewing && (

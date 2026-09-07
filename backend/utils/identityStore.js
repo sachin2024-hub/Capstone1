@@ -139,13 +139,15 @@ function attachIdentity(user) {
   if (!user || user.user_id == null) return user;
   const local = getLocalRecord(user.user_id);
   const hasDbImage = Boolean(user.id_image || user.id_type || user.id_number || user.verification_status);
-  return {
+  const withId = {
     ...user,
     id_type: user.id_type || local.id_type || null,
     id_number: user.id_number || local.id_number || null,
     id_image_url: user.id_image_url || (hasDbImage || local.id_image_url ? publicApiUrl(user.user_id) : local.id_image_url) || null,
     verification_status: user.verification_status || local.verification_status || null,
   };
+  const { attachProfilePhoto } = require('./profilePhotoStore');
+  return attachProfilePhoto(withId);
 }
 
 async function loadIdImage(userId) {

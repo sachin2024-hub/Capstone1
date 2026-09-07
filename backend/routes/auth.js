@@ -7,6 +7,7 @@ const authenticateToken = require('../middleware/auth');
 const { getUserBlockReason, setUserBlockReason } = require('../utils/archiveStore');
 const { BLOCK_REASONS, blockedAccountMessage } = require('../utils/blockReasons');
 const { saveValidId, attachIdentity, removeValidId, loadIdImage, IDENTITY_COLUMNS, isMissingColumnError } = require('../utils/identityStore');
+const { saveProfilePhoto, loadProfilePhoto, removeProfilePhoto } = require('../utils/profilePhotoStore');
 const { verifyIdImage } = require('../utils/idScanner');
 const { logActivity } = require('../utils/activityLogger');
 
@@ -202,6 +203,37 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// GET /api/auth/me — current logged-in user
+router.get('/me', authenticateToken, async (req, res) => {
+  const user_id = req.user?.user_id;
+  if (!user_id) {
+    return res.status(401).json({ message: 'Access denied.' });
+  }
+
+  try {
+    let { data, error } = await supabase
+      .from('users')
+      .select(USER_SAFE_FIELDS_WITH_ID)
+      .eq('user_id', user_id)
+      .single();
+
+    if (error && isMissingColumnError(error)) {
+      ({ data, error } = await supabase
+        .from('users')
+        .select(USER_SAFE_FIELDS)
+        .eq('user_id', user_id)
+        .single());
+    }
+
+    if (error || !data) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+    return res.json({ user: attachIdentity(data) });
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+});
+
 // POST /api/auth/forgot-password/verify
 router.post('/forgot-password/verify', async (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
@@ -291,7 +323,7 @@ router.patch('/profile', authenticateToken, async (req, res) => {
     return res.status(401).json({ message: 'Access denied.' });
   }
 
-  const { first_name, middle_name, last_name, email, phone_number, address, password, current_password } = req.body;
+  const { first_name, middle_name, last_name, email, phone_number, address, password, current_password, profile_picture } = req.body;
   const updates = {};
 
   if (first_name !== undefined) updates.first_name = String(first_name).trim();
@@ -330,7 +362,24 @@ router.patch('/profile', authenticateToken, async (req, res) => {
     updates.password = await bcrypt.hash(String(password), 10);
   }
 
+  if (profile_picture) {
+    try {
+      await saveProfilePhoto(user_id, profile_picture);
+    } catch (err) {
+      return res.status(400).json({ message: err.message || 'Could not save profile photo.' });
+    }
+  }
+
   if (Object.keys(updates).length === 0) {
+    if (profile_picture) {
+      const { data: photoUser } = await supabase
+        .from('users')
+        .select(USER_SAFE_FIELDS)
+        .eq('user_id', user_id)
+        .single();
+      if (!photoUser) return res.status(404).json({ message: 'User not found.' });
+      return res.json({ message: 'Profile photo updated.', user: attachIdentity(photoUser) });
+    }
     return res.status(400).json({ message: 'No fields to update.' });
   }
 
@@ -371,6 +420,34 @@ router.patch('/profile', authenticateToken, async (req, res) => {
   }
 });
 
+// POST /api/auth/profile-picture — save avatar only
+router.post('/profile-picture', authenticateToken, async (req, res) => {
+  const user_id = req.user?.user_id;
+  if (!user_id) {
+    return res.status(401).json({ message: 'Access denied.' });
+  }
+
+  const photo = req.body?.profile_picture || req.body?.photo || req.body?.image;
+  if (!photo) {
+    return res.status(400).json({
+      message: 'Photo did not arrive. Crop a smaller picture, then tap Save photo.',
+    });
+  }
+
+  try {
+    await saveProfilePhoto(user_id, photo);
+    const { data: photoUser } = await supabase
+      .from('users')
+      .select(USER_SAFE_FIELDS)
+      .eq('user_id', user_id)
+      .single();
+    if (!photoUser) return res.status(404).json({ message: 'User not found.' });
+    return res.json({ message: 'Profile photo updated.', user: attachIdentity(photoUser) });
+  } catch (err) {
+    return res.status(400).json({ message: err.message || 'Could not save profile photo.' });
+  }
+});
+
 // GET /api/auth/users  - Get all users (for dashboard)
 router.get('/users', async (req, res) => {
   try {
@@ -398,6 +475,19 @@ router.get('/users', async (req, res) => {
 });
 
 const USER_STATUSES = ['Active', 'Inactive', 'Blocked', 'Deleted'];
+
+// GET /api/auth/users/:id/profile-picture
+router.get('/users/:id/profile-picture', async (req, res) => {
+  try {
+    const image = await loadProfilePhoto(req.params.id);
+    if (!image) return res.status(404).json({ message: 'No profile photo found.' });
+    res.set('Content-Type', image.mime);
+    res.set('Cache-Control', 'private, max-age=10');
+    return res.send(image.buffer);
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+});
 
 // GET /api/auth/users/:id/id-image — valid ID photo from database
 router.get('/users/:id/id-image', async (req, res) => {
@@ -546,6 +636,7 @@ router.delete('/users/:id', async (req, res) => {
       return res.status(500).json({ message: error.message });
     }
     await removeValidId(req.params.id);
+    await removeProfilePhoto(req.params.id);
     logActivity(req, {
       action: 'user.delete',
       entity_type: 'user',

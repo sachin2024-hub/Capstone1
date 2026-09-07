@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { userProfilePhotoUrl } from '../../utils/mediaUrl';
 import styles from './ReporterInformationModal.module.css';
 
 function fullName(user) {
@@ -70,7 +71,7 @@ export default function ReporterInformationModal({ user, onClose }) {
   const [showIdViewer, setShowIdViewer] = useState(false);
 
   const name = fullName(user);
-  const photo = resolveImageSrc(pick(user, ['profile_picture', 'avatar_url', 'photo_url', 'profile_photo']));
+  const photo = userProfilePhotoUrl(user) || resolveImageSrc(pick(user, ['profile_picture', 'avatar_url', 'photo_url', 'profile_photo']));
   const phone = pick(user, ['phone_number', 'contact_number']);
   const email = pick(user, ['email']);
   const address = pick(user, ['address']);
