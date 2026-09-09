@@ -3,6 +3,7 @@ import {
   createDispatchRecord,
   updateDispatchRecord,
 } from '../../services/dispatchRecordService';
+import Icon from '../common/Icon';
 import styles from './Dispatch.module.css';
 
 const EMPTY = {
@@ -51,7 +52,7 @@ export default function DispatchRecordModal({ entry, logDate, onClose, onSaved }
     <div className={styles.modalOverlay} onClick={onClose}>
       <div className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
         <div className={styles.modalHeader}>
-          <h3>{isEdit ? '✏️ Edit Dispatch Record' : '➕ New Dispatch Record'}</h3>
+          <h3>{isEdit ? <><Icon name="edit" size={18} /> Edit Dispatch Record</> : <><Icon name="add" size={18} /> New Dispatch Record</>}</h3>
           <button type="button" className={styles.modalClose} onClick={onClose}>✕</button>
         </div>
 

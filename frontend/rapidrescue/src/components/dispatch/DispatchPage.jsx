@@ -8,6 +8,7 @@ import {
 import DispatchRecordModal from './DispatchRecordModal';
 import ConfirmModal from '../common/ConfirmModal';
 import RecordDetailsModal from '../common/RecordDetailsModal';
+import Icon from '../common/Icon';
 import styles from './Dispatch.module.css';
 
 const RECORD_COLUMNS = [
@@ -128,14 +129,14 @@ export default function DispatchPage({ onArchived }) {
           </label>
         </div>
         <div className={styles.toolbarRight}>
-          <button type="button" className={styles.refreshBtn} onClick={loadRecords}>🔄 Refresh</button>
-          <button type="button" className={styles.addBtn} onClick={handleAdd}>➕ Add Dispatch</button>
+          <button type="button" className={styles.refreshBtn} onClick={loadRecords}><Icon name="refresh" size={16} /> Refresh</button>
+          <button type="button" className={styles.addBtn} onClick={handleAdd}><Icon name="add" size={16} /> Add Dispatch</button>
         </div>
       </div>
 
       {error && (
         <div className={styles.errorBanner}>
-          ⚠️ {error}
+          <Icon name="warning" size={16} /> {error}
           {error.includes('does not exist') && (
             <span> — Run backend/sql/dispatch_records.sql in Supabase SQL Editor.</span>
           )}
@@ -175,14 +176,14 @@ export default function DispatchPage({ onArchived }) {
                       ))}
                       <td className={styles.actionCol} onClick={(e) => e.stopPropagation()}>
                         <div className={styles.actionGroup}>
-                          <button type="button" className={styles.editBtn} onClick={() => handleEdit(row)} title="Edit">✏️</button>
+                          <button type="button" className={styles.editBtn} onClick={() => handleEdit(row)} title="Edit"><Icon name="edit" size={16} /></button>
                           <button
                             type="button"
                             className={styles.deleteBtn}
                             onClick={() => setConfirmDelete(row)}
                             title="Delete"
                           >
-                            🗑️
+                            <Icon name="delete" size={16} />
                           </button>
                         </div>
                       </td>
@@ -191,7 +192,7 @@ export default function DispatchPage({ onArchived }) {
                   {records.length === 0 && (
                     <tr>
                       <td colSpan={RECORD_COLUMNS.length + 2} className={styles.emptyRow}>
-                        📋 No dispatch records yet. Click &quot;Add Dispatch&quot; to create one.
+                        <Icon name="assignment" size={16} /> No dispatch records yet. Click &quot;Add Dispatch&quot; to create one.
                       </td>
                     </tr>
                   )}

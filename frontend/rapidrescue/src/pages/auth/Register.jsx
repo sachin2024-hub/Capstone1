@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { register } from '../../services/authService';
 import { APP_IMAGES } from '../../constants/images';
+import Icon from '../../components/common/Icon';
 import styles from './Auth.module.css';
 
 const ROLES = ['Admin', 'User'];
 
 const ROLE_ICONS = {
-  Admin: '🛡️',
-  User: '👤',
+  Admin: 'admin_panel_settings',
+  User: 'person',
 };
 
 export default function Register() {
@@ -77,25 +78,25 @@ export default function Register() {
           </div>
           <h1 className={styles.brandName}>RapidRescue</h1>
           <p className={styles.brandTagline}>Admin Control Panel</p>
-          <p className={styles.brandCity}>📍 Cabadbaran City, Agusan del Norte</p>
+          <p className={styles.brandCity}><Icon name="location_on" size={14} /> Cabadbaran City, Agusan del Norte</p>
 
           <div className={styles.brandDivider} />
 
           <div className={styles.features}>
             <div className={styles.feature}>
-              <span className={styles.featureIcon}>🔐</span>
+              <span className={styles.featureIcon}><Icon name="lock" size={18} /></span>
               <span>Secure role-based admin access</span>
             </div>
             <div className={styles.feature}>
-              <span className={styles.featureIcon}>🛡️</span>
+              <span className={styles.featureIcon}><Icon name="admin_panel_settings" size={18} /></span>
               <span>Multiple role levels supported</span>
             </div>
             <div className={styles.feature}>
-              <span className={styles.featureIcon}>📱</span>
+              <span className={styles.featureIcon}><Icon name="smartphone" size={18} /></span>
               <span>Oversee all mobile users</span>
             </div>
             <div className={styles.feature}>
-              <span className={styles.featureIcon}>📡</span>
+              <span className={styles.featureIcon}><Icon name="cell_tower" size={18} /></span>
               <span>Real-time dispatch control</span>
             </div>
           </div>
@@ -123,20 +124,20 @@ export default function Register() {
             ))}
           </div>
 
-          <p className={styles.panelFooter}>🏥 Powered by Cabadbaran City DRRMO</p>
+          <p className={styles.panelFooter}><Icon name="local_hospital" size={16} /> Powered by Cabadbaran City DRRMO</p>
         </div>
       </div>
 
       {/* ── Right Panel ────────────────────────────── */}
       <div className={styles.rightPanel}>
         <div className={styles.formCard}>
-          <div className={styles.adminBadge}>🔐 Admin Registration</div>
+          <div className={styles.adminBadge}><Icon name="lock" size={16} /> Admin Registration</div>
           <h2 className={styles.formTitle}>Create Admin Account</h2>
           <p className={styles.formSubtitle}>Fill in your details to get access</p>
 
           {error && (
             <div className={styles.errorAlert}>
-              <span>⚠️</span> {error}
+              <Icon name="warning" size={16} /> {error}
             </div>
           )}
 
@@ -145,7 +146,7 @@ export default function Register() {
               <div className={styles.inputGroup}>
                 <label className={styles.label}>First Name <span className={styles.required}>*</span></label>
                 <div className={styles.inputWrapper}>
-                  <span className={styles.inputIcon}>👤</span>
+                  <span className={styles.inputIcon}><Icon name="person" size={18} /></span>
                   <input type="text" name="first_name" className={styles.inputWithIcon}
                     placeholder="First name" value={form.first_name} onChange={handleChange} />
                 </div>
@@ -153,7 +154,7 @@ export default function Register() {
               <div className={styles.inputGroup}>
                 <label className={styles.label}>Last Name <span className={styles.required}>*</span></label>
                 <div className={styles.inputWrapper}>
-                  <span className={styles.inputIcon}>👤</span>
+                  <span className={styles.inputIcon}><Icon name="person" size={18} /></span>
                   <input type="text" name="last_name" className={styles.inputWithIcon}
                     placeholder="Last name" value={form.last_name} onChange={handleChange} />
                 </div>
@@ -163,7 +164,7 @@ export default function Register() {
             <div className={styles.inputGroup}>
               <label className={styles.label}>Middle Name</label>
               <div className={styles.inputWrapper}>
-                <span className={styles.inputIcon}>✍️</span>
+                <span className={styles.inputIcon}><Icon name="edit" size={18} /></span>
                 <input type="text" name="middle_name" className={styles.inputWithIcon}
                   placeholder="Middle name (optional)" value={form.middle_name} onChange={handleChange} />
               </div>
@@ -173,7 +174,7 @@ export default function Register() {
               <div className={styles.inputGroup}>
                 <label className={styles.label}>Username <span className={styles.required}>*</span></label>
                 <div className={styles.inputWrapper}>
-                  <span className={styles.inputIcon}>🆔</span>
+                  <span className={styles.inputIcon}><Icon name="badge" size={18} /></span>
                   <input type="text" name="username" className={styles.inputWithIcon}
                     placeholder="Choose a username" value={form.username} onChange={handleChange}
                     autoCapitalize="none" autoComplete="username" />
@@ -182,7 +183,7 @@ export default function Register() {
               <div className={styles.inputGroup}>
                 <label className={styles.label}>Contact Number</label>
                 <div className={styles.inputWrapper}>
-                  <span className={styles.inputIcon}>📱</span>
+                  <span className={styles.inputIcon}><Icon name="call" size={18} /></span>
                   <input type="tel" name="contact_number" className={styles.inputWithIcon}
                     placeholder="09XXXXXXXXX" value={form.contact_number} onChange={handleChange} />
                 </div>
@@ -192,7 +193,7 @@ export default function Register() {
             <div className={styles.inputGroup}>
               <label className={styles.label}>Role</label>
               <div className={styles.inputWrapper}>
-                <span className={styles.inputIcon}>{ROLE_ICONS[form.role] || '🛡️'}</span>
+                <span className={styles.inputIcon}><Icon name={ROLE_ICONS[form.role] || 'admin_panel_settings'} size={18} /></span>
                 <select name="role" className={styles.inputWithIcon} value={form.role} onChange={handleChange}>
                   {ROLES.map((r) => (
                     <option key={r} value={r}>{r}</option>
@@ -205,22 +206,22 @@ export default function Register() {
               <div className={styles.inputGroup}>
                 <label className={styles.label}>Password <span className={styles.required}>*</span></label>
                 <div className={styles.passwordWrapper}>
-                  <span className={styles.inputIcon}>🔒</span>
+                  <span className={styles.inputIcon}><Icon name="lock" size={18} /></span>
                   <input type={showPassword ? 'text' : 'password'} name="password" className={styles.inputWithIcon}
                     placeholder="Min 6 characters" value={form.password} onChange={handleChange} autoComplete="new-password" />
                   <button type="button" className={styles.eyeBtn} onClick={() => setShowPassword(!showPassword)}>
-                    {showPassword ? '🙈' : '👁️'}
+                    <Icon name={showPassword ? 'visibility_off' : 'visibility'} size={18} />
                   </button>
                 </div>
               </div>
               <div className={styles.inputGroup}>
                 <label className={styles.label}>Confirm Password <span className={styles.required}>*</span></label>
                 <div className={styles.passwordWrapper}>
-                  <span className={styles.inputIcon}>🔐</span>
+                  <span className={styles.inputIcon}><Icon name="lock" size={18} /></span>
                   <input type={showConfirm ? 'text' : 'password'} name="confirm_password" className={styles.inputWithIcon}
                     placeholder="Re-enter password" value={form.confirm_password} onChange={handleChange} autoComplete="new-password" />
                   <button type="button" className={styles.eyeBtn} onClick={() => setShowConfirm(!showConfirm)}>
-                    {showConfirm ? '🙈' : '👁️'}
+                    <Icon name={showConfirm ? 'visibility_off' : 'visibility'} size={18} />
                   </button>
                 </div>
               </div>
@@ -230,7 +231,7 @@ export default function Register() {
               {isLoading ? (
                 <><span className={styles.spinner} /> Creating Account...</>
               ) : (
-                <>🚑 Create Admin Account</>
+                <><Icon name="person_add" size={18} /> Create Admin Account</>
               )}
             </button>
           </form>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { createCallLog, updateCallLog, TYPE_OF_CODE_OPTIONS } from '../../services/callLogService';
+import Icon from '../common/Icon';
 import styles from './CallLog.module.css';
 
 const EMPTY = {
@@ -64,7 +65,7 @@ export default function CallLogModal({ entry, logDate, team, onClose, onSaved })
     <div className={styles.modalOverlay} onClick={onClose}>
       <div className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
         <div className={styles.modalHeader}>
-          <h3>{isEdit ? '✏️ Edit Call Log Entry' : '➕ New Call Log Entry'}</h3>
+          <h3>{isEdit ? <><Icon name="edit" size={18} /> Edit Call Log Entry</> : <><Icon name="add" size={18} /> New Call Log Entry</>}</h3>
           <button type="button" className={styles.modalClose} onClick={onClose}>✕</button>
         </div>
 

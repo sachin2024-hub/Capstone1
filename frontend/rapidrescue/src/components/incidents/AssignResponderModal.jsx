@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { assignResponder } from '../../services/dispatchService';
+import Icon from '../common/Icon';
 import styles from './IncidentStatusModal.module.css';
 
 export default function AssignResponderModal({ incident, responders, onClose, onAssigned }) {
@@ -55,7 +56,7 @@ export default function AssignResponderModal({ incident, responders, onClose, on
           )}
           {currentResponder && (
             <p className={styles.responder}>
-              Current: 🚑 {currentResponder.first_name} {currentResponder.last_name}
+              Current: <Icon name="ambulance" size={16} /> {currentResponder.first_name} {currentResponder.last_name}
             </p>
           )}
         </div>
@@ -63,7 +64,7 @@ export default function AssignResponderModal({ incident, responders, onClose, on
         {isAssigned ? (
           <>
             <div className={styles.lockedAssign}>
-              🚑 {currentResponder?.first_name} {currentResponder?.last_name}
+              <Icon name="ambulance" size={16} /> {currentResponder?.first_name} {currentResponder?.last_name}
               {currentResponder?.responder_type ? ` — ${currentResponder.responder_type}` : ''}
             </div>
             <p className={styles.lockHint}>
@@ -101,7 +102,7 @@ export default function AssignResponderModal({ incident, responders, onClose, on
             Cancel
           </button>
           <button type="button" className={styles.saveBtn} onClick={handleSave} disabled={saving || isAssigned}>
-            {saving ? 'Assigning...' : '🚑 Assign'}
+            {saving ? 'Assigning...' : <><Icon name="ambulance" size={16} /> Assign</>}
           </button>
         </div>
       </div>

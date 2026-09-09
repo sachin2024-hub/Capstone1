@@ -9,6 +9,7 @@ import RecordDetailsModal from '../../components/common/RecordDetailsModal';
 import TablePager from '../../components/common/TablePager';
 import { resolvePageSize, usePersistedPageSize } from '../../components/common/tablePageSize';
 import { userProfilePhotoUrl } from '../../utils/mediaUrl';
+import Icon from '../../components/common/Icon';
 import LiveMap from '../../components/map/LiveMap';
 import IncidentStatusModal from '../../components/incidents/IncidentStatusModal';
 import AccidentReport from '../../components/incidents/AccidentReport';
@@ -135,7 +136,7 @@ function DateRangeFilter({ value, onChange, years }) {
         className={`${styles.dateSegmentBtn} ${value.mode === 'all' ? styles.dateSegmentBtnActive : ''}`}
         onClick={() => setQuickMode('all')}
       >
-        <span className={styles.dateSegmentIcon}>🗂️</span>
+        <span className={styles.dateSegmentIcon}><Icon name="inventory_2" size={16} /></span>
         All time
       </button>
       <button
@@ -143,7 +144,7 @@ function DateRangeFilter({ value, onChange, years }) {
         className={`${styles.dateSegmentBtn} ${value.mode === 'day' ? styles.dateSegmentBtnActive : ''}`}
         onClick={() => setQuickMode('day')}
       >
-        <span className={styles.dateSegmentIcon}>📅</span>
+        <span className={styles.dateSegmentIcon}><Icon name="today" size={16} /></span>
         Today
       </button>
       <button
@@ -151,7 +152,7 @@ function DateRangeFilter({ value, onChange, years }) {
         className={`${styles.dateSegmentBtn} ${value.mode === 'week' ? styles.dateSegmentBtnActive : ''}`}
         onClick={() => setQuickMode('week')}
       >
-        <span className={styles.dateSegmentIcon}>📆</span>
+        <span className={styles.dateSegmentIcon}><Icon name="date_range" size={16} /></span>
         This week
       </button>
 
@@ -164,7 +165,7 @@ function DateRangeFilter({ value, onChange, years }) {
             setOpen((prev) => (prev === 'month' ? null : 'month'));
           }}
         >
-          <span className={styles.dateSegmentIcon}>🗓️</span>
+          <span className={styles.dateSegmentIcon}><Icon name="calendar_month" size={16} /></span>
           {value.mode === 'date' && value.date
             ? new Date(`${value.date}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
             : monthName}
@@ -177,7 +178,7 @@ function DateRangeFilter({ value, onChange, years }) {
             setOpen((prev) => (prev === 'year' ? null : 'year'));
           }}
         >
-          <span className={styles.dateSegmentIcon}>📊</span>
+          <span className={styles.dateSegmentIcon}><Icon name="bar_chart" size={16} /></span>
           {value.year}
         </button>
 
@@ -279,26 +280,26 @@ const NAV_SECTIONS = [
   {
     label: 'Main Menu',
     items: [
-      { id: 'dashboard', icon: '📊', label: 'Dashboard' },
-      { id: 'incidents', icon: '🚨', label: 'Accident' },
-      { id: 'live-map', icon: '🗺️', label: 'Live Map' },
-      { id: 'analytics', icon: '📈', label: 'Analytics' },
-      { id: 'archive', icon: '📁', label: 'Archive' },
+      { id: 'dashboard', icon: 'dashboard', label: 'Dashboard' },
+      { id: 'incidents', icon: 'emergency', label: 'Accident' },
+      { id: 'live-map', icon: 'map', label: 'Live Map' },
+      { id: 'analytics', icon: 'monitoring', label: 'Analytics' },
+      { id: 'archive', icon: 'folder', label: 'Archive' },
     ],
   },
   {
     label: 'Operations',
     items: [
-      { id: 'responders', icon: '🚑', label: 'Ambulance' },
-      { id: 'dispatch', icon: '📡', label: 'Dispatch' },
+      { id: 'responders', icon: 'ambulance', label: 'Ambulance' },
+      { id: 'dispatch', icon: 'cell_tower', label: 'Dispatch' },
     ],
   },
   {
     label: 'Administration',
     items: [
-      { id: 'users', icon: '👥', label: 'Users' },
-      { id: 'activity-logs', icon: '📋', label: 'Activity Logs' },
-      { id: 'settings', icon: '⚙️', label: 'Settings' },
+      { id: 'users', icon: 'group', label: 'Users' },
+      { id: 'activity-logs', icon: 'assignment', label: 'Activity Logs' },
+      { id: 'settings', icon: 'settings', label: 'Settings' },
     ],
   },
 ];
@@ -308,18 +309,18 @@ const NAV_ITEMS = NAV_SECTIONS.flatMap((section) => section.items);
 const STAT_COLORS = ['statRed', 'statOrange', 'statBlue', 'statYellow', 'statGreen', 'statPurple'];
 
 const INCIDENT_FILTER_TABS = [
-  { id: 'pending', icon: '⏳', label: 'Pending' },
-  { id: 'active', icon: '🚑', label: 'Active Response' },
-  { id: 'resolved', icon: '✅', label: 'Resolved' },
-  { id: 'outside', icon: '⚠️', label: 'Outside' },
-  { id: 'referred', icon: '📤', label: 'Referred' },
-  { id: 'cancelled', icon: '❌', label: 'Cancelled' },
+  { id: 'pending', icon: 'hourglass_empty', label: 'Pending' },
+  { id: 'active', icon: 'ambulance', label: 'Active Response' },
+  { id: 'resolved', icon: 'check_circle', label: 'Resolved' },
+  { id: 'outside', icon: 'warning', label: 'Outside' },
+  { id: 'referred', icon: 'send', label: 'Referred' },
+  { id: 'cancelled', icon: 'cancel', label: 'Cancelled' },
 ];
 
 const ARCHIVE_MODULE_TABS = [
-  { id: 'accident', icon: '🚨', label: 'Accident' },
-  { id: 'dispatch', icon: '📡', label: 'Dispatch' },
-  { id: 'users', icon: '👥', label: 'Users' },
+  { id: 'accident', icon: 'emergency', label: 'Accident' },
+  { id: 'dispatch', icon: 'cell_tower', label: 'Dispatch' },
+  { id: 'users', icon: 'group', label: 'Users' },
 ];
 
 const DISPATCH_ARCHIVE_COLUMNS = [
@@ -523,7 +524,7 @@ function IncidentTableSection({
     <div className={styles.incidentSection}>
       {!hideTitle && (
         <h3 className={styles.incidentSectionTitle}>
-          <span>{icon} {title}</span>
+          <span><Icon name={icon} size={18} /> {title}</span>
           <span className={styles.incidentCount}>{rows.length}</span>
         </h3>
       )}
@@ -688,7 +689,7 @@ function IncidentTableSection({
                       <td style={{ fontSize: 12 }}>
                         {assigned ? (
                           <span className={styles.assignedBadge}>
-                            🚑 {assigned.first_name} {assigned.last_name}
+                            <Icon name="ambulance" size={16} /> {assigned.first_name} {assigned.last_name}
                           </span>
                         ) : (
                           <span style={{ color: '#bbb' }}>Unassigned</span>
@@ -708,13 +709,13 @@ function IncidentTableSection({
                             ))}
                           </select>
                         ) : (
-                          <span
-                            className={styles.statusBadge}
+                        <span
+                          className={styles.statusBadge}
                             style={{ background: statusColor(inc.incident_status) }}
-                          >
-                            <span className={styles.statusDotBadge} />
+                        >
+                          <span className={styles.statusDotBadge} />
                             {displayIncidentStatus(inc.incident_status)}
-                          </span>
+                        </span>
                         )}
                       </td>
                       <td style={{ color: '#888', fontSize: 12 }}>{formatDate(inc.date_reported)}</td>
@@ -729,7 +730,7 @@ function IncidentTableSection({
                                 disabled={!hasIncidentLocation(inc)}
                                 title={hasIncidentLocation(inc) ? 'Open on Live Map' : 'No GPS location'}
                               >
-                                🗺️
+                                <Icon name="map" size={18} />
                               </button>
                             )}
                             {showAssignActions && onAssign && (
@@ -739,7 +740,7 @@ function IncidentTableSection({
                                 onClick={() => onAssign(inc)}
                                 title="Assign responder"
                               >
-                                🚑
+                                <Icon name="ambulance" size={18} />
                               </button>
                             )}
                             {edit && (
@@ -749,7 +750,7 @@ function IncidentTableSection({
                                 onClick={() => onEdit(inc)}
                                 title="Edit"
                               >
-                                ✏️
+                                <Icon name="edit" size={18} />
                               </button>
                             )}
                             {archive && (
@@ -759,7 +760,7 @@ function IncidentTableSection({
                                 onClick={() => onArchive(inc)}
                                 title="Archive"
                               >
-                                📁
+                                <Icon name="folder" size={18} />
                               </button>
                             )}
                             {restore && (
@@ -769,7 +770,7 @@ function IncidentTableSection({
                                 onClick={() => onRestore(inc)}
                                 title="Restore"
                               >
-                                ↩️
+                                <Icon name="undo" size={18} />
                               </button>
                             )}
                             {showDelete && (
@@ -779,7 +780,7 @@ function IncidentTableSection({
                                 onClick={() => onDelete(inc)}
                                 title="Delete"
                               >
-                                🗑️
+                                <Icon name="delete" size={18} />
                               </button>
                             )}
                             {permanentDelete && (
@@ -789,7 +790,7 @@ function IncidentTableSection({
                                 onClick={() => onPermanentDelete(inc)}
                                 title="Remove forever"
                               >
-                                🗑️
+                                <Icon name="delete" size={18} />
                               </button>
                             )}
                           </div>
@@ -956,7 +957,7 @@ function ArchiveRecordsTable({
                             onClick={() => onRestore([row[idKey]])}
                             title="Restore"
                           >
-                            ↩️
+                            <Icon name="undo" size={18} />
                           </button>
                         )}
                         <button
@@ -965,7 +966,7 @@ function ArchiveRecordsTable({
                           onClick={() => onDelete([row[idKey]])}
                           title="Delete"
                         >
-                          🗑️
+                          <Icon name="delete" size={18} />
                         </button>
                       </div>
                     </td>
@@ -1053,10 +1054,10 @@ function AddAdminModal({ onClose, onCreated }) {
         </div>
 
         {err && (
-          <div style={ERR_BOX}>⚠️ {err}</div>
+          <div style={ERR_BOX}><Icon name="warning" size={16} /> {err}</div>
         )}
         {success && (
-          <div style={SUC_BOX}>✅ {success}</div>
+          <div style={SUC_BOX}><Icon name="check_circle" size={16} /> {success}</div>
         )}
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
@@ -1095,7 +1096,7 @@ function AddAdminModal({ onClose, onCreated }) {
                 />
                 <button type="button" onClick={() => setShowPwd(p => !p)}
                   style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 14 }}>
-                  {showPwd ? '🙈' : '👁️'}
+                  <Icon name={showPwd ? 'visibility_off' : 'visibility'} size={18} />
                 </button>
               </div>
             </div>
@@ -1314,7 +1315,7 @@ function EditUserModal({ user: target, onClose, onSaved }) {
           </h3>
           <button onClick={onClose} style={CLOSE_BTN} aria-label="Close">✕</button>
         </div>
-        {err && <div style={ERR_BOX}>⚠️ {err}</div>}
+        {err && <div style={ERR_BOX}><Icon name="warning" size={16} /> {err}</div>}
         <form onSubmit={handleSubmit}>
           <div style={TWO_COL}>
             <MField label="First Name *" name="first_name" value={form.first_name} onChange={handleChange} placeholder="First name" />
@@ -1399,7 +1400,7 @@ function EditAdminModal({ admin, onClose, onSaved }) {
           </h3>
           <button onClick={onClose} style={CLOSE_BTN} aria-label="Close">✕</button>
         </div>
-        {err && <div style={ERR_BOX}>⚠️ {err}</div>}
+        {err && <div style={ERR_BOX}><Icon name="warning" size={16} /> {err}</div>}
         <form onSubmit={handleSubmit}>
           <div style={TWO_COL}>
             <MField label="First Name *" name="first_name" value={form.first_name} onChange={handleChange} placeholder="First name" />
@@ -1568,8 +1569,8 @@ export default function Dashboard() {
       onConfirm: async () => {
         setConfirmModal(null);
         await logAdminLogout();
-        logout();
-        navigate('/login');
+    logout();
+    navigate('/login');
       },
     });
   };
@@ -1766,12 +1767,12 @@ export default function Dashboard() {
         try {
           rememberIncidentStatus(inc.incident_id, inc.incident_status);
           await deleteIncident(inc.incident_id, inc.incident_status);
-          await fetchData();
-          setActiveTab('archive');
+      await fetchData();
+      setActiveTab('archive');
           setArchiveModule('accident');
-        } catch (err) {
-          setError(err.message || 'Failed to delete incident.');
-        }
+    } catch (err) {
+      setError(err.message || 'Failed to delete incident.');
+    }
       },
     });
   };
@@ -1787,11 +1788,11 @@ export default function Dashboard() {
           if (inc.incident_status !== 'Deleted') {
             await deleteIncident(inc.incident_id);
           }
-          await permanentDeleteIncident(inc.incident_id);
-          await fetchData();
-        } catch (err) {
-          setError(err.message || 'Failed to permanently remove incident.');
-        }
+      await permanentDeleteIncident(inc.incident_id);
+      await fetchData();
+    } catch (err) {
+      setError(err.message || 'Failed to permanently remove incident.');
+    }
       },
     });
   };
@@ -2164,19 +2165,19 @@ export default function Dashboard() {
     matchesIncidentDateRange({ date_reported: d.dispatch_time || d.created_at }, dashboardDateFilter)
   );
   const statCards = [
-    { label: 'Users', value: stats.users, icon: '👥', color: STAT_COLORS[0], tab: 'users' },
-    { label: 'Incidents', value: dashboardIncidents.length, icon: '🚨', color: STAT_COLORS[1], tab: 'incidents' },
-    { label: 'Ambulance', value: stats.responders, icon: '🚑', color: STAT_COLORS[2], tab: 'responders' },
+    { label: 'Users', value: stats.users, icon: 'group', color: STAT_COLORS[0], tab: 'users' },
+    { label: 'Incidents', value: dashboardIncidents.length, icon: 'emergency', color: STAT_COLORS[1], tab: 'incidents' },
+    { label: 'Ambulance', value: stats.responders, icon: 'ambulance', color: STAT_COLORS[2], tab: 'responders' },
     {
       label: 'Pending',
       value: dashboardIncidents.filter((i) => i.incident_status === 'Pending').length,
-      icon: '⏳',
+      icon: 'hourglass_empty',
       color: STAT_COLORS[3],
       tab: 'incidents',
       filter: 'pending',
     },
-    { label: 'Available', value: stats.available, icon: '✅', color: STAT_COLORS[4], tab: 'responders' },
-    { label: 'Dispatches', value: dashboardDispatches.length, icon: '📡', color: STAT_COLORS[5], tab: 'dispatch' },
+    { label: 'Available', value: stats.available, icon: 'check_circle', color: STAT_COLORS[4], tab: 'responders' },
+    { label: 'Dispatches', value: dashboardDispatches.length, icon: 'cell_tower', color: STAT_COLORS[5], tab: 'dispatch' },
   ];
 
   const openStatCard = (card) => {
@@ -2226,7 +2227,7 @@ export default function Dashboard() {
                   onClick={() => setActiveTab(item.id)}
                   title={!sidebarOpen ? item.label : undefined}
                 >
-                  <span className={styles.navIcon}>{item.icon}</span>
+                  <span className={styles.navIcon}><Icon name={item.icon} size={22} /></span>
                   {sidebarOpen && <span className={styles.navLabel}>{item.label}</span>}
                   {sidebarOpen && item.id === 'incidents' && unviewedPendingCount > 0 && (
                     <span className={styles.navBadge}>{unviewedPendingCount}</span>
@@ -2247,7 +2248,7 @@ export default function Dashboard() {
             onClick={handleLogout}
             title={!sidebarOpen ? 'Log Out' : undefined}
           >
-            <span className={styles.navIcon}>↪</span>
+            <span className={styles.navIcon}><Icon name="logout" size={22} /></span>
             {sidebarOpen && <span>Log Out</span>}
           </button>
         </div>
@@ -2258,12 +2259,12 @@ export default function Dashboard() {
         {/* Topbar */}
         <header className={styles.topbar}>
           <button className={styles.toggleBtn} onClick={() => setSidebarOpen(!sidebarOpen)}>
-            {sidebarOpen ? '◀' : '▶'}
+            <Icon name={sidebarOpen ? 'chevron_left' : 'chevron_right'} size={20} />
           </button>
 
           <div className={styles.topbarLeft}>
-            <div className={styles.topbarTitle}>
-              {currentNav?.icon} {currentNav?.label}
+          <div className={styles.topbarTitle}>
+              {currentNav ? <><Icon name={currentNav.icon} size={20} /> {currentNav.label}</> : null}
             </div>
           </div>
 
@@ -2280,7 +2281,7 @@ export default function Dashboard() {
                 setIncidentFilter('pending');
               }}
             >
-              🔔
+              <Icon name="notifications" size={22} />
               {unviewedPendingCount > 0 && (
                 <span className={styles.notifCount}>{unviewedPendingCount}</span>
               )}
@@ -2299,8 +2300,8 @@ export default function Dashboard() {
         <div className={`${styles.content} ${(activeTab === 'live-map' || activeTab === 'call-log' || activeTab === 'dispatch') ? styles.contentPanel : ''}`}>
           {error && (
             <div className={styles.errorBanner}>
-              <span>⚠️ {error}</span>
-              <button onClick={() => fetchData({ showLoader: true })} className={styles.retryBtn}>🔄 Retry</button>
+              <span><Icon name="warning" size={16} /> {error}</span>
+              <button onClick={() => fetchData({ showLoader: true })} className={styles.retryBtn}><Icon name="refresh" size={16} /> Retry</button>
             </div>
           )}
 
@@ -2310,7 +2311,7 @@ export default function Dashboard() {
               <div className={styles.tabHeader}>
                 <h2 className={styles.sectionTitle}>Dashboard</h2>
                 <button className={styles.refreshBtn} onClick={fetchData}>
-                  🔄 Refresh
+                  <Icon name="refresh" size={16} /> Refresh
                 </button>
               </div>
 
@@ -2327,10 +2328,10 @@ export default function Dashboard() {
                   <p>Cabadbaran City, Agusan del Norte</p>
                 </div>
                 <div className={styles.bannerActions}>
-                  <button className={styles.bannerBtn} onClick={() => setActiveTab('live-map')}>🗺️ Live Map</button>
-                  <button className={styles.bannerBtn} onClick={() => setActiveTab('incidents')}>🚨 Accident</button>
+                  <button className={styles.bannerBtn} onClick={() => setActiveTab('live-map')}><Icon name="map" size={16} /> Live Map</button>
+                  <button className={styles.bannerBtn} onClick={() => setActiveTab('incidents')}><Icon name="emergency" size={16} /> Accident</button>
                 </div>
-              </div>
+                  </div>
 
               {/* Stats */}
               <div className={styles.statsGrid}>
@@ -2342,18 +2343,18 @@ export default function Dashboard() {
                     onClick={() => openStatCard(card)}
                   >
                     <div className={styles.statIconBox}>
-                      <span>{card.icon}</span>
-                    </div>
-                    <div className={styles.statBody}>
+                      <Icon name={card.icon} size={26} />
+                </div>
+                  <div className={styles.statBody}>
                       <div className={styles.statValue}>{isLoading ? '—' : card.value}</div>
                       <div className={styles.statLabel}>{card.label}</div>
                       {card.label === 'Pending' && !isLoading && card.value > 0 && (
-                        <div className={`${styles.statTrend} ${styles.trendWarn}`}>⚠️ Needs attention</div>
+                        <div className={`${styles.statTrend} ${styles.trendWarn}`}><Icon name="warning" size={14} /> Needs attention</div>
                       )}
                       {card.label === 'Available' && !isLoading && (
                         <div className={`${styles.statTrend} ${styles.trendUp}`}>● Ready to respond</div>
                       )}
-                    </div>
+                </div>
                   </button>
                 ))}
               </div>
@@ -2361,7 +2362,7 @@ export default function Dashboard() {
               {/* Recent Incidents */}
               <div className={styles.tableCard}>
                 <div className={styles.tableCardHeader}>
-                  <h3 className={styles.tableTitle}>🚨 Recent Incidents</h3>
+                  <h3 className={styles.tableTitle}><Icon name="emergency" size={18} /> Recent Incidents</h3>
                   <button className={styles.viewAllBtn} onClick={() => setActiveTab('incidents')}>
                     View All →
                   </button>
@@ -2424,7 +2425,7 @@ export default function Dashboard() {
             <div>
               <div className={styles.tabHeader}>
                 <h2 className={styles.sectionTitle}>Analytics</h2>
-                <button className={styles.refreshBtn} onClick={fetchData}>🔄 Refresh</button>
+                <button className={styles.refreshBtn} onClick={fetchData}><Icon name="refresh" size={16} /> Refresh</button>
               </div>
               <AccidentReport incidents={incidents} isLoading={isLoading} />
             </div>
@@ -2435,7 +2436,7 @@ export default function Dashboard() {
             <div>
               <div className={styles.tabHeader}>
                 <h2 className={styles.sectionTitle}>Accident</h2>
-                <button className={styles.refreshBtn} onClick={fetchData}>🔄 Refresh</button>
+                <button className={styles.refreshBtn} onClick={fetchData}><Icon name="refresh" size={16} /> Refresh</button>
               </div>
 
               <DateRangeFilter
@@ -2452,7 +2453,7 @@ export default function Dashboard() {
                     className={`${styles.incidentFilterBtn} ${incidentFilter === tab.id ? styles.incidentFilterBtnActive : ''} ${tab.id === 'outside' && incidentFilter === 'outside' ? styles.incidentFilterBtnOutside : ''} ${tab.id === 'referred' && incidentFilter === 'referred' ? styles.incidentFilterBtnReferred : ''}`}
                     onClick={() => setIncidentFilter(tab.id)}
                   >
-                    <span>{tab.icon} {tab.label}</span>
+                    <span><Icon name={tab.icon} size={16} /> {tab.label}</span>
                     <span className={styles.incidentFilterBadge}>{incidentFilterCounts[tab.id]}</span>
                   </button>
                 ))}
@@ -2469,13 +2470,13 @@ export default function Dashboard() {
                         ? 'All incidents marked Referred are listed here. Referred is the final status — Completed is no longer available.'
                       : incidentFilter === 'pending'
                         ? 'NEW means this request has not been reviewed yet. Click the row to open details — it will be marked Viewed.'
-                        : 'Click the buttons above to switch between incident groups.'}
+                    : 'Click the buttons above to switch between incident groups.'}
               </p>
 
               {incidentFilter === 'pending' && (
                 <IncidentTableSection
                   title="Pending"
-                  icon="⏳"
+                  icon="hourglass_empty"
                   rows={pendingIncidents}
                   isLoading={isLoading}
                   emptyMessage="📭 No pending incidents."
@@ -2492,7 +2493,7 @@ export default function Dashboard() {
               {incidentFilter === 'active' && (
                 <IncidentTableSection
                   title="Active Response"
-                  icon="🚑"
+                  icon="ambulance"
                   rows={activeResponseIncidents}
                   isLoading={isLoading}
                   emptyMessage="📭 No incidents in progress."
@@ -2509,7 +2510,7 @@ export default function Dashboard() {
               {incidentFilter === 'outside' && (
                 <IncidentTableSection
                   title="Outside"
-                  icon="⚠️"
+                  icon="warning"
                   rows={outsideIncidents}
                   isLoading={isLoading}
                   emptyMessage="📭 No incidents outside the service boundary."
@@ -2529,7 +2530,7 @@ export default function Dashboard() {
               {incidentFilter === 'referred' && (
                 <IncidentTableSection
                   title="Referred"
-                  icon="📤"
+                  icon="send"
                   rows={referredIncidents}
                   isLoading={isLoading}
                   emptyMessage="📭 No referred incidents."
@@ -2549,7 +2550,7 @@ export default function Dashboard() {
               {incidentFilter === 'resolved' && (
                 <IncidentTableSection
                   title="Resolved"
-                  icon="✅"
+                  icon="check_circle"
                   rows={resolvedIncidents}
                   isLoading={isLoading}
                   emptyMessage="📭 No resolved incidents yet."
@@ -2566,7 +2567,7 @@ export default function Dashboard() {
               {incidentFilter === 'cancelled' && (
                 <IncidentTableSection
                   title="Cancelled"
-                  icon="❌"
+                  icon="cancel"
                   rows={cancelledIncidents}
                   isLoading={isLoading}
                   emptyMessage="📭 No cancelled incidents."
@@ -2594,7 +2595,7 @@ export default function Dashboard() {
                     fetchArchiveRecords();
                   }}
                 >
-                  🔄 Refresh
+                  <Icon name="refresh" size={16} /> Refresh
                 </button>
               </div>
 
@@ -2606,7 +2607,7 @@ export default function Dashboard() {
                     className={`${styles.incidentFilterBtn} ${archiveModule === tab.id ? styles.incidentFilterBtnActive : ''}`}
                     onClick={() => setArchiveModule(tab.id)}
                   >
-                    <span>{tab.icon} {tab.label}</span>
+                    <span><Icon name={tab.icon} size={16} /> {tab.label}</span>
                     <span className={styles.incidentFilterBadge}>{archiveModuleCounts[tab.id]}</span>
                   </button>
                 ))}
@@ -2614,22 +2615,22 @@ export default function Dashboard() {
 
               {archiveModule === 'accident' && (
                 <>
-                  <p className={styles.archiveHint}>
+              <p className={styles.archiveHint}>
                     Click Restore to send an accident back to the Accident page immediately. Delete asks for confirmation first.
-                  </p>
-                  <IncidentTableSection
+              </p>
+                <IncidentTableSection
                     title="Accidents"
-                    icon="🚨"
+                    icon="emergency"
                     rows={archiveAccidentRows}
-                    isLoading={isLoading}
+                  isLoading={isLoading}
                     emptyMessage="📭 No archived accidents yet."
                     onEdit={handleOpenIncident}
-                    onArchive={handleArchive}
+                  onArchive={handleArchive}
                     onDelete={handlePermanentDelete}
                     onRestore={handleRestore}
                     onPermanentDelete={handlePermanentDelete}
                     actions={{ edit: false, archive: false, delete: false, permanentDelete: true, restore: true }}
-                    hideTitle
+                  hideTitle
                     selectable
                     selectedIds={archiveSelectedIds}
                     onToggleSelect={toggleArchiveSelect}
@@ -2709,7 +2710,7 @@ export default function Dashboard() {
                       rows={deletedUsers}
                       columns={USER_ARCHIVE_COLUMNS}
                       idKey="user_id"
-                      isLoading={isLoading}
+                  isLoading={isLoading}
                       emptyMessage="No deleted mobile users yet."
                       selectedIds={archiveSelectedIds}
                       onToggleSelect={toggleArchiveSelect}
@@ -2750,7 +2751,7 @@ export default function Dashboard() {
               </div>
               <div className={styles.settingsGrid}>
                 <div className={styles.settingsCard}>
-                  <h3 className={styles.settingsCardTitle}>👤 Admin Profile</h3>
+                  <h3 className={styles.settingsCardTitle}><Icon name="person" size={18} /> Admin Profile</h3>
                   <div className={styles.settingsRow}>
                     <span>Name</span>
                     <strong>{fullName}</strong>
@@ -2765,7 +2766,7 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <div className={styles.settingsCard}>
-                  <h3 className={styles.settingsCardTitle}>ℹ️ System Info</h3>
+                  <h3 className={styles.settingsCardTitle}><Icon name="info" size={18} /> System Info</h3>
                   <div className={styles.settingsRow}>
                     <span>App</span>
                     <strong>RapidRescue Admin</strong>
@@ -2784,7 +2785,7 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <div className={styles.settingsCard}>
-                  <h3 className={styles.settingsCardTitle}>📊 Quick Stats</h3>
+                  <h3 className={styles.settingsCardTitle}><Icon name="bar_chart" size={18} /> Quick Stats</h3>
                   <div className={styles.settingsRow}>
                     <span>Ongoing Incidents</span>
                     <strong>{ongoingIncidents.length}</strong>
@@ -2825,9 +2826,9 @@ export default function Dashboard() {
                     className={styles.addBtn}
                     onClick={() => setResponderModal({ mode: 'add' })}
                   >
-                    ➕ Add Dispatcher
+                    <Icon name="add" size={16} /> Add Dispatcher
                   </button>
-                <button className={styles.refreshBtn} onClick={fetchData}>🔄 Refresh</button>
+                <button className={styles.refreshBtn} onClick={fetchData}><Icon name="refresh" size={16} /> Refresh</button>
                 </div>
               </div>
               <div className={styles.tableCard}>
@@ -2873,15 +2874,15 @@ export default function Dashboard() {
                                   className={styles.editBtn}
                                   onClick={() => setResponderModal({ mode: 'edit', responder: r })}
                                 >
-                                  ✏️ Edit
+                                  <Icon name="edit" size={16} /> Edit
                                 </button>
                                 <button
                                   type="button"
                                   className={styles.deleteBtn}
                                   onClick={() => handleDeleteResponder(r)}
                                 >
-                                  🗑️ Delete
-                                </button>
+                                  <Icon name="delete" size={16} /> Delete
+                              </button>
                               </div>
                             </td>
                           </tr>
@@ -2937,8 +2938,8 @@ export default function Dashboard() {
                   <button className={styles.addBtn} onClick={() => setShowAddAdmin(true)}>
                     + Add
                   </button>
-                  <button className={styles.refreshBtn} onClick={fetchData}>🔄 Refresh</button>
-                </div>
+                <button className={styles.refreshBtn} onClick={fetchData}><Icon name="refresh" size={16} /> Refresh</button>
+              </div>
               </div>
 
               {/* sub-tabs */}
@@ -2953,13 +2954,13 @@ export default function Dashboard() {
                   className={`${styles.subTab} ${userSubTab === 'admins' ? styles.subTabActive : ''}`}
                   onClick={() => setUserSubTab('admins')}
                 >
-                  🛡️ Admin Accounts ({otherAdmins.length})
+                  <Icon name="admin_panel_settings" size={18} /> Admin Accounts ({otherAdmins.length})
                 </button>
               </div>
 
               {/* Mobile Users table */}
               {userSubTab === 'mobile' && (
-                <div className={styles.tableCard}>
+              <div className={styles.tableCard}>
                   <div className={styles.incidentToolbar}>
                     <input
                       type="search"
@@ -2978,16 +2979,16 @@ export default function Dashboard() {
                       <option value="blocked">Blocked</option>
                     </select>
                   </div>
-                  {isLoading ? <TableLoader /> : (
-                    <div className={styles.tableWrapper}>
-                      <table className={styles.table}>
-                        <thead>
-                          <tr>
-                            <th>ID</th><th>Name</th><th>Email</th><th>Phone</th>
+                {isLoading ? <TableLoader /> : (
+                  <div className={styles.tableWrapper}>
+                    <table className={styles.table}>
+                      <thead>
+                        <tr>
+                          <th>ID</th><th>Name</th><th>Email</th><th>Phone</th>
                             <th>Address</th><th>Status</th><th>Registered</th><th>Action</th>
-                          </tr>
-                        </thead>
-                        <tbody>
+                        </tr>
+                      </thead>
+                      <tbody>
                           {pagedMobileUsers.map((u) => {
                             const blocked = u.account_status !== 'Active';
                             return (
@@ -2996,32 +2997,32 @@ export default function Dashboard() {
                               className={styles.incidentRowClickable}
                               onClick={() => setViewingUser(u)}
                             >
-                              <td><strong>#{u.user_id}</strong></td>
-                              <td>
-                                <div className={styles.userCell}>
+                            <td><strong>#{u.user_id}</strong></td>
+                            <td>
+                              <div className={styles.userCell}>
                                   {userProfilePhotoUrl(u) ? (
                                     <img src={userProfilePhotoUrl(u)} alt="" className={styles.userAvatarImg} />
                                   ) : (
-                                    <div className={styles.userAvatar}>{u.first_name?.charAt(0).toUpperCase()}</div>
+                                <div className={styles.userAvatar}>{u.first_name?.charAt(0).toUpperCase()}</div>
                                   )}
-                                  <span className={styles.userName2}>{u.first_name} {u.last_name}</span>
-                                </div>
-                              </td>
-                              <td style={{ color: '#555' }}>{u.email}</td>
-                              <td style={{ color: '#888' }}>{u.phone_number || '—'}</td>
-                              <td className={styles.descCell} style={{ color: '#888' }}>{u.address || '—'}</td>
-                              <td>
+                                <span className={styles.userName2}>{u.first_name} {u.last_name}</span>
+                              </div>
+                            </td>
+                            <td style={{ color: '#555' }}>{u.email}</td>
+                            <td style={{ color: '#888' }}>{u.phone_number || '—'}</td>
+                            <td className={styles.descCell} style={{ color: '#888' }}>{u.address || '—'}</td>
+                            <td>
                                 <span className={`${styles.statusBadge} ${blocked ? styles.statusBlocked : styles.statusActive}`}>
-                                  <span className={styles.statusDotBadge} />
+                                <span className={styles.statusDotBadge} />
                                   {blocked ? 'Blocked' : 'Active'}
-                                </span>
+                              </span>
                                 {blocked && u.block_reason && (
                                   <div style={{ fontSize: 11, color: '#9a3412', marginTop: 4, maxWidth: 160 }}>
                                     {BLOCK_REASONS.find((r) => r.id === u.block_reason)?.label || u.block_reason}
                                   </div>
                                 )}
-                              </td>
-                              <td style={{ color: '#888', fontSize: 12 }}>{formatDate(u.date_registered)}</td>
+                            </td>
+                            <td style={{ color: '#888', fontSize: 12 }}>{formatDate(u.date_registered)}</td>
                               <td onClick={(e) => e.stopPropagation()}>
                                 <div className={styles.actionGroup}>
                                   <button type="button" className={styles.editBtn} onClick={() => setEditingUser(u)}>
@@ -3039,16 +3040,16 @@ export default function Dashboard() {
                                   </button>
                                 </div>
                               </td>
-                            </tr>
+                          </tr>
                             );
                           })}
                           {filteredMobileUsers.length === 0 && (
                             <tr><td colSpan={8} className={styles.emptyRow}>No users match this search.</td></tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
                   {!isLoading && (
                     <TablePager
                       page={userCurrentPage}
@@ -3058,7 +3059,7 @@ export default function Dashboard() {
                       onPageSizeChange={setUserPageSize}
                     />
                   )}
-                </div>
+              </div>
               )}
 
               {/* Admin Accounts table */}
@@ -3113,7 +3114,7 @@ export default function Dashboard() {
                               <td>
                                 <span className={`${styles.statusBadge} ${styles.statusActive}`}
                                   style={{ background: '#ede9fe', color: '#5b21b6', borderColor: '#ddd6fe' }}>
-                                  🛡️ {a.role}
+                                  <Icon name="admin_panel_settings" size={16} /> {a.role}
                                 </span>
                               </td>
                               <td style={{ color: '#888' }}>{a.contact_number || '—'}</td>
@@ -3125,8 +3126,8 @@ export default function Dashboard() {
                                 {blocked && a.block_reason && (
                                   <div style={{ fontSize: 11, color: '#9a3412', marginTop: 4, maxWidth: 160 }}>
                                     {BLOCK_REASONS.find((r) => r.id === a.block_reason)?.label || a.block_reason}
-                                  </div>
-                                )}
+            </div>
+          )}
                               </td>
                               <td onClick={(e) => e.stopPropagation()}>
                                 <div className={styles.actionGroup}>

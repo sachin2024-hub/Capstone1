@@ -204,9 +204,14 @@
 .navIcon {
   font-size: 16px;
   flex-shrink: 0;
-  width: 22px;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
   line-height: 1;
+  color: inherit;
   transition: transform 0.2s ease;
 }
 

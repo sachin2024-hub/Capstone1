@@ -4,6 +4,7 @@ import { STATUS_COLORS } from '../../constants/statusColors';
 import { OUTSIDE_STATUS_VALUES } from '../../services/incidentService';
 import { parseLocationAddress } from '../../utils/locationFormat';
 import { isWithinCabadbaran } from '../../utils/geofence';
+import Icon from '../common/Icon';
 import styles from './AccidentReport.module.css';
 
 const RANGES = [
@@ -374,7 +375,7 @@ export default function AccidentReport({ incidents = [], isLoading = false }) {
             ))}
           </div>
           <button type="button" className={styles.printBtn} onClick={() => window.print()}>
-            🖨️ Print
+            <Icon name="print" size={16} /> Print
           </button>
         </div>
       </div>

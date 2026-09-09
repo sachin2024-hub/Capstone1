@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { findNearbyStreetView, getGoogleMapsApiKey, loadGoogleMaps } from './googleMapsLoader';
 import { headingBetween, nearestRoadPoint } from './routeService';
+import Icon from '../common/Icon';
 import styles from './StreetViewModal.module.css';
 
 function embedUrl(lat, lng, heading = 0) {
@@ -158,7 +159,7 @@ export default function StreetViewModal({ target, onClose, portalTarget = null }
           )}
           {mode === 'unavailable' && (
             <div className={styles.messageBox}>
-              <div className={styles.warnIcon}>⚠️</div>
+              <div className={styles.warnIcon}><Icon name="warning" size={28} /></div>
               <p>Street View is not available near this incident location.</p>
             </div>
           )}

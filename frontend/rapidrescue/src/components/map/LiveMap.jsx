@@ -13,6 +13,7 @@ import { victimIcon, responderIcon, outsideIcon, cityHallIcon, stationIcon } fro
 import { fetchRoute, formatDistance, formatDuration } from './routeService';
 import { parseLocationAddress, formatAreaLabel } from '../../utils/locationFormat';
 import StreetViewModal from './StreetViewModal';
+import Icon from '../common/Icon';
 import styles from './LiveMap.module.css';
 
 const DRRMO_HQ = CITY_HALL;
@@ -255,7 +256,7 @@ export default function LiveMap({ focusIncidentId = null, onViewDetails }) {
     <div className={styles.wrapper}>
       {mapError && (
         <div className={styles.mapErrorBanner}>
-          ⚠️ {mapError} — Make sure the backend is running on port 5000.
+          <Icon name="warning" size={16} /> {mapError} — Make sure the backend is running on port 5000.
         </div>
       )}
       <div
@@ -264,7 +265,7 @@ export default function LiveMap({ focusIncidentId = null, onViewDetails }) {
       >
         {selectedIsOutside && (
           <div className={styles.outsideBanner}>
-            ⚠️ {OUTSIDE_CITY_MESSAGE}
+            <Icon name="warning" size={16} /> {OUTSIDE_CITY_MESSAGE}
           </div>
         )}
 
@@ -664,7 +665,7 @@ export default function LiveMap({ focusIncidentId = null, onViewDetails }) {
         {/* DRRMO Info Card */}
         <div className={styles.drrmoCard}>
           <div className={styles.drrmoCardHeader}>
-            <span className={styles.drrmoIcon}>🚨</span>
+            <span className={styles.drrmoIcon}><Icon name="emergency" size={20} /></span>
             <div>
               <div className={styles.drrmoName}>CDRRMO — Cabadbaran City</div>
               <div className={styles.drrmoSub}>{CITY_HALL.address}</div>
@@ -686,10 +687,10 @@ export default function LiveMap({ focusIncidentId = null, onViewDetails }) {
           </div>
         </div>
 
-        <h3 className={styles.sideTitle}>🚨 Active Help Alerts</h3>
+        <h3 className={styles.sideTitle}><Icon name="emergency" size={18} /> Active Help Alerts</h3>
         {liveIncidents.length === 0 ? (
           <div className={styles.emptyBox}>
-            <div className={styles.emptyIcon}>📡</div>
+            <div className={styles.emptyIcon}><Icon name="cell_tower" size={36} /></div>
             <p className={styles.emptyText}>No active help alerts.</p>
             <p className={styles.emptyHint}>Press Help on the mobile app inside Cabadbaran City to trigger a response.</p>
           </div>

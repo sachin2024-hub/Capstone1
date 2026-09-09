@@ -21,6 +21,23 @@ button {
   font-family: inherit;
 }
 
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 1.25em;
+  line-height: 1;
+  display: inline-block;
+  white-space: nowrap;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'liga';
+  font-variation-settings: 'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+  vertical-align: middle;
+  user-select: none;
+  translate: 0;
+}
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;

@@ -7,6 +7,7 @@ import { formatIncidentLocation } from '../../utils/locationFormat';
 import { isWithinCabadbaran } from '../../utils/geofence';
 import ReporterInformationModal from './ReporterInformationModal';
 import { userProfilePhotoUrl } from '../../utils/mediaUrl';
+import Icon from '../common/Icon';
 import styles from './IncidentStatusModal.module.css';
 
 export default function IncidentStatusModal({ incident, responders = [], users = [], onClose, onUpdated }) {
@@ -213,7 +214,7 @@ export default function IncidentStatusModal({ incident, responders = [], users =
             {isAssigned ? (
               <>
                 <div className={styles.lockedAssign}>
-                  🚑 {assignedName}{responder?.responder_type ? ` — ${responder.responder_type}` : ''}
+                  <Icon name="ambulance" size={16} /> {assignedName}{responder?.responder_type ? ` — ${responder.responder_type}` : ''}
                 </div>
                 <p className={styles.lockHint}>
                   This unit stays assigned. You can change status, but you cannot switch ambulance/responder.

@@ -7,6 +7,7 @@ import {
 import CallLogModal from './CallLogModal';
 import ConfirmModal from '../common/ConfirmModal';
 import RecordDetailsModal from '../common/RecordDetailsModal';
+import Icon from '../common/Icon';
 import styles from './CallLog.module.css';
 
 const COLUMNS = [
@@ -126,14 +127,14 @@ export default function CallLogPage({ onArchived }) {
           </div>
         </div>
         <div className={styles.toolbarRight}>
-          <button type="button" className={styles.refreshBtn} onClick={load}>🔄 Refresh</button>
-          <button type="button" className={styles.addBtn} onClick={handleAdd}>➕ Add Entry</button>
+          <button type="button" className={styles.refreshBtn} onClick={load}><Icon name="refresh" size={16} /> Refresh</button>
+          <button type="button" className={styles.addBtn} onClick={handleAdd}><Icon name="add" size={16} /> Add Entry</button>
         </div>
       </div>
 
       {error && (
         <div className={styles.errorBanner}>
-          ⚠️ {error}
+          <Icon name="warning" size={16} /> {error}
           {error.includes('does not exist') && (
             <span className={styles.errorHint}> — Run backend/sql/call_logs_alter.sql in Supabase SQL Editor.</span>
           )}
@@ -188,10 +189,10 @@ export default function CallLogPage({ onArchived }) {
                     <td className={styles.actionCol} onClick={(e) => e.stopPropagation()}>
                       <div className={styles.actionGroup}>
                         <button type="button" className={styles.editBtn} onClick={() => handleEdit(row)} title="Edit">
-                          ✏️
+                          <Icon name="edit" size={16} />
                         </button>
                         <button type="button" className={styles.deleteBtn} onClick={() => handleDelete(row)} title="Delete">
-                          🗑️
+                          <Icon name="delete" size={16} />
                         </button>
                       </div>
                     </td>
@@ -200,7 +201,7 @@ export default function CallLogPage({ onArchived }) {
                 {entries.length === 0 && (
                   <tr>
                     <td colSpan={COLUMNS.length + 2} className={styles.emptyRow}>
-                      📋 No entries yet. Click &quot;Add Entry&quot; to log a call.
+                      <Icon name="assignment" size={16} /> No entries yet. Click &quot;Add Entry&quot; to log a call.
                     </td>
                   </tr>
                 )}

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import Icon from './Icon';
 import styles from './ConfirmModal.module.css';
 
 export default function ConfirmModal({
@@ -27,16 +28,16 @@ export default function ConfirmModal({
   }[variant] || styles.confirmBtnDanger;
 
   const icon = {
-    danger: '🗑️',
-    warning: '⚠️',
-    info: '↪',
-    logout: '↪',
-  }[variant] || '⚠️';
+    danger: 'delete',
+    warning: 'warning',
+    info: 'logout',
+    logout: 'logout',
+  }[variant] || 'warning';
 
   return (
     <div className={styles.overlay} onClick={onCancel}>
       <div className={styles.modal} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div className={`${styles.iconWrap} ${iconClass}`}>{icon}</div>
+        <div className={`${styles.iconWrap} ${iconClass}`}><Icon name={icon} size={28} /></div>
         <h3 className={styles.title}>{title}</h3>
         <p className={styles.message}>{message}</p>
         {reasonOptions?.length > 0 && (

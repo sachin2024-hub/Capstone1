@@ -258,6 +258,8 @@
 .featureIcon {
   font-size: 20px;
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
 }
 
 /* ─── Stats Row ──────────────────────────────────────── */

@@ -1,3 +1,4 @@
+import Icon from './Icon';
 import styles from './RecordDetailsModal.module.css';
 
 export default function RecordDetailsModal({ title, fields = [], onClose, onEdit }) {
@@ -22,7 +23,7 @@ export default function RecordDetailsModal({ title, fields = [], onClose, onEdit
         <div className={styles.actions}>
           {onEdit && (
             <button type="button" className={styles.editBtn} onClick={onEdit}>
-              ✏️ Edit
+              <Icon name="edit" size={16} /> Edit
             </button>
           )}
           <button type="button" className={styles.closeAction} onClick={onClose}>

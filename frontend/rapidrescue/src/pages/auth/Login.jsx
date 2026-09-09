@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { login } from '../../services/authService';
 import { APP_IMAGES } from '../../constants/images';
+import Icon from '../../components/common/Icon';
 import styles from './Auth.module.css';
 
 const FEATURES = [
-  { icon: '📊', label: 'Monitor all incidents' },
-  { icon: '👥', label: 'Manage users & responders' },
-  { icon: '🚒', label: 'Dispatch emergency units fast' },
-  { icon: '🗺️', label: 'Live GPS tracking & routing' },
+  { icon: 'monitoring', label: 'Monitor all incidents' },
+  { icon: 'group', label: 'Manage users & responders' },
+  { icon: 'ambulance', label: 'Dispatch emergency units fast' },
+  { icon: 'map', label: 'Live GPS tracking & routing' },
 ];
 
 export default function Login() {
@@ -54,14 +55,14 @@ export default function Login() {
           </div>
           <h1 className={styles.brandName}>RapidRescue</h1>
           <p className={styles.brandTagline}>Admin Control Panel</p>
-          <p className={styles.brandCity}>📍 Cabadbaran City, Agusan del Norte</p>
+          <p className={styles.brandCity}><Icon name="location_on" size={14} /> Cabadbaran City, Agusan del Norte</p>
 
           <div className={styles.brandDivider} />
 
           <div className={styles.features}>
             {FEATURES.map((f) => (
               <div key={f.label} className={styles.feature}>
-                <span className={styles.featureIcon}>{f.icon}</span>
+                <span className={styles.featureIcon}><Icon name={f.icon} size={18} /></span>
                 <span>{f.label}</span>
               </div>
             ))}
@@ -109,13 +110,13 @@ export default function Login() {
             />
           </div>
 
-          <div className={styles.adminBadge}>🔐 Admin Access</div>
+          <div className={styles.adminBadge}><Icon name="lock" size={16} /> Admin Access</div>
           <h2 className={styles.formTitle}>Welcome Back</h2>
           <p className={styles.formSubtitle}>Sign in to the admin control panel</p>
 
           {error && (
             <div className={styles.errorAlert}>
-              <span>⚠️</span> {error}
+              <Icon name="warning" size={16} /> {error}
             </div>
           )}
 
@@ -123,7 +124,7 @@ export default function Login() {
             <div className={styles.inputGroup}>
               <label className={styles.label}>Username</label>
               <div className={styles.inputWrapper}>
-                <span className={styles.inputIcon}>👤</span>
+                <span className={styles.inputIcon}><Icon name="person" size={18} /></span>
                 <input
                   type="text"
                   name="username"
@@ -140,7 +141,7 @@ export default function Login() {
             <div className={styles.inputGroup}>
               <label className={styles.label}>Password</label>
               <div className={styles.passwordWrapper}>
-                <span className={styles.inputIcon}>🔒</span>
+                <span className={styles.inputIcon}><Icon name="lock" size={18} /></span>
                 <input
                   type={showPassword ? 'text' : 'password'}
                   name="password"
@@ -156,7 +157,7 @@ export default function Login() {
                   onClick={() => setShowPassword(!showPassword)}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
-                  {showPassword ? '🙈' : '👁️'}
+                  <Icon name={showPassword ? 'visibility_off' : 'visibility'} size={18} />
                 </button>
               </div>
             </div>
@@ -165,7 +166,7 @@ export default function Login() {
               {isLoading ? (
                 <><span className={styles.spinner} /> Signing In...</>
               ) : (
-                <>🚑 Sign In</>
+                <><Icon name="login" size={18} /> Sign In</>
               )}
             </button>
           </form>
