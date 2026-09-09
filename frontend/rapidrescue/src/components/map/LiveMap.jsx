@@ -72,18 +72,6 @@ export default function LiveMap({ focusIncidentId = null, onViewDetails }) {
         });
       }
 
-      const routeMap = {};
-      await Promise.all(
-        data.map(async (inc) => {
-          if (!inc.victim) return;
-          const to = { lat: inc.victim.lat, lng: inc.victim.lng };
-          const from = inc.responder
-            ? { lat: inc.responder.latitude, lng: inc.responder.longitude }
-            : { lat: DRRMO_HQ.lat, lng: DRRMO_HQ.lng };
-          routeMap[inc.incident_id] = await fetchRoute(from, to);
-        })
-      );
-      setRoutes(routeMap);
       setMapError('');
     } catch (err) {
       console.error('Live map error:', err);
@@ -98,6 +86,33 @@ export default function LiveMap({ focusIncidentId = null, onViewDetails }) {
     const interval = setInterval(loadLive, 8000);
     return () => clearInterval(interval);
   }, [loadLive]);
+
+  const selectedForRoute = liveIncidents.find((inc) => inc.incident_id === selectedId) || liveIncidents[0];
+  const selectedRouteKey = selectedForRoute?.victim
+    ? [
+        selectedForRoute.incident_id,
+        selectedForRoute.responder?.latitude,
+        selectedForRoute.responder?.longitude,
+        selectedForRoute.victim.lat,
+        selectedForRoute.victim.lng,
+      ].join(':')
+    : '';
+
+  useEffect(() => {
+    const inc = liveIncidents.find((row) => row.incident_id === selectedId) || liveIncidents[0];
+    if (!inc?.victim) return undefined;
+    const id = inc.incident_id;
+    const to = { lat: inc.victim.lat, lng: inc.victim.lng };
+    const from = inc.responder
+      ? { lat: inc.responder.latitude, lng: inc.responder.longitude }
+      : { lat: DRRMO_HQ.lat, lng: DRRMO_HQ.lng };
+    fetchRoute(from, to).then((route) => {
+      setRoutes((prev) => (prev[id] === route ? prev : { ...prev, [id]: route }));
+    });
+    return undefined;
+    // selectedRouteKey already encodes incident id + coordinates
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRouteKey]);
 
   useEffect(() => {
     if (!focusIncidentId) return;
@@ -534,7 +549,7 @@ export default function LiveMap({ focusIncidentId = null, onViewDetails }) {
                   }}
                 >
                   <Popup>
-                    <strong>⚠️ Outside service boundary — #{inc.incident_id}</strong>
+                    <strong><Icon name="warning" size={16} /> Out of area of responsibility — #{inc.incident_id}</strong>
                     <br />
                     {inc.user ? `${inc.user.first_name} ${inc.user.last_name}` : 'Unknown user'}
                     <br />
@@ -596,23 +611,23 @@ export default function LiveMap({ focusIncidentId = null, onViewDetails }) {
         <div className={styles.legend}>
           <div className={styles.legendTitle}>Map Legend</div>
           <div className={styles.legendItem}>
-            <span className={styles.legendDot} style={{ background: '#e53935' }} />
+            <Icon name="person_pin" size={18} className={styles.legendIcon} filled />
             Victim / Help
           </div>
           <div className={styles.legendItem}>
-            <span className={styles.legendDot} style={{ background: '#1565c0' }} />
+            <Icon name="local_shipping" size={16} className={styles.legendIconBlue} />
             Responder (DRRMO)
           </div>
           <div className={styles.legendItem}>
-            <span className={styles.legendDot} style={{ background: '#f9a825' }} />
+            <Icon name="apartment" size={16} className={styles.legendIconGold} />
             CDRRMO HQ
           </div>
           <div className={styles.legendItem}>
-            <span className={styles.legendDot} style={{ background: '#6a1b9a' }} />
-            Dispatch Stations
+            <Icon name="location_on" size={16} className={styles.legendIconPurple} />
+            Station
           </div>
           <div className={styles.legendItem}>
-            <span className={styles.legendDot} style={{ background: '#e65100' }} />
+            <Icon name="wrong_location" size={16} className={styles.legendIconOrange} />
             Outside boundary
           </div>
         </div>
@@ -674,7 +689,7 @@ export default function LiveMap({ focusIncidentId = null, onViewDetails }) {
           <div className={styles.drrmoStats}>
             <div className={styles.drrmStatItem}>
               <span className={styles.drrmStatVal}>{RESPONDER_STATIONS.length}</span>
-              <span className={styles.drrmStatLabel}>Stations</span>
+              <span className={styles.drrmStatLabel}>Station</span>
             </div>
             <div className={styles.drrmStatItem}>
               <span className={styles.drrmStatVal}>{liveIncidents.length}</span>
@@ -771,8 +786,10 @@ export default function LiveMap({ focusIncidentId = null, onViewDetails }) {
                       {route?.isRoad
                         ? `🛣️ ${formatDistance(route.distance)} · ${formatDuration(route.duration)} via road`
                         : route?.points
-                          ? '⏳ Calculating road route...'
-                          : '⏳ Loading route...'}
+                          ? `🛣️ ~${formatDistance(route.distance)} · ${formatDuration(route.duration)} (direct)`
+                          : selectedId === inc.incident_id
+                            ? '⏳ Getting road directions…'
+                            : 'Tap to show route'}
                     </p>
                   </>
                 )}

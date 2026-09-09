@@ -52,10 +52,21 @@ export const REFERRAL_ONLY_STATUSES = [
   { value: 'Referred', label: 'Referred', hint: 'Referred to the nearest station.' },
 ];
 
+function displayDispatchLabel(status) {
+  if (DISPATCH_STATUS_ALIASES.includes(status)) return 'Dispatch';
+  return status;
+}
+
 export function getStatusesForIncident(inc, currentStatus, isOutside = false) {
   if (isReferralOnlyIncident(inc)) {
     if (currentStatus === 'Referred') {
       return REFERRAL_ONLY_STATUSES.filter((s) => s.value === 'Referred');
+    }
+    if (DISPATCH_STATUS_ALIASES.includes(currentStatus) || currentStatus === 'Arrived') {
+      return [
+        { value: currentStatus, label: displayDispatchLabel(currentStatus), hint: 'Waiting for referral' },
+        { value: 'Referred', label: 'Referred', hint: 'Referred to the nearest station.' },
+      ];
     }
     return REFERRAL_ONLY_STATUSES;
   }

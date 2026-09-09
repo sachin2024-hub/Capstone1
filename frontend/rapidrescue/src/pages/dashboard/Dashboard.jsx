@@ -98,6 +98,24 @@ function matchesIncidentDateRange(inc, filter) {
   return true;
 }
 
+function describeDateFilter(filter) {
+  if (!filter || filter.mode === 'all') return 'all time';
+  if (filter.mode === 'day') return 'today';
+  if (filter.mode === 'week') return 'this week';
+  if (filter.mode === 'year') return String(filter.year);
+  if (filter.mode === 'date' && filter.date) {
+    return new Date(`${filter.date}T00:00:00`).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  }
+  return new Date(filter.year, filter.month, 1).toLocaleDateString('en-US', {
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
 function DateRangeFilter({ value, onChange, years }) {
   const [open, setOpen] = useState(null);
   const boxRef = useRef(null);
@@ -248,6 +266,39 @@ function DateRangeFilter({ value, onChange, years }) {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function ArchivePeriodBar({ statusLabel, filter, countFor, onArchive, busy }) {
+  const options = [
+    { id: 'week', label: 'This week', count: countFor('week') },
+    { id: 'month', label: 'This month', count: countFor('month') },
+    { id: 'year', label: 'This year', count: countFor('year') },
+    { id: 'current', label: `Selected (${describeDateFilter(filter)})`, count: countFor('current') },
+  ];
+
+  return (
+    <div className={styles.archivePeriodBar}>
+      <div className={styles.archivePeriodCopy}>
+        <strong>Archive by period</strong>
+        <span>Choose which {statusLabel} accidents to move to Archive. You can restore them later.</span>
+      </div>
+      <div className={styles.archivePeriodActions}>
+        {options.map((opt) => (
+          <button
+            key={opt.id}
+            type="button"
+            className={styles.archivePeriodBtn}
+            disabled={busy || opt.count === 0}
+            onClick={() => onArchive(opt.id)}
+          >
+            <Icon name="folder" size={16} />
+            {opt.label}
+            <span className={styles.archivePeriodCount}>{opt.count}</span>
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -1465,6 +1516,7 @@ export default function Dashboard() {
   const [incidentFilter, setIncidentFilter] = useState('pending');
   const [incidentDateFilter, setIncidentDateFilter] = useState(() => makeDateFilter());
   const [dashboardDateFilter, setDashboardDateFilter] = useState(() => makeDateFilter());
+  const [archivingPeriod, setArchivingPeriod] = useState(false);
   const [archiveModule, setArchiveModule] = useState('accident');
   const [archiveSelectedIds, setArchiveSelectedIds] = useState(() => new Set());
   const [archiveDispatchRows, setArchiveDispatchRows] = useState([]);
@@ -1746,15 +1798,74 @@ export default function Dashboard() {
     else setIncidentFilter('pending');
   };
 
-  const handleArchive = async (inc) => {
-    if (!window.confirm(`Archive incident #${inc.incident_id}? It will move to the Archive tab.`)) return;
-    try {
-      rememberIncidentStatus(inc.incident_id, inc.incident_status);
-      await archiveIncident(inc.incident_id);
-      await fetchData();
-    } catch (err) {
-      setError(err.message || 'Failed to archive incident.');
+  const handleArchive = (inc) => {
+    openConfirm({
+      title: 'Archive accident?',
+      message: `Move accident #${inc.incident_id} to Archive? You can restore it later.`,
+      confirmLabel: 'Archive',
+      variant: 'warning',
+      onConfirm: async () => {
+        closeConfirm();
+        try {
+          rememberIncidentStatus(inc.incident_id, inc.incident_status);
+          await archiveIncident(inc.incident_id);
+          await fetchData();
+        } catch (err) {
+          setError(err.message || 'Failed to archive incident.');
+        }
+      },
+    });
+  };
+
+  const periodFilterFor = (kind) => {
+    if (kind === 'current') return incidentDateFilter;
+    if (kind === 'week') return makeDateFilter({ mode: 'week' });
+    if (kind === 'month') return makeDateFilter({ mode: 'month' });
+    return makeDateFilter({ mode: 'year' });
+  };
+
+  const archiveTargetsForPeriod = (kind) => {
+    const status = incidentFilter === 'cancelled' ? 'Cancelled' : 'Resolved';
+    const pool = incidents.filter(
+      (i) => i.incident_status === status && !isIncidentOutside(i)
+    );
+    const filter = periodFilterFor(kind);
+    return pool.filter((i) => matchesIncidentDateRange(i, filter));
+  };
+
+  const handleArchivePeriod = (kind) => {
+    const rows = archiveTargetsForPeriod(kind);
+    if (!rows.length) {
+      setError('No accidents in that period to archive.');
+      return;
     }
+    const statusWord = incidentFilter === 'cancelled' ? 'cancelled' : 'resolved';
+    const when = kind === 'current' ? describeDateFilter(incidentDateFilter) : describeDateFilter(periodFilterFor(kind));
+    openConfirm({
+      title: 'Archive by period?',
+      message: `Move ${rows.length} ${statusWord} accident${rows.length === 1 ? '' : 's'} from ${when} to Archive? You can restore them later from the Archive tab.`,
+      confirmLabel: `Archive ${rows.length}`,
+      variant: 'warning',
+      onConfirm: async () => {
+        closeConfirm();
+        setArchivingPeriod(true);
+        setError('');
+        try {
+          for (const inc of rows) {
+            rememberIncidentStatus(inc.incident_id, inc.incident_status);
+            await archiveIncident(inc.incident_id);
+          }
+          await fetchData();
+          setActiveTab('archive');
+          setArchiveModule('accident');
+        } catch (err) {
+          setError(err.message || 'Failed to archive accidents.');
+          await fetchData();
+        } finally {
+          setArchivingPeriod(false);
+        }
+      },
+    });
   };
 
   const handleDelete = (inc) => {
@@ -2461,9 +2572,9 @@ export default function Dashboard() {
 
               <p className={styles.archiveHint}>
                 {incidentFilter === 'resolved'
-                  ? 'Resolved incidents stay here until you manually move them to Archive.'
+                  ? 'Resolved incidents stay here until you archive them. Use Archive by period, or the folder icon on a row.'
                   : incidentFilter === 'cancelled'
-                    ? 'Cancelled incidents can be archived or deleted from here.'
+                    ? 'Cancelled incidents can be archived by period or deleted from here.'
                     : incidentFilter === 'outside'
                       ? 'Use the status dropdown: Outside → For Referral → Referred → Completed. The reporter sees this on My Alerts.'
                       : incidentFilter === 'referred'
@@ -2472,6 +2583,16 @@ export default function Dashboard() {
                         ? 'NEW means this request has not been reviewed yet. Click the row to open details — it will be marked Viewed.'
                     : 'Click the buttons above to switch between incident groups.'}
               </p>
+
+              {(incidentFilter === 'resolved' || incidentFilter === 'cancelled') && (
+                <ArchivePeriodBar
+                  statusLabel={incidentFilter === 'cancelled' ? 'cancelled' : 'resolved'}
+                  filter={incidentDateFilter}
+                  countFor={(kind) => archiveTargetsForPeriod(kind).length}
+                  onArchive={handleArchivePeriod}
+                  busy={archivingPeriod}
+                />
+              )}
 
               {incidentFilter === 'pending' && (
                 <IncidentTableSection
@@ -2559,7 +2680,7 @@ export default function Dashboard() {
                   onDelete={handleDelete}
                   onShowMap={handleShowOnLiveMap}
                   showAssignActions={false}
-                  actions={{ edit: true, archive: false, delete: true }}
+                  actions={{ edit: true, archive: true, delete: true }}
                   hideTitle
                 />
               )}

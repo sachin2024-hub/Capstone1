@@ -66,7 +66,4 @@ export const CABADBARAN_MAX_BOUNDS = (() => {
 
 export const RESPONDER_STATIONS = [
   { id: 'hq', name: 'CDRRMO — Brgy. 9, Cabadbaran City', lat: CITY_HALL.lat, lng: CITY_HALL.lng },
-  { id: 'north', name: 'Station North (Tubay)', lat: 9.168, lng: 125.528 },
-  { id: 'east', name: 'Station East (Comagascas)', lat: 9.108, lng: 125.565 },
-  { id: 'south', name: 'Station South (Santiago)', lat: 9.075, lng: 125.538 },
 ];

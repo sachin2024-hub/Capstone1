@@ -35,7 +35,7 @@ router.post('/sos', authenticateToken, async (req, res) => {
 
   const withinCity = isWithinCabadbaran(Number(latitude), Number(longitude));
   const OUTSIDE_MESSAGE =
-    'Outside the service boundary. Please wait while we refer you to the nearest ambulance.';
+    'Out of area of responsibility. Please wait while we refer you to the nearest station.';
 
   try {
     const resolvedLocation = await resolveLocationFromGps(
@@ -97,7 +97,9 @@ router.post('/sos', authenticateToken, async (req, res) => {
       }
     }
 
-    const dispatch = withinCity ? await autoDispatch(incident.incident_id) : null;
+    const referralOnly = isReferralOnlyType(incident_type);
+    const dispatch =
+      withinCity && !referralOnly ? await autoDispatch(incident.incident_id) : null;
 
     return res.status(201).json({
       message: withinCity
@@ -291,6 +293,12 @@ const CITY_FLOW = ['Pending', 'Dispatch', 'Arrived', 'Resolved', 'Cancelled', 'A
 const OUTSIDE_FLOW = ['Outside', 'For Referral', 'Referred', 'Completed', 'Archived', 'Deleted'];
 const LEGACY_CITY_STATUSES = ['In Progress', 'En Route'];
 const VALID_STATUSES = [...new Set([...CITY_FLOW, ...OUTSIDE_FLOW, ...LEGACY_CITY_STATUSES])];
+const TERMINAL_STATUSES = ['Resolved', 'Cancelled', 'Completed', 'Archived', 'Deleted'];
+
+function isReferralOnlyType(incidentType) {
+  const t = String(incidentType || '');
+  return t.startsWith('Fire') || t.includes('Crime');
+}
 
 function normalizeCityStatus(status) {
   if (status === 'In Progress' || status === 'En Route') return 'Dispatch';
@@ -301,6 +309,9 @@ function canMoveStatus(from, to) {
   const fromN = normalizeCityStatus(from);
   const toN = normalizeCityStatus(to);
   if (fromN === toN) return true;
+  if (to === 'Referred' && !TERMINAL_STATUSES.includes(fromN)) {
+    return true;
+  }
   if (from === 'Pending' && ['Outside', 'For Referral', 'Referred', 'Completed'].includes(to)) {
     return true;
   }

@@ -38,6 +38,11 @@ button {
   translate: 0;
 }
 
+.rr-material-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;

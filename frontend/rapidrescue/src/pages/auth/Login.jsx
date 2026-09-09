@@ -74,8 +74,8 @@ export default function Login() {
               <div className={styles.statKey}>Available</div>
             </div>
             <div className={styles.statItem}>
-              <div className={styles.statVal}>4</div>
-              <div className={styles.statKey}>Stations</div>
+              <div className={styles.statVal}>1</div>
+              <div className={styles.statKey}>Station</div>
             </div>
             <div className={styles.statItem}>
               <div className={styles.statVal}>Free</div>

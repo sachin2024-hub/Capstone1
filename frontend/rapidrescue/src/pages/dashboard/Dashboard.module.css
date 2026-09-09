@@ -1365,6 +1365,84 @@
   margin: -4px 0 10px;
 }
 
+.archivePeriodBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  background: #fff7ed;
+  border: 1.5px solid #fed7aa;
+  border-radius: 12px;
+}
+
+.archivePeriodCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 180px;
+}
+
+.archivePeriodCopy strong {
+  font-size: 13px;
+  font-weight: 800;
+  color: #9a3412;
+}
+
+.archivePeriodCopy span {
+  font-size: 12px;
+  color: #9a3412;
+  line-height: 1.4;
+}
+
+.archivePeriodActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.archivePeriodBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1.5px solid #fdba74;
+  background: #fff;
+  color: #9a3412;
+  border-radius: 9px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  font-weight: 800;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.archivePeriodBtn:hover:not(:disabled) {
+  background: #c62828;
+  border-color: #c62828;
+  color: #fff;
+}
+
+.archivePeriodBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.archivePeriodCount {
+  min-width: 18px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #ffedd5;
+  color: inherit;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.archivePeriodBtn:hover:not(:disabled) .archivePeriodCount {
+  background: rgba(255, 255, 255, 0.22);
+}
+
 .archiveBulkBar {
   display: flex;
   flex-wrap: wrap;

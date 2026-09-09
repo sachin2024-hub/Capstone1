@@ -1,7 +1,7 @@
 import { CABADBARAN_POLYGON } from '../constants/cabadbaran';
 
 export const OUTSIDE_CITY_MESSAGE =
-  'Outside the service boundary. Please wait while we refer you to the nearest ambulance.';
+  'Out of area of responsibility. Please wait while we refer you to the nearest station.';
 
 function pointInPolygon(lat, lng, polygon) {
   let inside = false;

@@ -26,7 +26,11 @@ export default function IncidentStatusModal({ incident, responders = [], users =
   const availableStatuses = getStatusesForIncident(incident, currentStatus, isOutside);
   const [status, setStatus] = useState(() => {
     if (referralOnly) {
-      return currentStatus === 'Referred' ? 'Referred' : 'Pending';
+      if (currentStatus === 'Referred') return 'Referred';
+      if (['Dispatch', 'In Progress', 'En Route', 'Arrived'].includes(currentStatus)) {
+        return currentStatus;
+      }
+      return 'Pending';
     }
     return isOutside && currentStatus === 'Pending'
       ? 'Outside'

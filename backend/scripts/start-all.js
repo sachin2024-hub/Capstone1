@@ -7,6 +7,7 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const { getLocalIp, updateMobileApi, writeConnectionInfo } = require('./update-mobile-api');
 const { ensureCloudflared } = require('./ensure-cloudflared');
+const { extractTrycloudflareUrl, isTunnelEdgeConnected, quickTunnelArgs } = require('./trycloudflare-url');
 
 const PORT = 5000;
 const BACKEND_DIR = path.join(__dirname, '..');
@@ -94,27 +95,29 @@ function startNamedTunnel(binPath, token, publicUrl) {
 function startTunnel(binPath) {
   log(`Starting public tunnel with ${path.basename(binPath)}...`);
 
-  const child = spawn(
-    binPath,
-    ['tunnel', '--url', `http://127.0.0.1:${PORT}`, '--no-autoupdate'],
-    { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true }
-  );
+  const child = spawn(binPath, quickTunnelArgs(PORT), {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
 
   let updated = false;
+  let publicUrl = null;
+  let edgeReady = false;
 
   function onData(data) {
     const text = data.toString();
     process.stdout.write(text);
 
-    const match = text.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
-    if (match && !updated) {
+    publicUrl = publicUrl || extractTrycloudflareUrl(text);
+    edgeReady = edgeReady || isTunnelEdgeConnected(text);
+    if (publicUrl && edgeReady && !updated) {
       updated = true;
       const ip = getLocalIp() || '192.168.1.11';
-      writeConnectionInfo({ localIp: ip, tunnelUrl: match[0] });
-      updateMobileApi({ tunnelUrl: match[0], connectionMode: 'tunnel' });
+      writeConnectionInfo({ localIp: ip, tunnelUrl: publicUrl });
+      updateMobileApi({ tunnelUrl: publicUrl, connectionMode: 'tunnel' });
       log('');
       log('==============================================');
-      log(`Public URL ready: ${match[0]}`);
+      log(`Public URL ready: ${publicUrl}`);
       log('Any phone can log in now — WiFi or mobile data.');
       log('If Expo reloads once, that is normal. Then tap Log In.');
       log('==============================================');

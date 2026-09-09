@@ -29,6 +29,11 @@
   min-height: 480px;
 }
 
+.mapPanel :global(.rr-material-marker) {
+  background: transparent !important;
+  border: none !important;
+}
+
 .map {
   position: absolute;
   inset: 0;
@@ -225,9 +230,15 @@
 
 .outsideBanner {
   position: absolute;
-  top: 48px;
-  left: 12px;
-  right: 12px;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(420px, calc(100% - 140px));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
   background: #fff3e0;
   border: 2px solid #ff9800;
   color: #e65100;
@@ -237,6 +248,8 @@
   padding: 10px 14px;
   border-radius: 10px;
   z-index: 1000;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+  pointer-events: none;
 }
 
 @keyframes pulse {
@@ -405,6 +418,21 @@
   border-radius: 50%;
   flex-shrink: 0;
 }
+
+.legendIcon,
+.legendIconBlue,
+.legendIconGold,
+.legendIconPurple,
+.legendIconOrange {
+  flex-shrink: 0;
+  font-variation-settings: 'FILL' 1, 'wght' 600, 'GRAD' 0, 'opsz' 20;
+}
+
+.legendIcon { color: #e53935; }
+.legendIconBlue { color: #1565c0; }
+.legendIconGold { color: #f9a825; }
+.legendIconPurple { color: #6a1b9a; }
+.legendIconOrange { color: #e65100; }
 
 /* ─── Side Panel ──────────────────────────────────────── */
 .sidePanel {
