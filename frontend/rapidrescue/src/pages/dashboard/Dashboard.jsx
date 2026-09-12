@@ -777,9 +777,13 @@ function IncidentTableSection({
                               <button
                                 type="button"
                                 className={`${styles.mapBtn} ${styles.actionIconBtn}`}
-                                onClick={() => onShowMap(inc)}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  onShowMap(inc);
+                                }}
                                 disabled={!hasIncidentLocation(inc)}
-                                title={hasIncidentLocation(inc) ? 'Open on Live Map' : 'No GPS location'}
+                                title={hasIncidentLocation(inc) ? `Open #${inc.incident_id} on Live Map` : 'No GPS location'}
                               >
                                 <Icon name="map" size={18} />
                               </button>
@@ -1511,6 +1515,7 @@ export default function Dashboard() {
   const [updatingStatusId, setUpdatingStatusId] = useState(null);
   const [assigningIncident, setAssigningIncident] = useState(null);
   const [liveMapFocusId, setLiveMapFocusId] = useState(null);
+  const [liveMapFocusNonce, setLiveMapFocusNonce] = useState(0);
   const [responderModal, setResponderModal] = useState(null);
   const [viewingResponder, setViewingResponder] = useState(null);
   const [incidentFilter, setIncidentFilter] = useState('pending');
@@ -1629,7 +1634,10 @@ export default function Dashboard() {
 
   const handleShowOnLiveMap = (inc) => {
     markIncidentViewed(inc);
-    setLiveMapFocusId(inc.incident_id);
+    const id = Number(inc.incident_id);
+    // Always bump nonce so re-clicking the same green map icon still focuses the card.
+    setLiveMapFocusId(id);
+    setLiveMapFocusNonce((n) => n + 1);
     setActiveTab('live-map');
   };
 
@@ -2343,9 +2351,6 @@ export default function Dashboard() {
                   {sidebarOpen && item.id === 'incidents' && unviewedPendingCount > 0 && (
                     <span className={styles.navBadge}>{unviewedPendingCount}</span>
                   )}
-                  {sidebarOpen && item.id === 'archive' && (archivedIncidents.length + deletedIncidents.length) > 0 && (
-                    <span className={styles.navBadge}>{archivedIncidents.length + deletedIncidents.length}</span>
-                  )}
                 </button>
               ))}
             </div>
@@ -2523,8 +2528,9 @@ export default function Dashboard() {
           {/* ── LIVE MAP ─────────────────────────────────── */}
           {activeTab === 'live-map' && (
             <LiveMap
-              key="live-map"
+              key={`live-map-${liveMapFocusId ?? 'none'}-${liveMapFocusNonce}`}
               focusIncidentId={liveMapFocusId}
+              focusNonce={liveMapFocusNonce}
               onViewDetails={(incidentId) => {
                 const inc = incidents.find((row) => Number(row.incident_id) === Number(incidentId));
                 if (inc) handleOpenIncident(inc);

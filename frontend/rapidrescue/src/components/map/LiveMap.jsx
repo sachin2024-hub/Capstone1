@@ -34,10 +34,12 @@ function stopPopupClick(e) {
   e.nativeEvent?.stopImmediatePropagation?.();
 }
 
-export default function LiveMap({ focusIncidentId = null, onViewDetails }) {
+export default function LiveMap({ focusIncidentId = null, focusNonce = 0, onViewDetails }) {
   const [liveIncidents, setLiveIncidents] = useState([]);
   const [routes, setRoutes] = useState({});
-  const [selectedId, setSelectedId] = useState(focusIncidentId);
+  const [selectedId, setSelectedId] = useState(
+    focusIncidentId != null ? Number(focusIncidentId) : null
+  );
   const [loading, setLoading] = useState(true);
   const [outsideAlerts, setOutsideAlerts] = useState([]);
   const [mapLayer, setMapLayer] = useState('hybrid');
@@ -48,6 +50,13 @@ export default function LiveMap({ focusIncidentId = null, onViewDetails }) {
   const [streetViewTarget, setStreetViewTarget] = useState(null);
   const hasAutoSelected = useRef(false);
   const mapPanelRef = useRef(null);
+  const alertListRef = useRef(null);
+  const pendingFocusId = useRef(
+    focusIncidentId != null ? Number(focusIncidentId) : null
+  );
+  const appliedFocusKey = useRef('');
+
+  const sameIncidentId = (a, b) => Number(a) === Number(b);
 
   const activeLayer = MAP_LAYERS.find((l) => l.id === mapLayer) || MAP_LAYERS[0];
   const isSatelliteView = mapLayer === 'hybrid';
@@ -55,7 +64,10 @@ export default function LiveMap({ focusIncidentId = null, onViewDetails }) {
   const loadLive = useCallback(async () => {
     try {
       const res = await api.get('/dispatch/live');
-      const data = res.data;
+      const data = (res.data || []).map((inc) => ({
+        ...inc,
+        incident_id: Number(inc.incident_id),
+      }));
       setLiveIncidents(data);
 
       const outside = data.filter((inc) => !isWithinCabadbaran(inc.victim.lat, inc.victim.lng));
@@ -63,12 +75,19 @@ export default function LiveMap({ focusIncidentId = null, onViewDetails }) {
 
       if (data.length > 0) {
         setSelectedId((prev) => {
-          if (prev && data.some((i) => i.incident_id === prev)) return prev;
+          const pending = pendingFocusId.current;
+          if (pending != null && data.some((i) => sameIncidentId(i.incident_id, pending))) {
+            hasAutoSelected.current = true;
+            return Number(pending);
+          }
+          if (prev != null && data.some((i) => sameIncidentId(i.incident_id, prev))) {
+            return Number(prev);
+          }
           if (!hasAutoSelected.current) {
             hasAutoSelected.current = true;
-            return data[0].incident_id;
+            return Number(data[0].incident_id);
           }
-          return prev;
+          return prev != null ? Number(prev) : prev;
         });
       }
 
@@ -87,7 +106,7 @@ export default function LiveMap({ focusIncidentId = null, onViewDetails }) {
     return () => clearInterval(interval);
   }, [loadLive]);
 
-  const selectedForRoute = liveIncidents.find((inc) => inc.incident_id === selectedId) || liveIncidents[0];
+  const selectedForRoute = liveIncidents.find((inc) => sameIncidentId(inc.incident_id, selectedId)) || liveIncidents[0];
   const selectedRouteKey = selectedForRoute?.victim
     ? [
         selectedForRoute.incident_id,
@@ -99,9 +118,9 @@ export default function LiveMap({ focusIncidentId = null, onViewDetails }) {
     : '';
 
   useEffect(() => {
-    const inc = liveIncidents.find((row) => row.incident_id === selectedId) || liveIncidents[0];
+    const inc = liveIncidents.find((row) => sameIncidentId(row.incident_id, selectedId)) || liveIncidents[0];
     if (!inc?.victim) return undefined;
-    const id = inc.incident_id;
+    const id = Number(inc.incident_id);
     const to = { lat: inc.victim.lat, lng: inc.victim.lng };
     const from = inc.responder
       ? { lat: inc.responder.latitude, lng: inc.responder.longitude }
@@ -114,12 +133,49 @@ export default function LiveMap({ focusIncidentId = null, onViewDetails }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRouteKey]);
 
+  // Focus the alert "box" + map when opened from Accident green map icon
   useEffect(() => {
-    if (!focusIncidentId) return;
-    setSelectedId(focusIncidentId);
-    setFocusRequestId((n) => n + 1);
+    if (focusIncidentId == null) return;
+    const id = Number(focusIncidentId);
+    if (!Number.isFinite(id)) return;
+    pendingFocusId.current = id;
+    setSelectedId(id);
     hasAutoSelected.current = true;
-  }, [focusIncidentId]);
+  }, [focusIncidentId, focusNonce]);
+
+  // After live data is ready, select that incident #ID card (not by name) + scroll to it
+  useEffect(() => {
+    const id = pendingFocusId.current;
+    if (id == null || !liveIncidents.length) return;
+    if (!liveIncidents.some((inc) => sameIncidentId(inc.incident_id, id))) return;
+
+    const key = `${id}:${focusNonce}`;
+    if (appliedFocusKey.current === key) {
+      setSelectedId((prev) => (sameIncidentId(prev, id) ? Number(prev) : id));
+      return undefined;
+    }
+    appliedFocusKey.current = key;
+    setSelectedId(id);
+    setFocusRequestId((n) => n + 1);
+
+    const scrollToCard = () => {
+      const card = alertListRef.current?.querySelector(`[data-incident-id="${id}"]`);
+      const panel = card?.closest('[data-live-side-panel]');
+      // Selected #ID card is moved to the top of the list — scroll sidebar to show it
+      if (panel && typeof panel.scrollTo === 'function') {
+        panel.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        card?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    };
+
+    const t1 = setTimeout(scrollToCard, 50);
+    const t2 = setTimeout(scrollToCard, 300);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [liveIncidents, focusIncidentId, focusNonce]);
 
   useEffect(() => {
     if (!layersOpen) return undefined;
@@ -135,25 +191,39 @@ export default function LiveMap({ focusIncidentId = null, onViewDetails }) {
     isWithinCabadbaran(inc.victim.lat, inc.victim.lng)
   );
 
-  const selectedIncident = liveIncidents.find((inc) => inc.incident_id === selectedId);
-  const selectedRoute = selectedId ? routes[selectedId] : null;
+  const selectedIncident = liveIncidents.find((inc) => sameIncidentId(inc.incident_id, selectedId));
+  const selectedRoute = selectedId != null ? routes[Number(selectedId)] : null;
   const selectedIsOutside = Boolean(
     selectedIncident && !isWithinCabadbaran(selectedIncident.victim.lat, selectedIncident.victim.lng)
   );
 
   // When a sidebar card is clicked, show only that incident on the map
-  const mapIncidents = selectedId
-    ? insideIncidents.filter((inc) => inc.incident_id === selectedId)
+  const mapIncidents = selectedId != null
+    ? insideIncidents.filter((inc) => sameIncidentId(inc.incident_id, selectedId))
     : insideIncidents;
 
-  const mapOutsideAlerts = selectedId
-    ? outsideAlerts.filter((inc) => inc.incident_id === selectedId)
+  const mapOutsideAlerts = selectedId != null
+    ? outsideAlerts.filter((inc) => sameIncidentId(inc.incident_id, selectedId))
     : outsideAlerts;
 
   const focusOnIncident = (incidentId) => {
-    setSelectedId(incidentId);
+    const id = Number(incidentId);
+    pendingFocusId.current = id;
+    setSelectedId(id);
     setFocusRequestId((n) => n + 1);
   };
+
+  // Selected incident #ID first so the red box is always easy to see (same name OK — match by ID)
+  const sidebarIncidents = (() => {
+    if (selectedId == null) return liveIncidents;
+    const selected = [];
+    const rest = [];
+    for (const inc of liveIncidents) {
+      if (sameIncidentId(inc.incident_id, selectedId)) selected.push(inc);
+      else rest.push(inc);
+    }
+    return selected.length ? [...selected, ...rest] : liveIncidents;
+  })();
 
   const openStreetView = (inc) => {
     if (!inc?.victim) return;
@@ -405,8 +475,8 @@ export default function LiveMap({ focusIncidentId = null, onViewDetails }) {
 
           {/* ── Active incidents with routes (selected only when focused) ── */}
           {mapIncidents.map((inc) => {
-            const route = routes[inc.incident_id];
-            const isSelected = selectedId === inc.incident_id;
+            const route = routes[Number(inc.incident_id)];
+            const isSelected = sameIncidentId(selectedId, inc.incident_id);
             return (
               <Fragment key={inc.incident_id}>
                 {/* Victim marker */}
@@ -536,8 +606,8 @@ export default function LiveMap({ focusIncidentId = null, onViewDetails }) {
 
           {/* ── Outside city alerts — route still drawn past the boundary ── */}
           {mapOutsideAlerts.map((inc) => {
-            const route = routes[inc.incident_id];
-            const isSelected = selectedId === inc.incident_id;
+            const route = routes[Number(inc.incident_id)];
+            const isSelected = sameIncidentId(selectedId, inc.incident_id);
             return (
               <Fragment key={`out-${inc.incident_id}`}>
                 <Marker
@@ -676,7 +746,7 @@ export default function LiveMap({ focusIncidentId = null, onViewDetails }) {
       </div>
 
       {/* ── Side Panel ────────────────────────────────── */}
-      <div className={styles.sidePanel}>
+      <div className={styles.sidePanel} data-live-side-panel>
         {/* DRRMO Info Card */}
         <div className={styles.drrmoCard}>
           <div className={styles.drrmoCardHeader}>
@@ -710,9 +780,10 @@ export default function LiveMap({ focusIncidentId = null, onViewDetails }) {
             <p className={styles.emptyHint}>Press Help on the mobile app inside Cabadbaran City to trigger a response.</p>
           </div>
         ) : (
-          liveIncidents.map((inc) => {
+          <div ref={alertListRef} className={styles.alertList}>
+          {sidebarIncidents.map((inc) => {
             const outside = !isWithinCabadbaran(inc.victim.lat, inc.victim.lng);
-            const route = routes[inc.incident_id];
+            const route = routes[Number(inc.incident_id)];
             const parsed = parseLocationAddress(inc.victim.address);
             const loc = {
               purok: inc.victim.purok || parsed.purok,
@@ -723,7 +794,8 @@ export default function LiveMap({ focusIncidentId = null, onViewDetails }) {
               <button
                 type="button"
                 key={inc.incident_id}
-                className={`${styles.alertCard} ${selectedId === inc.incident_id ? styles.alertCardActive : ''} ${outside ? styles.alertCardOutside : ''}`}
+                data-incident-id={Number(inc.incident_id)}
+                className={`${styles.alertCard} ${sameIncidentId(selectedId, inc.incident_id) ? styles.alertCardActive : ''} ${outside ? styles.alertCardOutside : ''}`}
                 onClick={() => focusOnIncident(inc.incident_id)}
               >
                 <div className={styles.alertHeader}>
@@ -787,13 +859,13 @@ export default function LiveMap({ focusIncidentId = null, onViewDetails }) {
                         ? `🛣️ ${formatDistance(route.distance)} · ${formatDuration(route.duration)} via road`
                         : route?.points
                           ? `🛣️ ~${formatDistance(route.distance)} · ${formatDuration(route.duration)} (direct)`
-                          : selectedId === inc.incident_id
+                          : sameIncidentId(selectedId, inc.incident_id)
                             ? '⏳ Getting road directions…'
                             : 'Tap to show route'}
                     </p>
                   </>
                 )}
-                {selectedId === inc.incident_id && (
+                {sameIncidentId(selectedId, inc.incident_id) && (
                   <span
                     className={styles.alertStreetBtn}
                     role="button"
@@ -816,7 +888,8 @@ export default function LiveMap({ focusIncidentId = null, onViewDetails }) {
                 )}
               </button>
             );
-          })
+          })}
+          </div>
         )}
       </div>
 

@@ -68,7 +68,7 @@ router.get('/live', async (req, res) => {
         };
         const withinCity = isWithinCabadbaran(victim.lat, victim.lng);
         return {
-          incident_id: inc.incident_id,
+          incident_id: Number(inc.incident_id),
           within_city: withinCity,
           incident_type: inc.incident_type,
           incident_status: inc.incident_status,
