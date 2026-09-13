@@ -34,7 +34,23 @@ function stopPopupClick(e) {
   e.nativeEvent?.stopImmediatePropagation?.();
 }
 
-export default function LiveMap({ focusIncidentId = null, focusNonce = 0, onViewDetails }) {
+/** Scroll only inside a panel — never moves the page/window. */
+function scrollPanelToCard(panel, card, padding = 10) {
+  if (!panel || !card || typeof panel.scrollTo !== 'function') return;
+  const panelRect = panel.getBoundingClientRect();
+  const cardRect = card.getBoundingClientRect();
+  const delta = cardRect.top - panelRect.top - padding;
+  const nextTop = Math.max(0, panel.scrollTop + delta);
+  panel.scrollTo({ top: nextTop, behavior: 'smooth' });
+}
+
+export default function LiveMap({
+  focusIncidentId = null,
+  focusNonce = 0,
+  scrollAlertsOnce = false,
+  onAlertsScrolled,
+  onViewDetails,
+}) {
   const [liveIncidents, setLiveIncidents] = useState([]);
   const [routes, setRoutes] = useState({});
   const [selectedId, setSelectedId] = useState(
@@ -54,7 +70,9 @@ export default function LiveMap({ focusIncidentId = null, focusNonce = 0, onView
   const pendingFocusId = useRef(
     focusIncidentId != null ? Number(focusIncidentId) : null
   );
-  const appliedFocusKey = useRef('');
+  /** Only true after Accident green-map click; cleared after one panel scroll. */
+  const needsAlertPanelScroll = useRef(false);
+  const scrolledFocusKey = useRef('');
 
   const sameIncidentId = (a, b) => Number(a) === Number(b);
 
@@ -133,49 +151,57 @@ export default function LiveMap({ focusIncidentId = null, focusNonce = 0, onView
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRouteKey]);
 
-  // Focus the alert "box" + map when opened from Accident green map icon
+  // Accident table green map icon → select exact incident ID + arm one-time panel scroll
   useEffect(() => {
     if (focusIncidentId == null) return;
     const id = Number(focusIncidentId);
     if (!Number.isFinite(id)) return;
+
     pendingFocusId.current = id;
     setSelectedId(id);
     hasAutoSelected.current = true;
+    setFocusRequestId((n) => n + 1);
   }, [focusIncidentId, focusNonce]);
 
-  // After live data is ready, select that incident #ID card (not by name) + scroll to it
+  // Arm scroll only when Dashboard says this came from the green map icon
   useEffect(() => {
+    if (!scrollAlertsOnce) return;
+    needsAlertPanelScroll.current = true;
+  }, [scrollAlertsOnce, focusNonce]);
+
+  // One-time scroll of Active Help Alerts list only (never the page)
+  useEffect(() => {
+    if (!needsAlertPanelScroll.current || !scrollAlertsOnce) return undefined;
     const id = pendingFocusId.current;
-    if (id == null || !liveIncidents.length) return;
-    if (!liveIncidents.some((inc) => sameIncidentId(inc.incident_id, id))) return;
+    if (id == null || !liveIncidents.length) return undefined;
+    if (!liveIncidents.some((inc) => sameIncidentId(inc.incident_id, id))) return undefined;
 
-    const key = `${id}:${focusNonce}`;
-    if (appliedFocusKey.current === key) {
-      setSelectedId((prev) => (sameIncidentId(prev, id) ? Number(prev) : id));
-      return undefined;
-    }
-    appliedFocusKey.current = key;
     setSelectedId(id);
-    setFocusRequestId((n) => n + 1);
 
-    const scrollToCard = () => {
-      const card = alertListRef.current?.querySelector(`[data-incident-id="${id}"]`);
-      const panel = card?.closest('[data-live-side-panel]');
-      // Selected #ID card is moved to the top of the list — scroll sidebar to show it
-      if (panel && typeof panel.scrollTo === 'function') {
-        panel.scrollTo({ top: 0, behavior: 'smooth' });
-      } else {
-        card?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }
+    const attemptScroll = () => {
+      if (!needsAlertPanelScroll.current) return;
+      const list = alertListRef.current;
+      const card = list?.querySelector(`[data-incident-id="${id}"]`);
+      if (!list || !card) return;
+      scrollPanelToCard(list, card, 12);
+      needsAlertPanelScroll.current = false;
+      scrolledFocusKey.current = `${id}:${focusNonce}`;
+      onAlertsScrolled?.();
     };
 
-    const t1 = setTimeout(scrollToCard, 50);
-    const t2 = setTimeout(scrollToCard, 300);
+    const t1 = setTimeout(attemptScroll, 40);
+    const t2 = setTimeout(attemptScroll, 220);
+    const t3 = setTimeout(() => {
+      if (!needsAlertPanelScroll.current) return;
+      needsAlertPanelScroll.current = false;
+      onAlertsScrolled?.();
+    }, 900);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
+      clearTimeout(t3);
     };
-  }, [liveIncidents, focusIncidentId, focusNonce]);
+  }, [liveIncidents, focusIncidentId, focusNonce, scrollAlertsOnce, onAlertsScrolled]);
 
   useEffect(() => {
     if (!layersOpen) return undefined;
@@ -209,21 +235,11 @@ export default function LiveMap({ focusIncidentId = null, focusNonce = 0, onView
   const focusOnIncident = (incidentId) => {
     const id = Number(incidentId);
     pendingFocusId.current = id;
+    // Manual card click: update highlight only — do not auto-scroll the panel
+    needsAlertPanelScroll.current = false;
     setSelectedId(id);
     setFocusRequestId((n) => n + 1);
   };
-
-  // Selected incident #ID first so the red box is always easy to see (same name OK — match by ID)
-  const sidebarIncidents = (() => {
-    if (selectedId == null) return liveIncidents;
-    const selected = [];
-    const rest = [];
-    for (const inc of liveIncidents) {
-      if (sameIncidentId(inc.incident_id, selectedId)) selected.push(inc);
-      else rest.push(inc);
-    }
-    return selected.length ? [...selected, ...rest] : liveIncidents;
-  })();
 
   const openStreetView = (inc) => {
     if (!inc?.victim) return;
@@ -780,8 +796,12 @@ export default function LiveMap({ focusIncidentId = null, focusNonce = 0, onView
             <p className={styles.emptyHint}>Press Help on the mobile app inside Cabadbaran City to trigger a response.</p>
           </div>
         ) : (
-          <div ref={alertListRef} className={styles.alertList}>
-          {sidebarIncidents.map((inc) => {
+          <div
+            ref={alertListRef}
+            className={styles.alertList}
+            data-active-help-scroll
+          >
+          {liveIncidents.map((inc) => {
             const outside = !isWithinCabadbaran(inc.victim.lat, inc.victim.lng);
             const route = routes[Number(inc.incident_id)];
             const parsed = parseLocationAddress(inc.victim.address);

@@ -1516,6 +1516,7 @@ export default function Dashboard() {
   const [assigningIncident, setAssigningIncident] = useState(null);
   const [liveMapFocusId, setLiveMapFocusId] = useState(null);
   const [liveMapFocusNonce, setLiveMapFocusNonce] = useState(0);
+  const [liveMapScrollOnce, setLiveMapScrollOnce] = useState(false);
   const [responderModal, setResponderModal] = useState(null);
   const [viewingResponder, setViewingResponder] = useState(null);
   const [incidentFilter, setIncidentFilter] = useState('pending');
@@ -1632,12 +1633,17 @@ export default function Dashboard() {
     });
   };
 
+  const handleLiveMapAlertsScrolled = useCallback(() => {
+    setLiveMapScrollOnce(false);
+  }, []);
+
   const handleShowOnLiveMap = (inc) => {
     markIncidentViewed(inc);
     const id = Number(inc.incident_id);
     // Always bump nonce so re-clicking the same green map icon still focuses the card.
     setLiveMapFocusId(id);
     setLiveMapFocusNonce((n) => n + 1);
+    setLiveMapScrollOnce(true);
     setActiveTab('live-map');
   };
 
@@ -2528,9 +2534,11 @@ export default function Dashboard() {
           {/* ── LIVE MAP ─────────────────────────────────── */}
           {activeTab === 'live-map' && (
             <LiveMap
-              key={`live-map-${liveMapFocusId ?? 'none'}-${liveMapFocusNonce}`}
+              key="live-map"
               focusIncidentId={liveMapFocusId}
               focusNonce={liveMapFocusNonce}
+              scrollAlertsOnce={liveMapScrollOnce}
+              onAlertsScrolled={handleLiveMapAlertsScrolled}
               onViewDetails={(incidentId) => {
                 const inc = incidents.find((row) => Number(row.incident_id) === Number(incidentId));
                 if (inc) handleOpenIncident(inc);
