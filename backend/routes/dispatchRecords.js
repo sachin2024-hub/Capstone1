@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
-const { archiveId, restoreId, listArchived } = require('../utils/archiveStore');
 const { logActivity } = require('../utils/activityLogger');
 
 const FIELDS = [
@@ -37,17 +36,11 @@ router.get('/', async (req, res) => {
     const { data, error } = await query;
     if (error) return res.status(500).json({ message: error.message });
 
-    const archived = new Set(listArchived('dispatch'));
-    const rows = (data || [])
-      .filter((row) => {
-        const id = String(row.dispatch_record_id);
-        return req.query.archived === '1' ? archived.has(id) : !archived.has(id);
-      })
-      .sort((a, b) => {
-        const ta = a.time_dispatch || '';
-        const tb = b.time_dispatch || '';
-        return ta.localeCompare(tb);
-      });
+    const rows = (data || []).sort((a, b) => {
+      const ta = a.time_dispatch || '';
+      const tb = b.time_dispatch || '';
+      return ta.localeCompare(tb);
+    });
 
     return res.json(rows);
   } catch (err) {
@@ -109,49 +102,23 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// PATCH /api/dispatch-records/:id/restore
-router.patch('/:id/restore', async (req, res) => {
-  restoreId('dispatch', req.params.id);
-  logActivity(req, {
-    action: 'dispatch_record.restore',
-    entity_type: 'dispatch_record',
-    entity_id: req.params.id,
-    target: `Dispatch #${req.params.id}`,
-    details: `Restored dispatch record #${req.params.id}.`,
-  });
-  return res.json({ message: 'Dispatch record restored.' });
-});
-
-// DELETE /api/dispatch-records/:id — archive, or permanently remove if ?permanent=1
+// DELETE /api/dispatch-records/:id — permanently remove
 router.delete('/:id', async (req, res) => {
   try {
-    if (req.query.permanent === '1') {
-      restoreId('dispatch', req.params.id);
-      const { error } = await supabase
-        .from('dispatch_records')
-        .delete()
-        .eq('dispatch_record_id', req.params.id);
+    const { error } = await supabase
+      .from('dispatch_records')
+      .delete()
+      .eq('dispatch_record_id', req.params.id);
 
-      if (error) return res.status(500).json({ message: error.message });
-      logActivity(req, {
-        action: 'dispatch_record.delete',
-        entity_type: 'dispatch_record',
-        entity_id: req.params.id,
-        target: `Dispatch #${req.params.id}`,
-        details: `Permanently deleted dispatch record #${req.params.id}.`,
-      });
-      return res.json({ message: 'Dispatch record permanently deleted.' });
-    }
-
-    archiveId('dispatch', req.params.id);
+    if (error) return res.status(500).json({ message: error.message });
     logActivity(req, {
-      action: 'dispatch_record.archive',
+      action: 'dispatch_record.delete',
       entity_type: 'dispatch_record',
       entity_id: req.params.id,
       target: `Dispatch #${req.params.id}`,
-      details: `Moved dispatch record #${req.params.id} to Archive.`,
+      details: `Permanently deleted dispatch record #${req.params.id}.`,
     });
-    return res.json({ message: 'Dispatch record moved to Archive.' });
+    return res.json({ message: 'Dispatch record permanently deleted.' });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }

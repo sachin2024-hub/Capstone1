@@ -14,7 +14,7 @@ router.get('/all', async (req, res) => {
       .select(`
         *,
         incidents(incident_id, incident_type, incident_status, priority_level, date_reported, users(first_name, last_name)),
-        responders(responder_id, first_name, last_name, responder_type, contact_number, availability_status)
+        responders(responder_id, vehicle, team, contact_number, availability_status)
       `)
       .order('dispatch_time', { ascending: false });
 
@@ -36,7 +36,7 @@ router.get('/live', async (req, res) => {
         locations(*),
         dispatch(
           dispatch_id, dispatch_status, dispatch_time,
-          responders(responder_id, first_name, last_name, responder_type, contact_number, availability_status)
+          responders(responder_id, vehicle, team, contact_number, availability_status)
         )
       `)
       .in('incident_status', ['Pending', 'Outside', 'For Referral', 'Referred', 'Dispatch', 'In Progress', 'En Route'])
@@ -124,7 +124,7 @@ router.post('/assign', async (req, res) => {
 
     const { data: responder, error: respErr } = await supabase
       .from('responders')
-      .select('responder_id, first_name, last_name, responder_type, availability_status')
+      .select('responder_id, vehicle, team, availability_status')
       .eq('responder_id', responderId)
       .single();
 
@@ -182,7 +182,7 @@ router.post('/assign', async (req, res) => {
       .from('dispatch')
       .select(`
         *,
-        responders(responder_id, first_name, last_name, responder_type, contact_number, availability_status)
+        responders(responder_id, vehicle, team, contact_number, availability_status)
       `)
       .eq('incident_id', incidentId)
       .order('dispatch_time', { ascending: false })
@@ -196,11 +196,11 @@ router.post('/assign', async (req, res) => {
       entity_type: 'incident',
       entity_id: incidentId,
       target: `Incident #${incidentId}`,
-      details: `Assigned ${responder.first_name} ${responder.last_name} (${responder.responder_type}) to accident #${incidentId}.`,
+      details: `Assigned ${responder.vehicle} (${responder.team}) to accident #${incidentId}.`,
     });
 
     return res.json({
-      message: `${responder.first_name} ${responder.last_name} assigned successfully.`,
+      message: `${responder.vehicle} (${responder.team}) assigned successfully.`,
       dispatch,
     });
   } catch (err) {

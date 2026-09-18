@@ -1,37 +1,39 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   createResponder,
   updateResponder,
-  RESPONDER_TYPES,
+  RESPONDER_TEAMS,
   AVAILABILITY_STATUSES,
 } from '../../services/responderService';
 import styles from './ResponderModal.module.css';
 
-const EMPTY_FORM = {
-  first_name: '',
-  middle_name: '',
-  last_name: '',
-  contact_number: '',
-  responder_type: 'Dispatcher',
-  availability_status: 'Available',
-};
+function formFromResponder(responder) {
+  if (!responder) {
+    return {
+      vehicle: '',
+      contact_number: '',
+      team: 'Alpha 1',
+      availability_status: 'Available',
+    };
+  }
+  return {
+    vehicle: responder.vehicle || '',
+    contact_number: responder.contact_number || '',
+    team: responder.team || 'Alpha 1',
+    availability_status: responder.availability_status || 'Available',
+  };
+}
 
 export default function ResponderModal({ responder, onClose, onSaved }) {
   const isEdit = Boolean(responder?.responder_id);
-  const [form, setForm] = useState(
-    responder
-      ? {
-          first_name: responder.first_name || '',
-          middle_name: responder.middle_name || '',
-          last_name: responder.last_name || '',
-          contact_number: responder.contact_number || '',
-          responder_type: responder.responder_type || 'Dispatcher',
-          availability_status: responder.availability_status || 'Available',
-        }
-      : { ...EMPTY_FORM }
-  );
+  const [form, setForm] = useState(() => formFromResponder(responder));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    setForm(formFromResponder(responder));
+    setError('');
+  }, [responder]);
 
   const handleChange = (e) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -40,12 +42,22 @@ export default function ResponderModal({ responder, onClose, onSaved }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.first_name.trim() || !form.last_name.trim()) {
-      setError('First name and last name are required.');
+    const vehicle = form.vehicle.trim();
+    if (!vehicle) {
+      setError('Vehicle name is required.');
       return;
     }
-    if (!form.responder_type) {
-      setError('Responder type is required.');
+    if (!form.team) {
+      setError('Team is required.');
+      return;
+    }
+    const contact = form.contact_number.trim();
+    if (contact && !/^\d{7,15}$/.test(contact)) {
+      setError('Contact number must be 7–15 digits.');
+      return;
+    }
+    if (!form.availability_status) {
+      setError('Availability status is required.');
       return;
     }
 
@@ -53,11 +65,9 @@ export default function ResponderModal({ responder, onClose, onSaved }) {
     setError('');
     try {
       const payload = {
-        first_name: form.first_name.trim(),
-        middle_name: form.middle_name.trim() || null,
-        last_name: form.last_name.trim(),
-        contact_number: form.contact_number.trim() || null,
-        responder_type: form.responder_type,
+        vehicle,
+        team: form.team,
+        contact_number: contact || null,
         availability_status: form.availability_status,
       };
 
@@ -67,7 +77,7 @@ export default function ResponderModal({ responder, onClose, onSaved }) {
         await createResponder(payload);
       }
 
-      onSaved?.();
+      await onSaved?.();
       onClose();
     } catch (err) {
       setError(err.message || 'Failed to save responder.');
@@ -81,46 +91,22 @@ export default function ResponderModal({ responder, onClose, onSaved }) {
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div className={styles.modalHeader}>
           <h3 className={styles.modalTitle}>
-            {isEdit ? 'Edit Responder' : 'Add Responder / Dispatcher'}
+            {isEdit ? 'Edit Vehicle' : 'Add Vehicle'}
           </h3>
           <button type="button" className={styles.closeBtn} onClick={onClose}>✕</button>
         </div>
 
         <form onSubmit={handleSubmit}>
-          <div className={styles.row}>
-            <div className={styles.field}>
-              <label className={styles.label}>First Name *</label>
-              <input
-                className={styles.input}
-                name="first_name"
-                value={form.first_name}
-                onChange={handleChange}
-                disabled={saving}
-                placeholder="e.g. Juan"
-              />
-            </div>
-            <div className={styles.field}>
-              <label className={styles.label}>Last Name *</label>
-              <input
-                className={styles.input}
-                name="last_name"
-                value={form.last_name}
-                onChange={handleChange}
-                disabled={saving}
-                placeholder="e.g. Reyes"
-              />
-            </div>
-          </div>
-
           <div className={styles.field}>
-            <label className={styles.label}>Middle Name</label>
+            <label className={styles.label}>Vehicle *</label>
             <input
               className={styles.input}
-              name="middle_name"
-              value={form.middle_name}
+              name="vehicle"
+              value={form.vehicle}
               onChange={handleChange}
               disabled={saving}
-              placeholder="Optional"
+              placeholder="e.g. Ambulance 1"
+              autoFocus
             />
           </div>
 
@@ -133,26 +119,27 @@ export default function ResponderModal({ responder, onClose, onSaved }) {
               onChange={handleChange}
               disabled={saving}
               placeholder="09XXXXXXXXX"
+              inputMode="numeric"
             />
           </div>
 
           <div className={styles.row}>
             <div className={styles.field}>
-              <label className={styles.label}>Type *</label>
+              <label className={styles.label}>Team *</label>
               <select
                 className={styles.select}
-                name="responder_type"
-                value={form.responder_type}
+                name="team"
+                value={form.team}
                 onChange={handleChange}
                 disabled={saving}
               >
-                {RESPONDER_TYPES.map((type) => (
-                  <option key={type} value={type}>{type}</option>
+                {RESPONDER_TEAMS.map((team) => (
+                  <option key={team} value={team}>{team}</option>
                 ))}
               </select>
             </div>
             <div className={styles.field}>
-              <label className={styles.label}>Status</label>
+              <label className={styles.label}>Availability Status *</label>
               <select
                 className={styles.select}
                 name="availability_status"
@@ -167,6 +154,11 @@ export default function ResponderModal({ responder, onClose, onSaved }) {
             </div>
           </div>
 
+          <p className={styles.hint}>
+            Choose <strong>Available</strong>, <strong>Busy</strong>, or <strong>Off Duty</strong>, then click <strong>Save Changes</strong>.
+            The table status updates to match what you save.
+          </p>
+
           {error && <p className={styles.error}>{error}</p>}
 
           <div className={styles.actions}>
@@ -174,7 +166,7 @@ export default function ResponderModal({ responder, onClose, onSaved }) {
               Cancel
             </button>
             <button type="submit" className={styles.saveBtn} disabled={saving}>
-              {saving ? 'Saving...' : isEdit ? 'Save Changes' : 'Add Responder'}
+              {saving ? 'Saving...' : isEdit ? 'Save Changes' : 'Add Vehicle'}
             </button>
           </div>
         </form>

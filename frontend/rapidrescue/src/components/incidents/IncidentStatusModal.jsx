@@ -60,7 +60,7 @@ export default function IncidentStatusModal({ incident, responders = [], users =
   const reporterPhone = registeredUser?.phone_number || '';
   const reporterPhoto = userProfilePhotoUrl(registeredUser);
   const assignedName = responder
-    ? `${responder.first_name} ${responder.last_name}`
+    ? `${responder.vehicle || 'Vehicle'}${responder.team ? ` — ${responder.team}` : ''}`
     : 'Unassigned';
   const selectedHint = availableStatuses.find((s) => s.value === status)?.hint;
   const existingCancelReason = String(incident.incident_description || '').match(/\[Cancelled(?: by reporter)?\]\s*([\s\S]+)$/i)?.[1]?.trim() || '';
@@ -218,7 +218,7 @@ export default function IncidentStatusModal({ incident, responders = [], users =
             {isAssigned ? (
               <>
                 <div className={styles.lockedAssign}>
-                  <Icon name="ambulance" size={16} /> {assignedName}{responder?.responder_type ? ` — ${responder.responder_type}` : ''}
+                  <Icon name="ambulance" size={16} /> {assignedName}
                 </div>
                 <p className={styles.lockHint}>
                   This unit stays assigned. You can change status, but you cannot switch ambulance/responder.
@@ -232,10 +232,10 @@ export default function IncidentStatusModal({ incident, responders = [], users =
                   onChange={(e) => setResponderId(e.target.value)}
                   disabled={saving}
                 >
-                  <option value="">— Choose responder / ambulance —</option>
+                  <option value="">— Choose vehicle / team —</option>
                   {availableResponders.map((r) => (
                     <option key={r.responder_id} value={r.responder_id}>
-                      {r.first_name} {r.last_name} — {r.responder_type}
+                      {r.vehicle} — {r.team}
                     </option>
                   ))}
                 </select>

@@ -125,7 +125,7 @@ router.get('/my-incidents', authenticateToken, async (req, res) => {
       .select(`
         *,
         locations(*),
-        dispatch(dispatch_id, responder_id, dispatch_status, dispatch_time, responders(responder_id, first_name, last_name, responder_type))
+        dispatch(dispatch_id, responder_id, dispatch_status, dispatch_time, responders(responder_id, vehicle, team))
       `)
       .eq('user_id', user_id)
       .order('date_reported', { ascending: false });
@@ -240,7 +240,7 @@ router.get('/all', async (req, res) => {
         *,
         users(user_id, first_name, middle_name, last_name, email, phone_number, address),
         locations(*),
-        dispatch(dispatch_id, responder_id, dispatch_status, dispatch_time, responders(responder_id, first_name, last_name, responder_type))
+        dispatch(dispatch_id, responder_id, dispatch_status, dispatch_time, responders(responder_id, vehicle, team))
       `)
       .order('date_reported', { ascending: false });
 

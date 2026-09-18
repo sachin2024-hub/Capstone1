@@ -56,7 +56,8 @@ export default function AssignResponderModal({ incident, responders, onClose, on
           )}
           {currentResponder && (
             <p className={styles.responder}>
-              Current: <Icon name="ambulance" size={16} /> {currentResponder.first_name} {currentResponder.last_name}
+              Current: <Icon name="ambulance" size={16} /> {currentResponder.vehicle}
+              {currentResponder.team ? ` — ${currentResponder.team}` : ''}
             </p>
           )}
         </div>
@@ -64,8 +65,8 @@ export default function AssignResponderModal({ incident, responders, onClose, on
         {isAssigned ? (
           <>
             <div className={styles.lockedAssign}>
-              <Icon name="ambulance" size={16} /> {currentResponder?.first_name} {currentResponder?.last_name}
-              {currentResponder?.responder_type ? ` — ${currentResponder.responder_type}` : ''}
+              <Icon name="ambulance" size={16} /> {currentResponder?.vehicle}
+              {currentResponder?.team ? ` — ${currentResponder.team}` : ''}
             </div>
             <p className={styles.lockHint}>
               This unit stays assigned. Change status in Incident Details if needed.
@@ -73,19 +74,19 @@ export default function AssignResponderModal({ incident, responders, onClose, on
           </>
         ) : (
           <>
-            <label className={styles.label}>Select responder / team</label>
+            <label className={styles.label}>Select vehicle / team</label>
             <select
               className={styles.select}
               value={responderId}
               onChange={(e) => setResponderId(e.target.value)}
               disabled={saving}
             >
-              <option value="">— Choose responder —</option>
+              <option value="">— Choose vehicle —</option>
               {responders
                 .filter((r) => !r.occupied && String(r.availability_status || '').toLowerCase() === 'available')
                 .map((r) => (
                 <option key={r.responder_id} value={r.responder_id}>
-                  {r.first_name} {r.last_name} — {r.responder_type}
+                  {r.vehicle} — {r.team}
                 </option>
               ))}
             </select>

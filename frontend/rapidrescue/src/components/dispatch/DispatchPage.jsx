@@ -3,7 +3,7 @@ import TablePager from '../common/TablePager';
 import { resolvePageSize, usePersistedPageSize } from '../common/tablePageSize';
 import {
   fetchDispatchRecords,
-  deleteDispatchRecord,
+  permanentDeleteDispatchRecord,
 } from '../../services/dispatchRecordService';
 import DispatchRecordModal from './DispatchRecordModal';
 import ConfirmModal from '../common/ConfirmModal';
@@ -46,7 +46,7 @@ function renderCell(row, key) {
   return row[key] ?? '—';
 }
 
-export default function DispatchPage({ onArchived }) {
+export default function DispatchPage() {
   const [logDate, setLogDate] = useState(todayStr);
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -97,10 +97,9 @@ export default function DispatchPage({ onArchived }) {
   const handleDelete = async () => {
     if (!confirmDelete) return;
     try {
-      await deleteDispatchRecord(confirmDelete.dispatch_record_id);
+      await permanentDeleteDispatchRecord(confirmDelete.dispatch_record_id);
       setConfirmDelete(null);
       await loadRecords();
-      onArchived?.();
     } catch (err) {
       setError(err.message || 'Failed to delete record.');
       setConfirmDelete(null);
@@ -246,7 +245,7 @@ export default function DispatchPage({ onArchived }) {
       {confirmDelete && (
         <ConfirmModal
           title="Delete Dispatch Record?"
-          message={`Move the dispatch record for ${confirmDelete.vehicle || 'this vehicle'} to Archive? You can restore it later.`}
+          message={`Permanently delete the dispatch record for ${confirmDelete.vehicle || 'this vehicle'}? This cannot be undone.`}
           confirmLabel="Delete"
           cancelLabel="Cancel"
           variant="danger"

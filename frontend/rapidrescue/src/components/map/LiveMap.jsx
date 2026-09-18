@@ -426,7 +426,7 @@ export default function LiveMap({
                     </strong>
                     {activeDispatches.map((inc) => (
                       <div key={inc.incident_id} style={{ fontSize: 11, color: '#555', marginTop: 4 }}>
-                        → #{inc.incident_id} · {inc.responder.first_name} {inc.responder.last_name}
+                        → #{inc.incident_id} · {inc.responder.vehicle}{inc.responder.team ? ` (${inc.responder.team})` : ''}
                         <span style={{ color: '#e53935', fontWeight: 700 }}>
                           {' '}({inc.dispatch?.dispatch_status || 'En Route'})
                         </span>
@@ -475,7 +475,7 @@ export default function LiveMap({
                           </strong>
                           {dispatchingFrom.map((inc) => (
                             <div key={inc.incident_id} style={{ fontSize: 11, color: '#555', marginTop: 3 }}>
-                              → #{inc.incident_id} · {inc.responder.first_name} {inc.responder.last_name}
+                              → #{inc.incident_id} · {inc.responder.vehicle}{inc.responder.team ? ` (${inc.responder.team})` : ''}
                               <span style={{ color: '#e53935', fontWeight: 700 }}>
                                 {' '}({inc.dispatch?.dispatch_status || 'En Route'})
                               </span>
@@ -576,11 +576,11 @@ export default function LiveMap({
                     <Popup>
                       <div style={{ minWidth: 180 }}>
                         <strong style={{ fontSize: 13, color: '#0d47a1' }}>
-                          🚑 {inc.responder.first_name} {inc.responder.last_name}
+                          🚑 {inc.responder.vehicle}
                         </strong>
                         <br />
                         <span style={{ fontSize: 12, color: '#555' }}>
-                          {inc.responder.responder_type}
+                          {inc.responder.team}
                         </span>
                         <br />
                         <span style={{ fontSize: 12, color: '#1b5e20', fontWeight: 600 }}>
@@ -659,10 +659,10 @@ export default function LiveMap({
                   >
                     <Popup>
                       <strong>
-                        🚑 {inc.responder.first_name} {inc.responder.last_name}
+                        🚑 {inc.responder.vehicle}
                       </strong>
                       <br />
-                      {inc.responder.responder_type}
+                      {inc.responder.team}
                     </Popup>
                   </Marker>
                 )}
@@ -863,7 +863,7 @@ export default function LiveMap({
                     {inc.responder ? (
                       <>
                         <p className={styles.alertResponder}>
-                          🚑 {inc.responder.first_name} {inc.responder.last_name} — {inc.responder.responder_type}
+                          🚑 {inc.responder.vehicle} — {inc.responder.team}
                         </p>
                         <p className={styles.alertStation}>
                           🏢 From: {inc.responder.station_name || 'DRRMO Headquarters'}

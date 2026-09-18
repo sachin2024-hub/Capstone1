@@ -1,13 +1,21 @@
 import api from './api';
 
-export const RESPONDER_TYPES = [
-  'Dispatcher',
-  '1st Responder',
-  'Ambulance',
-  'Fire Rescue',
-  'Police',
-  'Rescue Team',
+/** Ambulance team callsigns */
+export const RESPONDER_TEAMS = [
+  'Alpha 1',
+  'Alpha 2',
+  'Alpha 3',
+  'Alpha 4',
+  'Bravo 1',
+  'Bravo 2',
+  'Bravo 3',
+  'Charlie 1',
+  'Charlie 2',
+  'Charlie 3',
 ];
+
+/** @deprecated use RESPONDER_TEAMS */
+export const RESPONDER_TYPES = RESPONDER_TEAMS;
 
 export const AVAILABILITY_STATUSES = ['Available', 'Busy', 'Off Duty'];
 

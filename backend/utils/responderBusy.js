@@ -8,7 +8,7 @@ const OPEN_INCIDENT_STATUSES = [
   'Arrived',
   'Outside',
   'For Referral',
-  'Referred',
+  // 'Referred' intentionally excluded — unit is no longer on route after referral
 ];
 
 async function listOccupiedResponders(exceptIncidentId = null) {

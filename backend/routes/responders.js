@@ -2,10 +2,14 @@ const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
 
-const { listOccupiedResponders } = require('../utils/responderBusy');
+const { listOccupiedResponders, isResponderOccupied } = require('../utils/responderBusy');
 const { logActivity } = require('../utils/activityLogger');
 
-const VALID_TYPES = ['Dispatcher', '1st Responder', 'Ambulance', 'Fire Rescue', 'Police', 'Rescue Team'];
+const VALID_TEAMS = [
+  'Alpha 1', 'Alpha 2', 'Alpha 3', 'Alpha 4',
+  'Bravo 1', 'Bravo 2', 'Bravo 3',
+  'Charlie 1', 'Charlie 2', 'Charlie 3',
+];
 const VALID_STATUSES = ['Available', 'Busy', 'Off Duty'];
 
 // GET /api/responders
@@ -13,7 +17,7 @@ router.get('/', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('responders')
-      .select('responder_id, first_name, middle_name, last_name, contact_number, responder_type, availability_status')
+      .select('responder_id, vehicle, team, contact_number, availability_status')
       .order('responder_id', { ascending: true });
 
     if (error) return res.status(500).json({ message: error.message });
@@ -22,9 +26,10 @@ router.get('/', async (req, res) => {
       const busyOn = occupied.get(Number(row.responder_id));
       return {
         ...row,
+        // Always show the status saved in Edit Vehicle (Available / Busy / Off Duty)
+        availability_status: row.availability_status || 'Available',
         occupied: Boolean(busyOn),
         occupied_incident_id: busyOn || null,
-        availability_status: busyOn && row.availability_status !== 'Off Duty' ? 'Busy' : row.availability_status,
       };
     });
     return res.json(rows);
@@ -35,18 +40,18 @@ router.get('/', async (req, res) => {
 
 // POST /api/responders
 router.post('/', async (req, res) => {
-  const { first_name, middle_name, last_name, contact_number, responder_type, availability_status } = req.body;
+  const vehicle = String(req.body.vehicle || '').trim();
+  const team = String(req.body.team || '').trim();
+  const contact_number = req.body.contact_number;
+  const availability_status = req.body.availability_status || 'Available';
 
-  if (!first_name || !last_name || !responder_type) {
-    return res.status(400).json({ message: 'First name, last name, and responder type are required.' });
+  if (!vehicle || !team) {
+    return res.status(400).json({ message: 'Vehicle and team are required.' });
   }
-
-  if (!VALID_TYPES.includes(responder_type)) {
-    return res.status(400).json({ message: 'Invalid responder type.' });
+  if (!VALID_TEAMS.includes(team)) {
+    return res.status(400).json({ message: 'Invalid team. Choose Alpha, Bravo, or Charlie unit.' });
   }
-
-  const status = availability_status || 'Available';
-  if (!VALID_STATUSES.includes(status)) {
+  if (!VALID_STATUSES.includes(availability_status)) {
     return res.status(400).json({ message: 'Invalid availability status.' });
   }
 
@@ -54,12 +59,10 @@ router.post('/', async (req, res) => {
     const { data, error } = await supabase
       .from('responders')
       .insert([{
-        first_name,
-        middle_name: middle_name || null,
-        last_name,
+        vehicle,
+        team,
         contact_number: contact_number || null,
-        responder_type,
-        availability_status: status,
+        availability_status,
       }])
       .select()
       .single();
@@ -69,8 +72,8 @@ router.post('/', async (req, res) => {
       action: 'responder.create',
       entity_type: 'responder',
       entity_id: data.responder_id,
-      target: `${data.first_name} ${data.last_name}`,
-      details: `Added ${data.responder_type} ${data.first_name} ${data.last_name}.`,
+      target: data.vehicle,
+      details: `Added vehicle ${data.vehicle} (${data.team}).`,
     });
     return res.status(201).json(data);
   } catch (err) {
@@ -78,33 +81,34 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PATCH /api/responders/:id — update responder
+// PATCH /api/responders/:id
 router.patch('/:id', async (req, res) => {
-  const {
-    first_name,
-    middle_name,
-    last_name,
-    contact_number,
-    responder_type,
-    availability_status,
-  } = req.body;
+  const responderId = Number(req.params.id);
+  if (!Number.isFinite(responderId)) {
+    return res.status(400).json({ message: 'Invalid responder id.' });
+  }
 
   const updates = {};
-  if (first_name !== undefined) updates.first_name = first_name;
-  if (middle_name !== undefined) updates.middle_name = middle_name || null;
-  if (last_name !== undefined) updates.last_name = last_name;
-  if (contact_number !== undefined) updates.contact_number = contact_number || null;
-  if (responder_type !== undefined) {
-    if (!VALID_TYPES.includes(responder_type)) {
-      return res.status(400).json({ message: 'Invalid responder type.' });
-    }
-    updates.responder_type = responder_type;
+  if (req.body.vehicle !== undefined) {
+    const vehicle = String(req.body.vehicle || '').trim();
+    if (!vehicle) return res.status(400).json({ message: 'Vehicle name is required.' });
+    updates.vehicle = vehicle;
   }
-  if (availability_status !== undefined) {
-    if (!VALID_STATUSES.includes(availability_status)) {
+  if (req.body.team !== undefined) {
+    const team = String(req.body.team || '').trim();
+    if (!VALID_TEAMS.includes(team)) {
+      return res.status(400).json({ message: 'Invalid team. Choose Alpha, Bravo, or Charlie unit.' });
+    }
+    updates.team = team;
+  }
+  if (req.body.contact_number !== undefined) {
+    updates.contact_number = req.body.contact_number || null;
+  }
+  if (req.body.availability_status !== undefined) {
+    if (!VALID_STATUSES.includes(req.body.availability_status)) {
       return res.status(400).json({ message: 'Invalid availability status.' });
     }
-    updates.availability_status = availability_status;
+    updates.availability_status = req.body.availability_status;
   }
 
   if (!Object.keys(updates).length) {
@@ -115,7 +119,7 @@ router.patch('/:id', async (req, res) => {
     const { data, error } = await supabase
       .from('responders')
       .update(updates)
-      .eq('responder_id', req.params.id)
+      .eq('responder_id', responderId)
       .select()
       .single();
 
@@ -125,8 +129,8 @@ router.patch('/:id', async (req, res) => {
       action: 'responder.update',
       entity_type: 'responder',
       entity_id: data.responder_id,
-      target: `${data.first_name} ${data.last_name}`,
-      details: `Updated ${data.responder_type} ${data.first_name} ${data.last_name}${updates.availability_status ? ` (status: ${updates.availability_status})` : ''}.`,
+      target: data.vehicle,
+      details: `Updated vehicle ${data.vehicle} (${data.team})${updates.availability_status ? ` (status: ${updates.availability_status})` : ''}.`,
     });
     return res.json(data);
   } catch (err) {
@@ -136,20 +140,25 @@ router.patch('/:id', async (req, res) => {
 
 // PATCH /api/responders/:id/status
 router.patch('/:id/status', async (req, res) => {
+  const responderId = Number(req.params.id);
   const { availability_status } = req.body;
   if (!availability_status) {
     return res.status(400).json({ message: 'availability_status is required.' });
+  }
+  if (!VALID_STATUSES.includes(availability_status)) {
+    return res.status(400).json({ message: 'Invalid availability status.' });
   }
 
   try {
     const { data, error } = await supabase
       .from('responders')
       .update({ availability_status })
-      .eq('responder_id', req.params.id)
+      .eq('responder_id', responderId)
       .select()
       .single();
 
     if (error) return res.status(500).json({ message: error.message });
+    if (!data) return res.status(404).json({ message: 'Responder not found.' });
     return res.json(data);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
@@ -159,29 +168,28 @@ router.patch('/:id/status', async (req, res) => {
 // DELETE /api/responders/:id
 router.delete('/:id', async (req, res) => {
   const responderId = Number(req.params.id);
+  if (!Number.isFinite(responderId)) {
+    return res.status(400).json({ message: 'Invalid responder id.' });
+  }
 
   try {
-    const { data: activeDispatches, error: dispatchErr } = await supabase
-      .from('dispatch')
-      .select('dispatch_id, incidents(incident_status)')
-      .eq('responder_id', responderId);
-
-    if (dispatchErr) return res.status(500).json({ message: dispatchErr.message });
-
-    const hasActive = (activeDispatches || []).some((d) => {
-      const status = d.incidents?.incident_status;
-      return status && !['Resolved', 'Cancelled', 'Archived', 'Deleted'].includes(status);
-    });
-
-    if (hasActive) {
+    const occupied = await isResponderOccupied(responderId);
+    if (occupied) {
       return res.status(400).json({
-        message: 'Cannot delete — responder is assigned to an active incident.',
+        message: 'Cannot delete — this unit is assigned to an active incident.',
       });
     }
 
-    if (activeDispatches?.length) {
-      await supabase.from('dispatch').delete().eq('responder_id', responderId);
-    }
+    await supabase.from('dispatch').delete().eq('responder_id', responderId);
+
+    const { data: existing, error: findErr } = await supabase
+      .from('responders')
+      .select('responder_id, vehicle, team')
+      .eq('responder_id', responderId)
+      .maybeSingle();
+
+    if (findErr) return res.status(500).json({ message: findErr.message });
+    if (!existing) return res.status(404).json({ message: 'Responder not found.' });
 
     const { error } = await supabase
       .from('responders')
@@ -194,8 +202,8 @@ router.delete('/:id', async (req, res) => {
       action: 'responder.delete',
       entity_type: 'responder',
       entity_id: responderId,
-      target: `Responder #${responderId}`,
-      details: `Deleted responder #${responderId}.`,
+      target: existing.vehicle,
+      details: `Deleted vehicle ${existing.vehicle} (${existing.team}).`,
     });
     return res.json({ message: 'Responder deleted successfully.' });
   } catch (err) {
@@ -204,3 +212,4 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.VALID_TEAMS = VALID_TEAMS;

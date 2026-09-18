@@ -16,10 +16,8 @@ import AccidentReport from '../../components/incidents/AccidentReport';
 import AssignResponderModal from '../../components/incidents/AssignResponderModal';
 import ResponderModal from '../../components/responders/ResponderModal';
 import CallLogPage from '../../components/calllog/CallLogPage';
-import DispatchPage from '../../components/dispatch/DispatchPage';
 import { archiveIncident, restoreIncident, deleteIncident, permanentDeleteIncident, updateIncidentStatus, getStatusesForIncident, OUTSIDE_STATUS_VALUES } from '../../services/incidentService';
 import { deleteResponder } from '../../services/responderService';
-import { fetchDispatchRecords, restoreDispatchRecord, permanentDeleteDispatchRecord } from '../../services/dispatchRecordService';
 import { fetchCallLogs, restoreCallLog, permanentDeleteCallLog } from '../../services/callLogService';
 import { STATUS_COLORS, displayIncidentStatus, statusColor } from '../../constants/statusColors';
 import { BLOCK_REASONS } from '../../constants/blockReasons';
@@ -341,8 +339,7 @@ const NAV_SECTIONS = [
   {
     label: 'Operations',
     items: [
-      { id: 'responders', icon: 'ambulance', label: 'Ambulance' },
-      { id: 'dispatch', icon: 'cell_tower', label: 'Dispatch' },
+      { id: 'responders', icon: 'ambulance', label: 'Vehicle' },
     ],
   },
   {
@@ -370,17 +367,7 @@ const INCIDENT_FILTER_TABS = [
 
 const ARCHIVE_MODULE_TABS = [
   { id: 'accident', icon: 'emergency', label: 'Accident' },
-  { id: 'dispatch', icon: 'cell_tower', label: 'Dispatch' },
   { id: 'users', icon: 'group', label: 'Users' },
-];
-
-const DISPATCH_ARCHIVE_COLUMNS = [
-  { key: 'dispatch_record_id', label: 'ID', render: (row) => <strong>#{row.dispatch_record_id}</strong> },
-  { key: 'vehicle', label: 'Vehicle' },
-  { key: 'modulation', label: 'Destination' },
-  { key: 'team_officer', label: 'T.O' },
-  { key: 'time_dispatch', label: 'Time Dispatch' },
-  { key: 'log_date', label: 'Date' },
 ];
 
 const CALL_LOG_ARCHIVE_COLUMNS = [
@@ -432,17 +419,6 @@ function adminSearchText(row) {
   ].filter(Boolean).join(' ');
 }
 
-function dispatchRecordSearchText(row) {
-  return [
-    row.dispatch_record_id,
-    row.vehicle,
-    row.modulation,
-    row.team_officer,
-    row.on_board,
-    row.log_date,
-  ].filter(Boolean).join(' ');
-}
-
 function callLogSearchText(row) {
   return [
     row.call_log_id,
@@ -477,8 +453,8 @@ function incidentSearchText(inc) {
     inc.users?.first_name,
     inc.users?.last_name,
     loc?.address,
-    assigned?.first_name,
-    assigned?.last_name,
+    assigned?.vehicle,
+    assigned?.team,
   ]
     .filter(Boolean)
     .join(' ')
@@ -740,7 +716,7 @@ function IncidentTableSection({
                       <td style={{ fontSize: 12 }}>
                         {assigned ? (
                           <span className={styles.assignedBadge}>
-                            <Icon name="ambulance" size={16} /> {assigned.first_name} {assigned.last_name}
+                            <Icon name="ambulance" size={16} /> {assigned.vehicle || 'Vehicle'}{assigned.team ? ` — ${assigned.team}` : ''}
                           </span>
                         ) : (
                           <span style={{ color: '#bbb' }}>Unassigned</span>
@@ -1525,7 +1501,6 @@ export default function Dashboard() {
   const [archivingPeriod, setArchivingPeriod] = useState(false);
   const [archiveModule, setArchiveModule] = useState('accident');
   const [archiveSelectedIds, setArchiveSelectedIds] = useState(() => new Set());
-  const [archiveDispatchRows, setArchiveDispatchRows] = useState([]);
   const [archiveCallLogs, setArchiveCallLogs] = useState([]);
   const [archiveRecordsLoading, setArchiveRecordsLoading] = useState(false);
   const [confirmModal, setConfirmModal] = useState(null);
@@ -1587,11 +1562,7 @@ export default function Dashboard() {
   const fetchArchiveRecords = useCallback(async () => {
     setArchiveRecordsLoading(true);
     try {
-      const [dispatchRows, callLogs] = await Promise.all([
-        fetchDispatchRecords({ archived: true }),
-        fetchCallLogs({ archived: true }),
-      ]);
-      setArchiveDispatchRows(dispatchRows || []);
+      const callLogs = await fetchCallLogs({ archived: true });
       setArchiveCallLogs(callLogs || []);
     } catch (err) {
       setError(err.message || 'Failed to load archive records.');
@@ -1773,7 +1744,6 @@ export default function Dashboard() {
 
   const archiveModuleCounts = {
     accident: archivedIncidents.length + deletedIncidents.length,
-    dispatch: archiveDispatchRows.length,
     'call-log': archiveCallLogs.length,
     users: deletedUsers.length + deletedAdmins.length,
   };
@@ -2002,46 +1972,6 @@ export default function Dashboard() {
     });
   };
 
-  const handleRestoreDispatch = (ids) => {
-    if (!ids?.length) return;
-    openConfirm({
-      title: 'Restore dispatch record?',
-      message: `Restore ${ids.length} dispatch record(s) back to Dispatch?`,
-      confirmLabel: 'Restore',
-      variant: 'info',
-      onConfirm: async () => {
-        closeConfirm();
-        try {
-          await Promise.all(ids.map((id) => restoreDispatchRecord(id)));
-          setArchiveSelectedIds(new Set());
-          await fetchArchiveRecords();
-          setActiveTab('dispatch');
-        } catch (err) {
-          setError(err.message || 'Failed to restore dispatch records.');
-        }
-      },
-    });
-  };
-
-  const handleBulkDeleteDispatch = (ids) => {
-    if (!ids?.length) return;
-    openConfirm({
-      title: 'Delete dispatch records?',
-      message: `Permanently delete ${ids.length} dispatch record(s)? This cannot be undone.`,
-      confirmLabel: 'Delete',
-      onConfirm: async () => {
-        closeConfirm();
-        try {
-          await Promise.all(ids.map((id) => permanentDeleteDispatchRecord(id)));
-          setArchiveSelectedIds(new Set());
-          await fetchArchiveRecords();
-        } catch (err) {
-          setError(err.message || 'Failed to delete dispatch records.');
-        }
-      },
-    });
-  };
-
   const handleRestoreCallLogs = (ids) => {
     if (!ids?.length) return;
     openConfirm({
@@ -2082,14 +2012,26 @@ export default function Dashboard() {
     });
   };
 
-  const handleDeleteResponder = async (r) => {
-    if (!window.confirm(`Delete ${r.first_name} ${r.last_name}? This cannot be undone.`)) return;
-    try {
-      await deleteResponder(r.responder_id);
-      await fetchData();
-    } catch (err) {
-      setError(err.message || 'Failed to delete responder.');
-    }
+  const handleDeleteResponder = (r) => {
+    const vehicleName = r.vehicle || `Vehicle #${r.responder_id}`;
+    openConfirm({
+      title: 'Delete this vehicle?',
+      message: `Delete “${vehicleName}”? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      variant: 'danger',
+      onConfirm: async () => {
+        closeConfirm();
+        try {
+          await deleteResponder(r.responder_id);
+          if (viewingResponder?.responder_id === r.responder_id) {
+            setViewingResponder(null);
+          }
+          await fetchData();
+        } catch (err) {
+          setError(err.message || 'Failed to delete responder.');
+        }
+      },
+    });
   };
 
   const userIsBlocked = (u) => u.account_status !== 'Active';
@@ -2286,13 +2228,10 @@ export default function Dashboard() {
   const dateStr  = clock.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' });
 
   const dashboardIncidents = incidents.filter((i) => matchesIncidentDateRange(i, dashboardDateFilter));
-  const dashboardDispatches = dispatches.filter((d) =>
-    matchesIncidentDateRange({ date_reported: d.dispatch_time || d.created_at }, dashboardDateFilter)
-  );
   const statCards = [
     { label: 'Users', value: stats.users, icon: 'group', color: STAT_COLORS[0], tab: 'users' },
     { label: 'Incidents', value: dashboardIncidents.length, icon: 'emergency', color: STAT_COLORS[1], tab: 'incidents' },
-    { label: 'Ambulance', value: stats.responders, icon: 'ambulance', color: STAT_COLORS[2], tab: 'responders' },
+    { label: 'Vehicle', value: stats.responders, icon: 'ambulance', color: STAT_COLORS[2], tab: 'responders' },
     {
       label: 'Pending',
       value: dashboardIncidents.filter((i) => i.incident_status === 'Pending').length,
@@ -2302,7 +2241,6 @@ export default function Dashboard() {
       filter: 'pending',
     },
     { label: 'Available', value: stats.available, icon: 'check_circle', color: STAT_COLORS[4], tab: 'responders' },
-    { label: 'Dispatches', value: dashboardDispatches.length, icon: 'cell_tower', color: STAT_COLORS[5], tab: 'dispatch' },
   ];
 
   const openStatCard = (card) => {
@@ -2419,7 +2357,7 @@ export default function Dashboard() {
         </header>
 
         {/* Content */}
-        <div className={`${styles.content} ${(activeTab === 'live-map' || activeTab === 'call-log' || activeTab === 'dispatch') ? styles.contentPanel : ''}`}>
+        <div className={`${styles.content} ${(activeTab === 'live-map' || activeTab === 'call-log') ? styles.contentPanel : ''}`}>
           {error && (
             <div className={styles.errorBanner}>
               <span><Icon name="warning" size={16} /> {error}</span>
@@ -2777,28 +2715,6 @@ export default function Dashboard() {
                 </>
               )}
 
-              {archiveModule === 'dispatch' && (
-                <>
-                  <p className={styles.archiveHint}>
-                    Deleted dispatch records. Restore sends them back to Dispatch. Delete removes them permanently.
-                  </p>
-                  <ArchiveRecordsTable
-                    rows={archiveDispatchRows}
-                    columns={DISPATCH_ARCHIVE_COLUMNS}
-                    idKey="dispatch_record_id"
-                    isLoading={archiveRecordsLoading}
-                    emptyMessage="📭 No archived dispatch records yet."
-                    selectedIds={archiveSelectedIds}
-                    onToggleSelect={toggleArchiveSelect}
-                    onToggleSelectAll={toggleArchiveSelectAll}
-                    onRestore={handleRestoreDispatch}
-                    onDelete={handleBulkDeleteDispatch}
-                    searchPlaceholder="Search dispatch records..."
-                    getSearchText={dispatchRecordSearchText}
-                  />
-                </>
-              )}
-
               {archiveModule === 'call-log' && (
                 <>
                   <p className={styles.archiveHint}>
@@ -2942,7 +2858,7 @@ export default function Dashboard() {
                     <strong>{stats.users}</strong>
                   </div>
                   <div className={styles.settingsRow}>
-                    <span>Ambulance</span>
+                    <span>Vehicle</span>
                     <strong>{stats.responders}</strong>
                   </div>
                 </div>
@@ -2954,14 +2870,14 @@ export default function Dashboard() {
           {activeTab === 'responders' && (
             <div>
               <div className={styles.tabHeader}>
-                <h2 className={styles.sectionTitle}>Ambulance</h2>
+                <h2 className={styles.sectionTitle}>Vehicle</h2>
                 <div className={styles.tabHeaderActions}>
                   <button
                     type="button"
                     className={styles.addBtn}
                     onClick={() => setResponderModal({ mode: 'add' })}
                   >
-                    <Icon name="add" size={16} /> Add Dispatcher
+                    <Icon name="add" size={16} /> Add Vehicle
                   </button>
                 <button className={styles.refreshBtn} onClick={fetchData}><Icon name="refresh" size={16} /> Refresh</button>
                 </div>
@@ -2972,7 +2888,7 @@ export default function Dashboard() {
                     <table className={styles.table}>
                       <thead>
                         <tr>
-                          <th>ID</th><th>Name</th><th>Type</th><th>Contact</th>
+                          <th>ID</th><th>Vehicle</th><th>Team</th><th>Contact</th>
                           <th>Status</th><th>Action</th>
                         </tr>
                       </thead>
@@ -2986,16 +2902,18 @@ export default function Dashboard() {
                             <td><strong>#{r.responder_id}</strong></td>
                             <td>
                               <div className={styles.userCell}>
-                                <div className={styles.userAvatar}>{r.first_name?.charAt(0)}</div>
-                                <span className={styles.userName2}>{r.first_name} {r.last_name}</span>
+                                <div className={styles.userAvatar}>{(r.vehicle || '?').charAt(0).toUpperCase()}</div>
+                                <span className={styles.userName2}>{r.vehicle || '—'}</span>
                               </div>
                             </td>
-                            <td>{r.responder_type}</td>
+                            <td>{r.team || '—'}</td>
                             <td style={{ color: '#888' }}>{r.contact_number || '—'}</td>
                             <td>
                               <span
                                 className={`${styles.statusBadge} ${
-                                  r.availability_status === 'Available' ? styles.statusActive : styles.statusBusy
+                                  r.availability_status === 'Available'
+                                    ? styles.statusActive
+                                    : styles.statusBusy
                                 }`}
                               >
                                 <span className={styles.statusDotBadge} />
@@ -3007,14 +2925,20 @@ export default function Dashboard() {
                                 <button
                                   type="button"
                                   className={styles.editBtn}
-                                  onClick={() => setResponderModal({ mode: 'edit', responder: r })}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setResponderModal({ mode: 'edit', responder: r });
+                                  }}
                                 >
                                   <Icon name="edit" size={16} /> Edit
                                 </button>
                                 <button
                                   type="button"
                                   className={styles.deleteBtn}
-                                  onClick={() => handleDeleteResponder(r)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteResponder(r);
+                                  }}
                                 >
                                   <Icon name="delete" size={16} /> Delete
                               </button>
@@ -3023,7 +2947,7 @@ export default function Dashboard() {
                           </tr>
                         ))}
                         {responders.length === 0 && (
-                          <tr><td colSpan={6} className={styles.emptyRow}>📭 No responders yet. Click &quot;Add Dispatcher&quot; to create one.</td></tr>
+                          <tr><td colSpan={6} className={styles.emptyRow}>📭 No vehicles yet. Click &quot;Add Vehicle&quot; to create one.</td></tr>
                         )}
                       </tbody>
                     </table>
@@ -3040,17 +2964,6 @@ export default function Dashboard() {
                 )}
               </div>
             </div>
-          )}
-
-          {/* ── DISPATCH ─────────────────────────────────── */}
-          {activeTab === 'dispatch' && (
-            <DispatchPage
-              onArchived={() => {
-                setActiveTab('archive');
-                setArchiveModule('dispatch');
-                fetchArchiveRecords();
-              }}
-            />
           )}
 
           {/* ── CALL LOG ─────────────────────────────────── */}
@@ -3327,10 +3240,10 @@ export default function Dashboard() {
       )}
       {viewingResponder && (
         <RecordDetailsModal
-          title={`Responder Details — #${viewingResponder.responder_id}`}
+          title={`Vehicle Details — #${viewingResponder.responder_id}`}
           fields={[
-            { label: 'Name', value: [viewingResponder.first_name, viewingResponder.middle_name, viewingResponder.last_name].filter(Boolean).join(' ') },
-            { label: 'Type', value: viewingResponder.responder_type },
+            { label: 'Vehicle', value: viewingResponder.vehicle },
+            { label: 'Team', value: viewingResponder.team },
             { label: 'Contact', value: viewingResponder.contact_number },
             { label: 'Status', value: viewingResponder.availability_status },
             { label: 'On call', value: viewingResponder.occupied ? `Yes — Accident #${viewingResponder.occupied_incident_id}` : 'No' },
@@ -3345,6 +3258,7 @@ export default function Dashboard() {
       )}
       {responderModal && (
         <ResponderModal
+          key={responderModal.mode === 'edit' ? `edit-${responderModal.responder?.responder_id}` : 'add'}
           responder={responderModal.mode === 'edit' ? responderModal.responder : null}
           onClose={() => setResponderModal(null)}
           onSaved={fetchData}
