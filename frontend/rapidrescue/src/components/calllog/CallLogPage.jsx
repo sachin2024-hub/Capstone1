@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   fetchCallLogs,
   deleteCallLog,
@@ -54,16 +54,21 @@ export default function CallLogPage({ onArchived }) {
   const [team, setTeam] = useState('ALPHA');
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [modalEntry, setModalEntry] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [viewing, setViewing] = useState(null);
+  const loadLockRef = useRef(false);
 
   const teamInfo = CALL_LOG_TEAMS.find((t) => t.id === team) || CALL_LOG_TEAMS[0];
 
   const load = useCallback(async () => {
+    if (loadLockRef.current) return;
+    loadLockRef.current = true;
     setLoading(true);
+    setRefreshing(true);
     setError('');
     try {
       const data = await fetchCallLogs({ date: logDate, team });
@@ -71,11 +76,20 @@ export default function CallLogPage({ onArchived }) {
     } catch (err) {
       setError(err.message || 'Failed to load call log.');
     } finally {
+      loadLockRef.current = false;
       setLoading(false);
+      setRefreshing(false);
     }
   }, [logDate, team]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const timer = setTimeout(() => { load(); }, 0);
+    return () => clearTimeout(timer);
+  }, [load]);
+
+  const handleRefresh = () => {
+    load();
+  };
 
   const handleAdd = () => {
     setModalEntry(null);
@@ -127,7 +141,16 @@ export default function CallLogPage({ onArchived }) {
           </div>
         </div>
         <div className={styles.toolbarRight}>
-          <button type="button" className={styles.refreshBtn} onClick={load}><Icon name="refresh" size={16} /> Refresh</button>
+          <button
+            type="button"
+            className={styles.refreshBtn}
+            onClick={handleRefresh}
+            disabled={refreshing}
+            aria-busy={refreshing}
+          >
+            <Icon name="refresh" size={16} className={refreshing ? styles.refreshSpin : undefined} />
+            Refresh
+          </button>
           <button type="button" className={styles.addBtn} onClick={handleAdd}><Icon name="add" size={16} /> Add Entry</button>
         </div>
       </div>

@@ -1,4 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
+import { toPng } from 'html-to-image';
+import * as XLSX from 'xlsx';
 import { INCIDENT_TYPE_GROUPS, matchingTypeNames } from '../../constants/incidentTypes';
 import { STATUS_COLORS } from '../../constants/statusColors';
 import { OUTSIDE_STATUS_VALUES } from '../../services/incidentService';
@@ -6,13 +9,6 @@ import { parseLocationAddress } from '../../utils/locationFormat';
 import { isWithinCabadbaran } from '../../utils/geofence';
 import Icon from '../common/Icon';
 import styles from './AccidentReport.module.css';
-
-const RANGES = [
-  { id: 'all', label: 'All time' },
-  { id: 'today', label: 'Today' },
-  { id: '7d', label: 'Last 7 days' },
-  { id: '30d', label: 'Last 30 days' },
-];
 
 const ACTIVE_STATUSES = ['Dispatch', 'In Progress', 'En Route', 'Arrived'];
 const HIDDEN_STATUSES = ['Archived', 'Deleted'];
@@ -43,12 +39,54 @@ function shortDay(key) {
   return new Date(y, m - 1, d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
 }
 
-function rangeStart(rangeId) {
+function monthLabel(monthIndex) {
+  return new Date(2000, monthIndex, 1).toLocaleDateString('en-PH', { month: 'short' });
+}
+
+function buildTrend(rows, dateFilter) {
+  const mode = dateFilter?.mode || 'all';
   const now = new Date();
-  if (rangeId === 'today') return startOfLocalDay(now);
-  if (rangeId === '7d') return startOfLocalDay(addDays(now, -6));
-  if (rangeId === '30d') return startOfLocalDay(addDays(now, -29));
-  return null;
+
+  if (mode === 'year') {
+    const year = dateFilter.year ?? now.getFullYear();
+    const byMonth = Array.from({ length: 12 }, (_, month) => ({ label: monthLabel(month), count: 0 }));
+    rows.forEach((inc) => {
+      if (!inc.date_reported) return;
+      const d = new Date(inc.date_reported);
+      if (d.getFullYear() === year) byMonth[d.getMonth()].count += 1;
+    });
+    return byMonth;
+  }
+
+  let dayCount = 14;
+  let from = startOfLocalDay(addDays(now, -(dayCount - 1)));
+
+  if (mode === 'week') {
+    const start = startOfLocalDay(now);
+    const weekday = start.getDay();
+    start.setDate(start.getDate() - (weekday === 0 ? 6 : weekday - 1));
+    from = start;
+    dayCount = 7;
+  } else if (mode === 'month' || mode === 'date') {
+    const year = dateFilter.year ?? now.getFullYear();
+    const month = dateFilter.month ?? now.getMonth();
+    from = new Date(year, month, 1);
+    dayCount = new Date(year, month + 1, 0).getDate();
+  } else if (mode === 'day') {
+    dayCount = 1;
+    from = startOfLocalDay(now);
+  }
+
+  const byDay = new Map();
+  for (let i = 0; i < dayCount; i += 1) {
+    byDay.set(dayKey(addDays(from, i)), 0);
+  }
+  rows.forEach((inc) => {
+    if (!inc.date_reported) return;
+    const key = dayKey(inc.date_reported);
+    if (byDay.has(key)) byDay.set(key, byDay.get(key) + 1);
+  });
+  return [...byDay.entries()].map(([key, count]) => ({ label: shortDay(key), count }));
 }
 
 function getLocation(inc) {
@@ -97,22 +135,6 @@ function countBy(rows, keyFn) {
     .sort((a, b) => b.count - a.count);
 }
 
-function buildTrend(rows, range) {
-  const end = startOfLocalDay(new Date());
-  const dayCount = range === 'today' ? 1 : range === '7d' ? 7 : 14;
-  const from = startOfLocalDay(addDays(end, -(dayCount - 1)));
-  const byDay = new Map();
-  for (let i = 0; i < dayCount; i += 1) {
-    byDay.set(dayKey(addDays(from, i)), 0);
-  }
-  rows.forEach((inc) => {
-    if (!inc.date_reported) return;
-    const key = dayKey(inc.date_reported);
-    if (byDay.has(key)) byDay.set(key, byDay.get(key) + 1);
-  });
-  return [...byDay.entries()].map(([key, count]) => ({ label: shortDay(key), count }));
-}
-
 function hourLabel(hour) {
   if (hour === 0) return '12 AM';
   if (hour === 12) return '12 PM';
@@ -154,6 +176,36 @@ function averageResponseMs(rows) {
   return { avgMs, count: samples.length };
 }
 
+function fileStamp() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}${m}${day}`;
+}
+
+function slugify(text) {
+  return String(text || 'chart')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 48) || 'chart';
+}
+
+async function downloadNodeAsPng(node, filename) {
+  if (!node) return;
+  const dataUrl = await toPng(node, {
+    cacheBust: true,
+    pixelRatio: 2,
+    backgroundColor: '#ffffff',
+    filter: (el) => !(el instanceof HTMLElement && el.dataset?.captureIgnore === 'true'),
+  });
+  const link = document.createElement('a');
+  link.download = filename.endsWith('.png') ? filename : `${filename}.png`;
+  link.href = dataUrl;
+  link.click();
+}
+
 function polar(cx, cy, radius, angle) {
   const rad = ((angle - 90) * Math.PI) / 180;
   return [cx + radius * Math.cos(rad), cy + radius * Math.sin(rad)];
@@ -166,43 +218,177 @@ function arcPath(cx, cy, radius, startAngle, endAngle) {
   return `M ${x1} ${y1} A ${radius} ${radius} 0 ${large} 1 ${x2} ${y2}`;
 }
 
+function requestLabel(count) {
+  const n = Number(count) || 0;
+  return `${n} request${n === 1 ? '' : 's'}`;
+}
+
+function ChartTipBubble({ tip }) {
+  if (!tip) return null;
+  return (
+    <div
+      className={styles.chartTooltip}
+      style={{ left: tip.x, top: tip.y }}
+      role="tooltip"
+      data-capture-ignore="true"
+    >
+      <div className={styles.chartTooltipTitle}>{tip.label}</div>
+      {tip.value != null && tip.value !== '' && (
+        <div className={styles.chartTooltipValue}>{tip.value}</div>
+      )}
+      {tip.pct != null && tip.pct !== '' && (
+        <div className={styles.chartTooltipPct}>{tip.pct}</div>
+      )}
+    </div>
+  );
+}
+
+function useHoverTip() {
+  const hostRef = useRef(null);
+  const tipRef = useRef(null);
+  const [tip, setTip] = useState(null);
+
+  const place = (clientX, clientY, payload) => {
+    const host = hostRef.current;
+    if (!host) return;
+    const rect = host.getBoundingClientRect();
+    const pad = 12;
+    let x = clientX - rect.left + 14;
+    let y = clientY - rect.top - 10;
+    const maxX = Math.max(pad, rect.width - 160);
+    const maxY = Math.max(pad, rect.height - 70);
+    x = Math.min(Math.max(pad, x), maxX);
+    y = Math.min(Math.max(pad, y), maxY);
+    const next = { ...payload, x, y };
+    tipRef.current = next;
+    setTip(next);
+  };
+
+  const showAtEvent = (e, payload) => {
+    const point = e.touches?.[0] || e.changedTouches?.[0] || e;
+    place(point.clientX, point.clientY, payload);
+  };
+
+  const hide = () => {
+    tipRef.current = null;
+    setTip(null);
+  };
+
+  const bindItem = (payload) => ({
+    onMouseEnter: (e) => showAtEvent(e, payload),
+    onMouseMove: (e) => showAtEvent(e, payload),
+    onMouseLeave: hide,
+    onFocus: (e) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      place(rect.left + rect.width / 2, rect.top, payload);
+    },
+    onBlur: hide,
+    onClick: (e) => {
+      e.stopPropagation();
+      if (tipRef.current && tipRef.current.label === payload.label) hide();
+      else showAtEvent(e, payload);
+    },
+  });
+
+  return { hostRef, tip, showAtEvent, hide, bindItem };
+}
+
 function DonutChart({ items, size = 168, stroke = 22, centerValue, centerLabel }) {
   const total = items.reduce((sum, item) => sum + item.count, 0);
   const slices = items.filter((item) => item.count > 0);
   const cx = size / 2;
   const cy = size / 2;
   const radius = (size - stroke) / 2;
+  const { hostRef, tip, showAtEvent, hide, bindItem } = useHoverTip();
+
+  const sliceMeta = [];
   let angle = 0;
+  slices.forEach((item) => {
+    const sweep = total > 0 ? (item.count / total) * 360 : 0;
+    const start = angle;
+    const end = angle + sweep;
+    sliceMeta.push({ ...item, start, end, sweep });
+    angle = end;
+  });
+
+  const tipFor = (item) => ({
+    label: item.label,
+    value: requestLabel(item.count),
+    pct: pct(item.count, total),
+  });
+
+  const resolveSliceFromPointer = (e) => {
+    const svg = e.currentTarget;
+    const rect = svg.getBoundingClientRect();
+    const point = e.touches?.[0] || e;
+    const x = point.clientX - rect.left - cx;
+    const y = point.clientY - rect.top - cy;
+    const dist = Math.sqrt(x * x + y * y);
+    const band = stroke / 2 + 6;
+    if (dist < radius - band || dist > radius + band) {
+      hide();
+      return;
+    }
+    if (!sliceMeta.length) {
+      hide();
+      return;
+    }
+    if (sliceMeta.length === 1) {
+      showAtEvent(e, tipFor(sliceMeta[0]));
+      return;
+    }
+    let deg = (Math.atan2(y, x) * 180) / Math.PI + 90;
+    if (deg < 0) deg += 360;
+    const hit = sliceMeta.find((s) => deg >= s.start && deg < s.end) || sliceMeta[sliceMeta.length - 1];
+    showAtEvent(e, tipFor(hit));
+  };
 
   return (
-    <div className={styles.donutWrap}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className={styles.donutSvg}>
+    <div className={`${styles.donutWrap} ${styles.tipHost}`} ref={hostRef} onMouseLeave={hide}>
+      <svg
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+        className={styles.donutSvg}
+        onMouseMove={resolveSliceFromPointer}
+        onMouseLeave={hide}
+        onClick={resolveSliceFromPointer}
+        onTouchStart={resolveSliceFromPointer}
+      >
         <circle cx={cx} cy={cy} r={radius} fill="none" stroke="#eef2f7" strokeWidth={stroke} />
-        {total > 0 && slices.length === 1 && (
-          <circle cx={cx} cy={cy} r={radius} fill="none" stroke={slices[0].color} strokeWidth={stroke} />
+        {total > 0 && sliceMeta.length === 1 && (
+          <circle
+            cx={cx}
+            cy={cy}
+            r={radius}
+            fill="none"
+            stroke={sliceMeta[0].color}
+            strokeWidth={stroke}
+            className={styles.donutHit}
+          />
         )}
-        {total > 0 && slices.length > 1 && slices.map((item) => {
-          const sweep = (item.count / total) * 360;
-          const start = angle;
-          const end = angle + sweep;
-          angle = end;
-          return (
-            <path
-              key={item.label}
-              d={arcPath(cx, cy, radius, start, end)}
-              fill="none"
-              stroke={item.color}
-              strokeWidth={stroke}
-              strokeLinecap="butt"
-            />
-          );
-        })}
+        {total > 0 && sliceMeta.length > 1 && sliceMeta.map((item) => (
+          <path
+            key={item.label}
+            d={arcPath(cx, cy, radius, item.start, item.end)}
+            fill="none"
+            stroke={item.color}
+            strokeWidth={stroke}
+            strokeLinecap="butt"
+            className={styles.donutHit}
+          />
+        ))}
         <text x={cx} y={cy - 6} textAnchor="middle" className={styles.donutValue}>{centerValue}</text>
         <text x={cx} y={cy + 14} textAnchor="middle" className={styles.donutCenterLabel}>{centerLabel}</text>
       </svg>
       <ul className={styles.donutLegend}>
         {items.map((item) => (
-          <li key={item.label}>
+          <li
+            key={item.label}
+            className={styles.legendItem}
+            tabIndex={0}
+            {...bindItem(tipFor(item))}
+          >
             <span className={styles.legendDot} style={{ background: item.color }} />
             <span className={styles.legendName}>{item.label}</span>
             <span className={styles.legendCount}>{item.count}</span>
@@ -210,68 +396,151 @@ function DonutChart({ items, size = 168, stroke = 22, centerValue, centerLabel }
           </li>
         ))}
       </ul>
+      <ChartTipBubble tip={tip} />
     </div>
   );
 }
 
 function BarList({ items, colors, total }) {
   const max = Math.max(1, ...items.map((item) => item.count));
+  const { hostRef, tip, hide, bindItem } = useHoverTip();
+
   if (!items.length) {
     return <p className={styles.emptyChart}>No data for this period.</p>;
   }
   return (
-    <div className={styles.barList}>
-      {items.map((item, idx) => (
-        <div key={item.label} className={styles.barRow}>
-          <span className={styles.barLabel} title={item.label}>{item.label}</span>
-          <div className={styles.barTrack}>
-            <div
-              className={styles.barFill}
-              style={{
-                width: `${(item.count / max) * 100}%`,
-                background: Array.isArray(colors) ? colors[idx % colors.length] : (colors[item.label] || colors.default || '#c1121f'),
-              }}
-            />
+    <div className={`${styles.barList} ${styles.tipHost}`} ref={hostRef} onMouseLeave={hide}>
+      {items.map((item, idx) => {
+        const payload = {
+          label: item.label,
+          value: requestLabel(item.count),
+          pct: pct(item.count, total),
+        };
+        return (
+          <div
+            key={item.label}
+            className={styles.barRow}
+            tabIndex={0}
+            {...bindItem(payload)}
+          >
+            <span className={styles.barLabel}>{item.label}</span>
+            <div className={styles.barTrack}>
+              <div
+                className={styles.barFill}
+                style={{
+                  width: `${(item.count / max) * 100}%`,
+                  background: Array.isArray(colors) ? colors[idx % colors.length] : (colors[item.label] || colors.default || '#c1121f'),
+                }}
+              />
+            </div>
+            <span className={styles.barCount}>{item.count}</span>
+            <span className={styles.barPct}>{pct(item.count, total)}</span>
           </div>
-          <span className={styles.barCount}>{item.count}</span>
-          <span className={styles.barPct}>{pct(item.count, total)}</span>
-        </div>
-      ))}
+        );
+      })}
+      <ChartTipBubble tip={tip} />
     </div>
   );
 }
 
 function ColumnChart({ points, color = '#c1121f' }) {
   const max = Math.max(1, ...points.map((p) => p.count));
+  const { hostRef, tip, hide, bindItem } = useHoverTip();
+
   return (
-    <div className={styles.columns}>
-      {points.map((point) => (
-        <div key={point.label} className={styles.col} title={`${point.label}: ${point.count}`}>
-          <span className={styles.colValue}>{point.count || ''}</span>
-          <div className={styles.colTrack}>
-            <div
-              className={styles.colBar}
-              style={{ height: `${Math.max(point.count ? 8 : 2, (point.count / max) * 100)}%`, background: color }}
-            />
+    <div className={`${styles.columns} ${styles.tipHost}`} ref={hostRef} onMouseLeave={hide}>
+      {points.map((point) => {
+        const payload = {
+          label: point.label,
+          value: requestLabel(point.count),
+          pct: null,
+        };
+        return (
+          <div
+            key={point.label}
+            className={styles.col}
+            tabIndex={0}
+            {...bindItem(payload)}
+          >
+            <span className={styles.colValue}>{point.count || ''}</span>
+            <div className={styles.colTrack}>
+              <div
+                className={styles.colBar}
+                style={{ height: `${Math.max(point.count ? 8 : 2, (point.count / max) * 100)}%`, background: color }}
+              />
+            </div>
+            <span className={styles.colLabel}>{point.label}</span>
           </div>
-          <span className={styles.colLabel}>{point.label}</span>
-        </div>
-      ))}
+        );
+      })}
+      <ChartTipBubble tip={tip} />
     </div>
   );
 }
 
-export default function AccidentReport({ incidents = [], isLoading = false }) {
-  const [range, setRange] = useState('all');
+function ChartCard({ title, note, children, wide = false }) {
+  const cardRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+
+  const handleDownload = async () => {
+    if (!cardRef.current || busy) return;
+    setBusy(true);
+    try {
+      await downloadNodeAsPng(cardRef.current, `rapidrescue-${slugify(title)}-${fileStamp()}.png`);
+    } catch (err) {
+      console.error('Chart image download failed:', err);
+      window.alert('Could not download chart image. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section ref={cardRef} className={`${styles.card} ${wide ? styles.wide : ''}`}>
+      <div className={styles.cardHead}>
+        <h4>{title}</h4>
+        <button
+          type="button"
+          className={styles.chartDownloadBtn}
+          onClick={handleDownload}
+          disabled={busy}
+          title="Download Image"
+          data-capture-ignore="true"
+        >
+          <Icon name="download" size={14} />
+          {busy ? 'Saving…' : 'Download Image'}
+        </button>
+      </div>
+      {note ? <p className={styles.chartNote}>{note}</p> : null}
+      {children}
+    </section>
+  );
+}
+
+export default function AccidentReport({
+  incidents = [],
+  dateFilter = { mode: 'all' },
+  periodLabel = 'all time',
+  isLoading = false,
+}) {
+  const mode = dateFilter?.mode || 'all';
+  const [printOpen, setPrintOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [reportMeta, setReportMeta] = useState({
+    title: 'Accident Analytic Report',
+    subtitle: '',
+    preparedBy: '',
+    notes: '',
+  });
+  const [printDraft, setPrintDraft] = useState({
+    title: 'Accident Analytic Report',
+    subtitle: '',
+    preparedBy: '',
+    notes: '',
+  });
 
   const report = useMemo(() => {
-    const start = rangeStart(range);
-    const live = (incidents || []).filter((inc) => !HIDDEN_STATUSES.includes(inc.incident_status));
-    const rows = live.filter((inc) => {
-      if (!start) return true;
-      const reported = inc.date_reported ? new Date(inc.date_reported) : null;
-      return reported && reported >= start;
-    });
+    const rows = (incidents || []).filter((inc) => !HIDDEN_STATUSES.includes(inc.incident_status));
 
     const pending = rows.filter((inc) => inc.incident_status === 'Pending' && !isGpsOutside(inc));
     const active = rows.filter((inc) => ACTIVE_STATUSES.includes(inc.incident_status) && !isGpsOutside(inc));
@@ -288,12 +557,12 @@ export default function AccidentReport({ incidents = [], isLoading = false }) {
       if (!inc.date_reported) return;
       hours[new Date(inc.date_reported).getHours()].count += 1;
     });
-    const peak = hours.reduce((best, item) => (item.count > best.count ? item : best), hours[0]);
     const response = averageResponseMs(rows);
     const types = countBy(rows, (inc) => incidentCategory(inc.incident_type));
     const typeColorMap = Object.fromEntries(types.map((item, idx) => [item.label, TYPE_COLORS[idx % TYPE_COLORS.length]]));
 
     return {
+      rows,
       total: rows.length,
       pending: pending.length,
       active: active.length,
@@ -319,19 +588,114 @@ export default function AccidentReport({ incidents = [], isLoading = false }) {
       })),
       statuses: countBy(rows, (inc) => inc.incident_status),
       barangays: countBy(rows, barangayOf),
-      trend: buildTrend(rows, range),
+      trend: buildTrend(rows, dateFilter),
       hours: hours.map((item) => ({ label: hourLabel(item.hour), count: item.count })),
-      peakHour: peak.count ? hourLabel(peak.hour) : '—',
-      peakCount: peak.count,
       avgResponse: formatDuration(response.avgMs),
       avgResponseCount: response.count,
     };
-  }, [incidents, range]);
+  }, [incidents, dateFilter]);
 
   const printedOn = new Date().toLocaleString('en-PH', {
     dateStyle: 'medium',
     timeStyle: 'short',
   });
+
+  const openPrintReview = () => {
+    const subtitle = reportMeta.subtitle || `Cabadbaran City DRRMO · Showing data for ${periodLabel}`;
+    setPrintDraft({
+      title: reportMeta.title || 'Accident Analytic Report',
+      subtitle,
+      preparedBy: reportMeta.preparedBy || '',
+      notes: reportMeta.notes || '',
+    });
+    setPrintOpen(true);
+  };
+
+  const confirmPrint = () => {
+    flushSync(() => {
+      setReportMeta(printDraft);
+      setPrintOpen(false);
+    });
+    window.print();
+  };
+
+  const handleExportExcel = () => {
+    setExporting(true);
+    try {
+      const total = report.total;
+      const summaryRows = [
+        ['Accident Analytic Report — Cabadbaran City DRRMO'],
+        ['Period', periodLabel],
+        ['Generated', printedOn],
+        [],
+        ['Metric', 'Value'],
+        ['Total Requests', total],
+        ['Pending', report.pending],
+        ['Active Response', report.active],
+        ['Resolved', report.resolved],
+        ['Outside', report.outside],
+        ['Cancelled', report.cancelled],
+        ['Not Reviewed', report.unreviewed],
+        ['Resolution Rate', pct(report.resolved, total)],
+        ['Still Open %', pct(report.stillOpen, total)],
+        ['Still Open Count', report.stillOpen],
+        ['Average Response Time', report.avgResponse],
+        ['Dispatched Requests (for avg)', report.avgResponseCount],
+      ];
+
+      const toSheet = (title, items) => {
+        const rows = [[title], ['Label', 'Count', 'Percent of total']];
+        const list = Array.isArray(items) ? items : [];
+        if (!list.length) {
+          rows.push(['(no data)', 0, '0%']);
+          return rows;
+        }
+        list.forEach((item) => {
+          rows.push([String(item.label ?? ''), Number(item.count) || 0, pct(item.count, total)]);
+        });
+        return rows;
+      };
+
+      const typeItems = report.types.map((item) => ({ label: item.label, count: item.count }));
+      const statusItems = report.statuses.map((item) => ({ label: item.label, count: item.count }));
+      const locationItems = report.barangays.map((item) => ({ label: item.label, count: item.count }));
+      const trendSource = mode === 'day' ? report.hours : report.trend;
+      const trendItems = trendSource.map((item) => ({ label: item.label, count: item.count }));
+
+      const recordRows = [
+        ['ID', 'Date Reported', 'Type', 'Category', 'Status', 'Location', 'Viewed', 'Dispatch Time'],
+        ...report.rows.map((inc) => {
+          const loc = getLocation(inc);
+          const address = loc?.location_address || loc?.address || barangayOf(inc);
+          const dispatched = getDispatchTime(inc);
+          return [
+            inc.incident_id,
+            inc.date_reported ? new Date(inc.date_reported).toLocaleString('en-PH') : '',
+            inc.incident_type || '',
+            incidentCategory(inc.incident_type),
+            inc.incident_status || '',
+            address,
+            inc.viewed ? 'Yes' : 'No',
+            dispatched ? new Date(dispatched).toLocaleString('en-PH') : '',
+          ];
+        }),
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryRows), 'Summary');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(toSheet('By Incident Type', typeItems)), 'By Type');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(toSheet('By Exact Status', statusItems)), 'By Status');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(toSheet('Top Locations', locationItems)), 'Locations');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(toSheet('Time Series', trendItems)), 'Time Series');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(recordRows), 'Records');
+      XLSX.writeFile(wb, `rapidrescue-analytics-${slugify(periodLabel)}-${fileStamp()}.xlsx`);
+    } catch (err) {
+      console.error('Excel export failed:', err);
+      window.alert('Could not export Excel file. Please try again.');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -352,35 +716,58 @@ export default function AccidentReport({ incidents = [], isLoading = false }) {
     { label: 'Not reviewed', value: report.unreviewed, tone: 'danger' },
   ];
 
+  const trendTitle =
+    mode === 'day'
+      ? 'Requests today by hour'
+      : mode === 'week'
+        ? 'Requests this week'
+        : mode === 'month' || mode === 'date'
+          ? 'Requests this month'
+          : mode === 'year'
+            ? `Requests in ${dateFilter.year}`
+            : 'Requests over time (last 14 days)';
+
+  const trendNote =
+    mode === 'day'
+      ? 'Hourly count for today only.'
+      : mode === 'week'
+        ? 'Daily count for the current week.'
+        : mode === 'month' || mode === 'date'
+          ? 'Daily count for the selected month.'
+          : mode === 'year'
+            ? 'Monthly count for the selected year.'
+            : 'Daily count for the last 14 days. Cards above still use the selected period.';
+
+  const displayTitle = reportMeta.title || 'Accident Analytic Report';
+  const displaySubtitle = reportMeta.subtitle || `Cabadbaran City DRRMO · Showing data for ${periodLabel}`;
+
   return (
     <div className={styles.report}>
       <div className={styles.toolbar}>
         <div>
-          <h3 className={styles.title}>Accident Analytic Report</h3>
-          <p className={styles.subtitle}>
-            Cabadbaran City DRRMO · Same counts as the Accident tabs when All time is selected
-          </p>
+          <h3 className={styles.title}>{displayTitle}</h3>
+          <p className={styles.subtitle}>{displaySubtitle}</p>
         </div>
         <div className={styles.toolbarRight}>
-          <div className={styles.rangeGroup}>
-            {RANGES.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={`${styles.rangeBtn} ${range === item.id ? styles.rangeBtnActive : ''}`}
-                onClick={() => setRange(item.id)}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-          <button type="button" className={styles.printBtn} onClick={() => window.print()}>
+          <button
+            type="button"
+            className={styles.printBtn}
+            onClick={handleExportExcel}
+            disabled={exporting}
+          >
+            <Icon name="grid_on" size={16} /> {exporting ? 'Exporting…' : 'Export Excel'}
+          </button>
+          <button type="button" className={styles.printBtn} onClick={openPrintReview}>
             <Icon name="print" size={16} /> Print
           </button>
         </div>
       </div>
 
-      <p className={styles.printMeta}>Generated {printedOn} · Period: {RANGES.find((item) => item.id === range)?.label}</p>
+      <p className={styles.printMeta}>
+        Generated {printedOn} · Period: {periodLabel}
+        {reportMeta.preparedBy ? ` · Prepared by: ${reportMeta.preparedBy}` : ''}
+        {reportMeta.notes ? ` · Notes: ${reportMeta.notes}` : ''}
+      </p>
 
       <div className={styles.kpiGrid}>
         {kpis.map((kpi) => (
@@ -416,66 +803,117 @@ export default function AccidentReport({ incidents = [], isLoading = false }) {
       </div>
 
       <div className={styles.donutGrid}>
-        <section className={styles.card}>
-          <h4>Status share</h4>
+        <ChartCard title="Status share">
           <DonutChart
             items={report.statusSlices}
             centerValue={report.total}
             centerLabel="requests"
           />
-        </section>
-        <section className={styles.card}>
-          <h4>Type share</h4>
+        </ChartCard>
+        <ChartCard title="Type share">
           <DonutChart
             items={report.typeSlices}
             centerValue={report.total}
             centerLabel="requests"
           />
-        </section>
+        </ChartCard>
       </div>
 
       <div className={styles.grid}>
-        <section className={styles.card}>
-          <h4>
-            {range === 'today'
-              ? 'Requests today by hour'
-              : range === '7d'
-                ? 'Requests over time (last 7 days)'
-                : 'Requests over time (last 14 days)'}
-          </h4>
-          <p className={styles.chartNote}>
-            {range === 'today'
-              ? 'Hourly count for today only.'
-              : range === '7d'
-                ? 'Daily count for the last 7 days.'
-                : 'Daily count for the last 14 days. Cards above still use the selected period.'}
-          </p>
-          <ColumnChart points={range === 'today' ? report.hours : report.trend} />
-        </section>
-        <section className={styles.card}>
-          <h4>By incident type ({report.total})</h4>
+        <ChartCard title={trendTitle} note={trendNote}>
+          <ColumnChart points={mode === 'day' ? report.hours : report.trend} />
+        </ChartCard>
+        <ChartCard title={`By incident type (${report.total})`}>
           <BarList items={report.types} colors={TYPE_COLORS} total={report.total} />
-        </section>
-        <section className={styles.card}>
-          <h4>By exact status</h4>
+        </ChartCard>
+        <ChartCard title="By exact status">
           <BarList
             items={report.statuses}
             colors={{ ...STATUS_COLORS, default: '#64748b' }}
             total={report.total}
           />
-        </section>
-        <section className={styles.card}>
-          <h4>Top locations</h4>
+        </ChartCard>
+        <ChartCard title="Top locations">
           <BarList items={report.barangays} colors={TYPE_COLORS} total={report.total} />
-        </section>
-        {range !== 'today' && (
-          <section className={`${styles.card} ${styles.wide}`}>
-            <h4>Requests by hour of day</h4>
-            <p className={styles.chartNote}>Count of when requests were sent. Peak is {report.peakHour} ({report.peakCount}).</p>
-            <ColumnChart points={report.hours} color="#1565c0" />
-          </section>
-        )}
+        </ChartCard>
       </div>
+
+      {printOpen && (
+        <div className={styles.printOverlay} onClick={() => setPrintOpen(false)} role="presentation">
+          <div
+            className={styles.printModal}
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Review and edit report before printing"
+          >
+            <h3 className={styles.printModalTitle}>Review / Edit Report</h3>
+            <p className={styles.printModalHint}>
+              Edit the fields below, then print. Numbers match the current filter ({periodLabel}).
+            </p>
+
+            <label className={styles.printField}>
+              <span>Report title</span>
+              <input
+                type="text"
+                value={printDraft.title}
+                onChange={(e) => setPrintDraft((prev) => ({ ...prev, title: e.target.value }))}
+              />
+            </label>
+            <label className={styles.printField}>
+              <span>Subtitle</span>
+              <input
+                type="text"
+                value={printDraft.subtitle}
+                onChange={(e) => setPrintDraft((prev) => ({ ...prev, subtitle: e.target.value }))}
+              />
+            </label>
+            <label className={styles.printField}>
+              <span>Prepared by</span>
+              <input
+                type="text"
+                value={printDraft.preparedBy}
+                onChange={(e) => setPrintDraft((prev) => ({ ...prev, preparedBy: e.target.value }))}
+                placeholder="Optional"
+              />
+            </label>
+            <label className={styles.printField}>
+              <span>Notes / remarks</span>
+              <textarea
+                rows={3}
+                value={printDraft.notes}
+                onChange={(e) => setPrintDraft((prev) => ({ ...prev, notes: e.target.value }))}
+                placeholder="Optional notes included when printing"
+              />
+            </label>
+
+            <div className={styles.printPreviewBox}>
+              <strong>Current totals</strong>
+              <ul>
+                <li>Total requests: {report.total}</li>
+                <li>Pending: {report.pending}</li>
+                <li>Active response: {report.active}</li>
+                <li>Resolved: {report.resolved}</li>
+                <li>Outside: {report.outside}</li>
+                <li>Cancelled: {report.cancelled}</li>
+                <li>Not reviewed: {report.unreviewed}</li>
+                <li>Resolution rate: {pct(report.resolved, report.total)}</li>
+                <li>Still open: {pct(report.stillOpen, report.total)}</li>
+                <li>Avg response: {report.avgResponse}</li>
+              </ul>
+            </div>
+
+            <div className={styles.printModalActions}>
+              <button type="button" className={styles.printBtn} onClick={() => setPrintOpen(false)}>
+                Cancel
+              </button>
+              <button type="button" className={styles.printPrimaryBtn} onClick={confirmPrint}>
+                <Icon name="print" size={16} /> Print Report
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

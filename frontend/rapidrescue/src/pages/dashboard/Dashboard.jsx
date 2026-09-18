@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { logout, getStoredAdmin } from '../../services/authService';
 import api from '../../services/api';
@@ -269,7 +270,13 @@ function DateRangeFilter({ value, onChange, years }) {
   );
 }
 
-function ArchivePeriodBar({ statusLabel, filter, countFor, onArchive, busy }) {
+function ArchivePeriodBar({ statusLabel, filter, countFor, onSelectPeriod, activePeriod, busy }) {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    setOpen(false);
+  }, [statusLabel]);
+
   const options = [
     { id: 'week', label: 'This week', count: countFor('week') },
     { id: 'month', label: 'This month', count: countFor('month') },
@@ -278,26 +285,42 @@ function ArchivePeriodBar({ statusLabel, filter, countFor, onArchive, busy }) {
   ];
 
   return (
-    <div className={styles.archivePeriodBar}>
-      <div className={styles.archivePeriodCopy}>
-        <strong>Archive by period</strong>
-        <span>Choose which {statusLabel} accidents to move to Archive. You can restore them later.</span>
-      </div>
-      <div className={styles.archivePeriodActions}>
-        {options.map((opt) => (
-          <button
-            key={opt.id}
-            type="button"
-            className={styles.archivePeriodBtn}
-            disabled={busy || opt.count === 0}
-            onClick={() => onArchive(opt.id)}
-          >
-            <Icon name="folder" size={16} />
-            {opt.label}
-            <span className={styles.archivePeriodCount}>{opt.count}</span>
-          </button>
-        ))}
-      </div>
+    <div className={`${styles.archivePeriodBar} ${open ? styles.archivePeriodBarOpen : ''}`}>
+      <button
+        type="button"
+        className={styles.archivePeriodToggle}
+        onClick={() => setOpen((prev) => !prev)}
+        aria-expanded={open}
+      >
+        <div className={styles.archivePeriodCopy}>
+          <strong>
+            Archive by period
+            <Icon name={open ? 'expand_less' : 'expand_more'} size={18} />
+          </strong>
+          <span>
+            {open
+              ? `Pick a period, then Select All / archive ${statusLabel} accidents. You can restore them later.`
+              : `Click to archive ${statusLabel} accidents by period.`}
+          </span>
+        </div>
+      </button>
+      {open && (
+        <div className={styles.archivePeriodActions}>
+          {options.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              className={`${styles.archivePeriodBtn} ${activePeriod === opt.id ? styles.archivePeriodBtnActive : ''}`}
+              disabled={busy || opt.count === 0}
+              onClick={() => onSelectPeriod(opt.id)}
+            >
+              <Icon name="folder" size={16} />
+              {opt.label}
+              <span className={styles.archivePeriodCount}>{opt.count}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -359,7 +382,7 @@ const STAT_COLORS = ['statRed', 'statOrange', 'statBlue', 'statYellow', 'statGre
 const INCIDENT_FILTER_TABS = [
   { id: 'pending', icon: 'hourglass_empty', label: 'Pending' },
   { id: 'active', icon: 'ambulance', label: 'Active Response' },
-  { id: 'resolved', icon: 'check_circle', label: 'Resolved' },
+  { id: 'resolved', icon: 'check_circle', label: 'Indoor / Resolved' },
   { id: 'outside', icon: 'warning', label: 'Outside' },
   { id: 'referred', icon: 'send', label: 'Referred' },
   { id: 'cancelled', icon: 'cancel', label: 'Cancelled' },
@@ -461,6 +484,105 @@ function incidentSearchText(inc) {
     .toLowerCase();
 }
 
+function IncidentRowActionsMenu({ items }) {
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef(null);
+  const menuRef = useRef(null);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDoc = (e) => {
+      if (btnRef.current?.contains(e.target) || menuRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    const onScroll = () => setOpen(false);
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [open]);
+
+  const toggleMenu = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    const rect = btnRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const menuW = 210;
+    const approxH = Math.max(120, items.length * 42 + 10);
+    let top = rect.bottom + 6;
+    let left = rect.right - menuW;
+    if (left < 8) left = 8;
+    if (left + menuW > window.innerWidth - 8) left = window.innerWidth - menuW - 8;
+    if (top + approxH > window.innerHeight - 8) top = Math.max(8, rect.top - approxH - 6);
+    setPos({ top, left });
+    setOpen(true);
+  };
+
+  if (!items.length) return null;
+
+  return (
+    <div className={styles.actionMenuWrap}>
+      <button
+        ref={btnRef}
+        type="button"
+        className={styles.actionMenuBtn}
+        onClick={toggleMenu}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        title="Actions"
+      >
+        <Icon name="more_vert" size={20} />
+      </button>
+      {open && createPortal(
+        <div
+          ref={menuRef}
+          className={styles.actionMenuDropdown}
+          style={{ top: pos.top, left: pos.left }}
+          role="menu"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {items.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              role="menuitem"
+              className={`${styles.actionMenuItem} ${item.btnClass || ''}`}
+              disabled={item.disabled}
+              title={item.title}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setOpen(false);
+                item.onClick?.(e);
+              }}
+            >
+              <span className={styles.actionMenuIcon}>
+                <Icon name={item.icon} size={18} />
+              </span>
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
 function matchesIncidentType(inc, categoryFilter, subFilter) {
   if (!categoryFilter) return true;
   const t = inc.incident_type || '';
@@ -501,7 +623,11 @@ function IncidentTableSection({
   onToggleSelectAll,
   onBulkRestore,
   onBulkDelete,
+  onBulkArchive,
+  onClearPeriodSelect,
+  archivingBusy = false,
   bulkDeleteLabel = 'Delete',
+  bulkArchiveLabel = 'Archive',
 }) {
   const {
     edit = true,
@@ -576,18 +702,37 @@ function IncidentTableSection({
                 Restore
               </button>
             )}
-            {(showDelete || permanentDelete) && (
+            {onBulkArchive && (
+              <button
+                type="button"
+                className={styles.archiveBtn}
+                disabled={selectedCount === 0 || archivingBusy}
+                onClick={() => onBulkArchive(filteredIds.filter((id) => selectedSet.has(id)))}
+              >
+                {bulkArchiveLabel}
+              </button>
+            )}
+            {(onBulkDelete && (showDelete || permanentDelete)) && (
               <button
                 type="button"
                 className={styles.deleteBtn}
                 disabled={selectedCount === 0}
-                onClick={() => onBulkDelete?.(filteredIds.filter((id) => selectedSet.has(id)))}
+                onClick={() => onBulkDelete(filteredIds.filter((id) => selectedSet.has(id)))}
               >
                 {bulkDeleteLabel}
               </button>
             )}
             {selectedCount > 0 && (
               <span className={styles.archiveSelectedCount}>{selectedCount} selected</span>
+            )}
+            {selectable && onClearPeriodSelect && (
+              <button
+                type="button"
+                className={styles.refreshBtn}
+                onClick={onClearPeriodSelect}
+              >
+                Cancel
+              </button>
             )}
           </div>
         )}
@@ -748,83 +893,71 @@ function IncidentTableSection({
                       <td style={{ color: '#888', fontSize: 12 }}>{formatDate(inc.date_reported)}</td>
                       {hasActions && (
                         <td onClick={(e) => e.stopPropagation()}>
-                          <div className={styles.actionGroup}>
-                            {onShowMap && (
-                              <button
-                                type="button"
-                                className={`${styles.mapBtn} ${styles.actionIconBtn}`}
-                                onClick={(e) => {
+                          <IncidentRowActionsMenu
+                            items={[
+                              onShowMap && {
+                                key: 'map',
+                                label: 'View/Map',
+                                icon: 'map',
+                                btnClass: styles.actionMenuItemMap,
+                                title: hasIncidentLocation(inc) ? `Open #${inc.incident_id} on Live Map` : 'No GPS location',
+                                disabled: !hasIncidentLocation(inc),
+                                onClick: (e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
                                   onShowMap(inc);
-                                }}
-                                disabled={!hasIncidentLocation(inc)}
-                                title={hasIncidentLocation(inc) ? `Open #${inc.incident_id} on Live Map` : 'No GPS location'}
-                              >
-                                <Icon name="map" size={18} />
-                              </button>
-                            )}
-                            {showAssignActions && onAssign && (
-                              <button
-                                type="button"
-                                className={`${styles.assignBtn} ${styles.actionIconBtn}`}
-                                onClick={() => onAssign(inc)}
-                                title="Assign responder"
-                              >
-                                <Icon name="ambulance" size={18} />
-                              </button>
-                            )}
-                            {edit && (
-                              <button
-                                type="button"
-                                className={`${styles.editBtn} ${styles.actionIconBtn}`}
-                                onClick={() => onEdit(inc)}
-                                title="Edit"
-                              >
-                                <Icon name="edit" size={18} />
-                              </button>
-                            )}
-                            {archive && (
-                              <button
-                                type="button"
-                                className={`${styles.archiveBtn} ${styles.actionIconBtn}`}
-                                onClick={() => onArchive(inc)}
-                                title="Archive"
-                              >
-                                <Icon name="folder" size={18} />
-                              </button>
-                            )}
-                            {restore && (
-                              <button
-                                type="button"
-                                className={`${styles.restoreBtn} ${styles.actionIconBtn}`}
-                                onClick={() => onRestore(inc)}
-                                title="Restore"
-                              >
-                                <Icon name="undo" size={18} />
-                              </button>
-                            )}
-                            {showDelete && (
-                              <button
-                                type="button"
-                                className={`${styles.deleteBtn} ${styles.actionIconBtn}`}
-                                onClick={() => onDelete(inc)}
-                                title="Delete"
-                              >
-                                <Icon name="delete" size={18} />
-                              </button>
-                            )}
-                            {permanentDelete && (
-                              <button
-                                type="button"
-                                className={`${styles.deleteBtn} ${styles.actionIconBtn}`}
-                                onClick={() => onPermanentDelete(inc)}
-                                title="Remove forever"
-                              >
-                                <Icon name="delete" size={18} />
-                              </button>
-                            )}
-                          </div>
+                                },
+                              },
+                              showAssignActions && onAssign && {
+                                key: 'assign',
+                                label: 'Dispatch/Assign',
+                                icon: 'ambulance',
+                                btnClass: styles.actionMenuItemAssign,
+                                title: 'Assign responder',
+                                onClick: () => onAssign(inc),
+                              },
+                              edit && {
+                                key: 'edit',
+                                label: 'Edit',
+                                icon: 'edit',
+                                btnClass: styles.actionMenuItemEdit,
+                                title: 'Edit',
+                                onClick: () => onEdit(inc),
+                              },
+                              archive && {
+                                key: 'archive',
+                                label: 'Archive',
+                                icon: 'folder',
+                                btnClass: styles.actionMenuItemArchive,
+                                title: 'Archive',
+                                onClick: () => onArchive(inc),
+                              },
+                              restore && {
+                                key: 'restore',
+                                label: 'Restore',
+                                icon: 'undo',
+                                btnClass: styles.actionMenuItemRestore,
+                                title: 'Restore',
+                                onClick: () => onRestore(inc),
+                              },
+                              showDelete && {
+                                key: 'delete',
+                                label: 'Delete',
+                                icon: 'delete',
+                                btnClass: styles.actionMenuItemDelete,
+                                title: 'Delete',
+                                onClick: () => onDelete(inc),
+                              },
+                              permanentDelete && {
+                                key: 'permanent-delete',
+                                label: 'Delete',
+                                icon: 'delete',
+                                btnClass: styles.actionMenuItemDelete,
+                                title: 'Remove forever',
+                                onClick: () => onPermanentDelete(inc),
+                              },
+                            ].filter(Boolean)}
+                          />
                         </td>
                       )}
                     </tr>
@@ -1479,7 +1612,10 @@ export default function Dashboard() {
   const [responders, setResponders] = useState([]);
   const [dispatches, setDispatches] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState('');
+  const refreshLockRef = useRef(false);
+  const [liveMapRefreshKey, setLiveMapRefreshKey] = useState(0);
   const [admins, setAdmins] = useState([]);
   const [showAddAdmin, setShowAddAdmin] = useState(false);
   const [userSubTab, setUserSubTab] = useState('mobile');
@@ -1498,7 +1634,10 @@ export default function Dashboard() {
   const [incidentFilter, setIncidentFilter] = useState('pending');
   const [incidentDateFilter, setIncidentDateFilter] = useState(() => makeDateFilter());
   const [dashboardDateFilter, setDashboardDateFilter] = useState(() => makeDateFilter());
+  const [analyticsDateFilter, setAnalyticsDateFilter] = useState(() => makeDateFilter());
   const [archivingPeriod, setArchivingPeriod] = useState(false);
+  const [periodSelectKind, setPeriodSelectKind] = useState(null);
+  const [periodSelectedIds, setPeriodSelectedIds] = useState(() => new Set());
   const [archiveModule, setArchiveModule] = useState('accident');
   const [archiveSelectedIds, setArchiveSelectedIds] = useState(() => new Set());
   const [archiveCallLogs, setArchiveCallLogs] = useState([]);
@@ -1526,10 +1665,10 @@ export default function Dashboard() {
         api.get('/admin/list').catch(() => ({ data: [] })),
       ]);
 
-      const usersData      = usersRes.data;
-      const incidentsData  = incidentsRes.data;
+      const usersData = usersRes.data;
+      const incidentsData = incidentsRes.data;
       const respondersData = respondersRes.data;
-      const dispatchData   = dispatchRes.data;
+      const dispatchData = dispatchRes.data;
 
       setUsers(usersData);
       setAdmins(adminsRes.data || []);
@@ -1537,13 +1676,13 @@ export default function Dashboard() {
       setResponders(respondersData);
       setDispatches(dispatchData);
       setStats({
-        users:      usersData.filter((u) => u.account_status !== 'Deleted').length,
-        incidents:  incidentsData.length,
-        pending:    incidentsData.filter((i) => i.incident_status === 'Pending').length,
-        resolved:   incidentsData.filter((i) => i.incident_status === 'Resolved').length,
+        users: usersData.filter((u) => u.account_status !== 'Deleted').length,
+        incidents: incidentsData.length,
+        pending: incidentsData.filter((i) => i.incident_status === 'Pending').length,
+        resolved: incidentsData.filter((i) => i.incident_status === 'Resolved').length,
         responders: respondersData.length,
-        available:  respondersData.filter((r) => r.availability_status === 'Available').length,
-        dispatch:   dispatchData.length,
+        available: respondersData.filter((r) => r.availability_status === 'Available').length,
+        dispatch: dispatchData.length,
       });
       setError('');
     } catch (err) {
@@ -1552,12 +1691,6 @@ export default function Dashboard() {
       if (showLoader) setIsLoading(false);
     }
   }, []);
-
-  useEffect(() => {
-    fetchData({ showLoader: true });
-    const interval = setInterval(() => fetchData(), 15000);
-    return () => clearInterval(interval);
-  }, [fetchData]);
 
   const fetchArchiveRecords = useCallback(async () => {
     setArchiveRecordsLoading(true);
@@ -1570,6 +1703,37 @@ export default function Dashboard() {
       setArchiveRecordsLoading(false);
     }
   }, []);
+
+  /** Hard reload of the current page data (visible loading). */
+  const handleRefresh = useCallback(async () => {
+    if (refreshLockRef.current) return;
+    refreshLockRef.current = true;
+    setIsRefreshing(true);
+    try {
+      if (activeTab === 'live-map') {
+        setLiveMapRefreshKey((k) => k + 1);
+        await fetchData({ showLoader: false });
+      } else if (activeTab === 'archive') {
+        setIsLoading(true);
+        try {
+          await Promise.all([fetchData({ showLoader: false }), fetchArchiveRecords()]);
+        } finally {
+          setIsLoading(false);
+        }
+      } else {
+        await fetchData({ showLoader: true });
+      }
+    } finally {
+      refreshLockRef.current = false;
+      setIsRefreshing(false);
+    }
+  }, [activeTab, fetchData, fetchArchiveRecords]);
+
+  useEffect(() => {
+    fetchData({ showLoader: true });
+    const interval = setInterval(() => fetchData(), 15000);
+    return () => clearInterval(interval);
+  }, [fetchData]);
 
   useEffect(() => {
     if (activeTab !== 'archive') return undefined;
@@ -1809,36 +1973,90 @@ export default function Dashboard() {
   };
 
   const archiveTargetsForPeriod = (kind) => {
-    const status = incidentFilter === 'cancelled' ? 'Cancelled' : 'Resolved';
-    const pool = incidents.filter(
-      (i) => i.incident_status === status && !isIncidentOutside(i)
-    );
+    const status =
+      incidentFilter === 'cancelled'
+        ? 'Cancelled'
+        : incidentFilter === 'referred'
+          ? 'Referred'
+          : 'Resolved';
+    const pool = incidents.filter((i) => {
+      if (i.incident_status !== status) return false;
+      if (status === 'Resolved' || status === 'Cancelled') return !isIncidentOutside(i);
+      return true;
+    });
     const filter = periodFilterFor(kind);
     return pool.filter((i) => matchesIncidentDateRange(i, filter));
   };
 
-  const handleArchivePeriod = (kind) => {
+  const clearPeriodSelect = useCallback(() => {
+    setPeriodSelectKind(null);
+    setPeriodSelectedIds(new Set());
+  }, []);
+
+  useEffect(() => {
+    clearPeriodSelect();
+  }, [incidentFilter, clearPeriodSelect]);
+
+  const handleSelectArchivePeriod = (kind) => {
     const rows = archiveTargetsForPeriod(kind);
     if (!rows.length) {
       setError('No accidents in that period to archive.');
       return;
     }
-    const statusWord = incidentFilter === 'cancelled' ? 'cancelled' : 'resolved';
-    const when = kind === 'current' ? describeDateFilter(incidentDateFilter) : describeDateFilter(periodFilterFor(kind));
+    setPeriodSelectKind(kind);
+    setPeriodSelectedIds(new Set(rows.map((r) => r.incident_id)));
+    setError('');
+  };
+
+  const togglePeriodSelect = (id) => {
+    setPeriodSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const togglePeriodSelectAll = (ids) => {
+    setPeriodSelectedIds((prev) => {
+      const allOn = ids.length > 0 && ids.every((id) => prev.has(id));
+      if (allOn) {
+        const next = new Set(prev);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      }
+      return new Set([...prev, ...ids]);
+    });
+  };
+
+  const handleBulkArchiveSelected = (ids) => {
+    const idSet = new Set(ids);
+    const targets = incidents.filter((i) => idSet.has(i.incident_id));
+    if (!targets.length) {
+      setError('Select at least one accident to archive.');
+      return;
+    }
+    const statusWord =
+      incidentFilter === 'cancelled'
+        ? 'cancelled'
+        : incidentFilter === 'referred'
+          ? 'referred'
+          : 'resolved';
     openConfirm({
-      title: 'Archive by period?',
-      message: `Move ${rows.length} ${statusWord} accident${rows.length === 1 ? '' : 's'} from ${when} to Archive? You can restore them later from the Archive tab.`,
-      confirmLabel: `Archive ${rows.length}`,
+      title: 'Archive selected?',
+      message: `Move ${targets.length} ${statusWord} accident${targets.length === 1 ? '' : 's'} to Archive? You can restore them later from the Archive tab.`,
+      confirmLabel: `Archive ${targets.length}`,
       variant: 'warning',
       onConfirm: async () => {
         closeConfirm();
         setArchivingPeriod(true);
         setError('');
         try {
-          for (const inc of rows) {
+          for (const inc of targets) {
             rememberIncidentStatus(inc.incident_id, inc.incident_status);
             await archiveIncident(inc.incident_id);
           }
+          clearPeriodSelect();
           await fetchData();
           setActiveTab('archive');
           setArchiveModule('accident');
@@ -1851,6 +2069,21 @@ export default function Dashboard() {
       },
     });
   };
+
+  const periodTableSelectProps = periodSelectKind
+    ? {
+        selectable: true,
+        selectedIds: periodSelectedIds,
+        onToggleSelect: togglePeriodSelect,
+        onToggleSelectAll: togglePeriodSelectAll,
+        onBulkArchive: handleBulkArchiveSelected,
+        onClearPeriodSelect: clearPeriodSelect,
+        archivingBusy: archivingPeriod,
+        bulkArchiveLabel: 'Archive',
+      }
+    : {};
+
+  const periodScopedRows = periodSelectKind ? archiveTargetsForPeriod(periodSelectKind) : null;
 
   const handleDelete = (inc) => {
     openConfirm({
@@ -2370,8 +2603,15 @@ export default function Dashboard() {
             <div>
               <div className={styles.tabHeader}>
                 <h2 className={styles.sectionTitle}>Dashboard</h2>
-                <button className={styles.refreshBtn} onClick={fetchData}>
-                  <Icon name="refresh" size={16} /> Refresh
+                <button
+                  type="button"
+                  className={styles.refreshBtn}
+                  onClick={handleRefresh}
+                  disabled={isRefreshing}
+                  aria-busy={isRefreshing}
+                >
+                  <Icon name="refresh" size={16} className={isRefreshing ? styles.refreshSpin : undefined} />
+                  Refresh
                 </button>
               </div>
 
@@ -2472,7 +2712,7 @@ export default function Dashboard() {
           {/* ── LIVE MAP ─────────────────────────────────── */}
           {activeTab === 'live-map' && (
             <LiveMap
-              key="live-map"
+              key={`live-map-${liveMapRefreshKey}`}
               focusIncidentId={liveMapFocusId}
               focusNonce={liveMapFocusNonce}
               scrollAlertsOnce={liveMapScrollOnce}
@@ -2488,9 +2728,28 @@ export default function Dashboard() {
             <div>
               <div className={styles.tabHeader}>
                 <h2 className={styles.sectionTitle}>Analytics</h2>
-                <button className={styles.refreshBtn} onClick={fetchData}><Icon name="refresh" size={16} /> Refresh</button>
+                <button
+                  type="button"
+                  className={styles.refreshBtn}
+                  onClick={handleRefresh}
+                  disabled={isRefreshing}
+                  aria-busy={isRefreshing}
+                >
+                  <Icon name="refresh" size={16} className={isRefreshing ? styles.refreshSpin : undefined} />
+                  Refresh
+                </button>
               </div>
-              <AccidentReport incidents={incidents} isLoading={isLoading} />
+              <DateRangeFilter
+                value={analyticsDateFilter}
+                onChange={setAnalyticsDateFilter}
+                years={filterYears}
+              />
+              <AccidentReport
+                incidents={incidents.filter((i) => matchesIncidentDateRange(i, analyticsDateFilter))}
+                dateFilter={analyticsDateFilter}
+                periodLabel={describeDateFilter(analyticsDateFilter)}
+                isLoading={isLoading}
+              />
             </div>
           )}
 
@@ -2499,7 +2758,16 @@ export default function Dashboard() {
             <div>
               <div className={styles.tabHeader}>
                 <h2 className={styles.sectionTitle}>Accident</h2>
-                <button className={styles.refreshBtn} onClick={fetchData}><Icon name="refresh" size={16} /> Refresh</button>
+                <button
+                  type="button"
+                  className={styles.refreshBtn}
+                  onClick={handleRefresh}
+                  disabled={isRefreshing}
+                  aria-busy={isRefreshing}
+                >
+                  <Icon name="refresh" size={16} className={isRefreshing ? styles.refreshSpin : undefined} />
+                  Refresh
+                </button>
               </div>
 
               <DateRangeFilter
@@ -2536,12 +2804,19 @@ export default function Dashboard() {
                     : 'Click the buttons above to switch between incident groups.'}
               </p>
 
-              {(incidentFilter === 'resolved' || incidentFilter === 'cancelled') && (
+              {(incidentFilter === 'resolved' || incidentFilter === 'cancelled' || incidentFilter === 'referred') && (
                 <ArchivePeriodBar
-                  statusLabel={incidentFilter === 'cancelled' ? 'cancelled' : 'resolved'}
+                  statusLabel={
+                    incidentFilter === 'cancelled'
+                      ? 'cancelled'
+                      : incidentFilter === 'referred'
+                        ? 'referred'
+                        : 'resolved'
+                  }
                   filter={incidentDateFilter}
                   countFor={(kind) => archiveTargetsForPeriod(kind).length}
-                  onArchive={handleArchivePeriod}
+                  onSelectPeriod={handleSelectArchivePeriod}
+                  activePeriod={periodSelectKind}
                   busy={archivingPeriod}
                 />
               )}
@@ -2604,7 +2879,7 @@ export default function Dashboard() {
                 <IncidentTableSection
                   title="Referred"
                   icon="send"
-                  rows={referredIncidents}
+                  rows={periodScopedRows || referredIncidents}
                   isLoading={isLoading}
                   emptyMessage="📭 No referred incidents."
                   onEdit={handleOpenIncident}
@@ -2617,14 +2892,15 @@ export default function Dashboard() {
                   onStatusChange={handleOutsideStatusChange}
                   updatingStatusId={updatingStatusId}
                   hideTitle
+                  {...periodTableSelectProps}
                 />
               )}
 
               {incidentFilter === 'resolved' && (
                 <IncidentTableSection
-                  title="Resolved"
+                  title="Indoor / Resolved"
                   icon="check_circle"
-                  rows={resolvedIncidents}
+                  rows={periodScopedRows || resolvedIncidents}
                   isLoading={isLoading}
                   emptyMessage="📭 No resolved incidents yet."
                   onEdit={handleOpenIncident}
@@ -2634,6 +2910,7 @@ export default function Dashboard() {
                   showAssignActions={false}
                   actions={{ edit: true, archive: true, delete: true }}
                   hideTitle
+                  {...periodTableSelectProps}
                 />
               )}
 
@@ -2641,7 +2918,7 @@ export default function Dashboard() {
                 <IncidentTableSection
                   title="Cancelled"
                   icon="cancel"
-                  rows={cancelledIncidents}
+                  rows={periodScopedRows || cancelledIncidents}
                   isLoading={isLoading}
                   emptyMessage="📭 No cancelled incidents."
                   onEdit={handleOpenIncident}
@@ -2651,6 +2928,7 @@ export default function Dashboard() {
                   showAssignActions={false}
                   actions={{ edit: true, archive: true, delete: true }}
                   hideTitle
+                  {...periodTableSelectProps}
                 />
               )}
             </div>
@@ -2662,13 +2940,14 @@ export default function Dashboard() {
               <div className={styles.tabHeader}>
                 <h2 className={styles.sectionTitle}>Archive</h2>
                 <button
+                  type="button"
                   className={styles.refreshBtn}
-                  onClick={() => {
-                    fetchData();
-                    fetchArchiveRecords();
-                  }}
+                  onClick={handleRefresh}
+                  disabled={isRefreshing}
+                  aria-busy={isRefreshing}
                 >
-                  <Icon name="refresh" size={16} /> Refresh
+                  <Icon name="refresh" size={16} className={isRefreshing ? styles.refreshSpin : undefined} />
+                  Refresh
                 </button>
               </div>
 
@@ -2879,7 +3158,16 @@ export default function Dashboard() {
                   >
                     <Icon name="add" size={16} /> Add Vehicle
                   </button>
-                <button className={styles.refreshBtn} onClick={fetchData}><Icon name="refresh" size={16} /> Refresh</button>
+                <button
+                  type="button"
+                  className={styles.refreshBtn}
+                  onClick={handleRefresh}
+                  disabled={isRefreshing}
+                  aria-busy={isRefreshing}
+                >
+                  <Icon name="refresh" size={16} className={isRefreshing ? styles.refreshSpin : undefined} />
+                  Refresh
+                </button>
                 </div>
               </div>
               <div className={styles.tableCard}>
@@ -2986,7 +3274,16 @@ export default function Dashboard() {
                   <button className={styles.addBtn} onClick={() => setShowAddAdmin(true)}>
                     + Add
                   </button>
-                <button className={styles.refreshBtn} onClick={fetchData}><Icon name="refresh" size={16} /> Refresh</button>
+                <button
+                  type="button"
+                  className={styles.refreshBtn}
+                  onClick={handleRefresh}
+                  disabled={isRefreshing}
+                  aria-busy={isRefreshing}
+                >
+                  <Icon name="refresh" size={16} className={isRefreshing ? styles.refreshSpin : undefined} />
+                  Refresh
+                </button>
               </div>
               </div>
 

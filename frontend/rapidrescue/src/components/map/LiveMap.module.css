@@ -526,11 +526,53 @@
 }
 
 /* ─── Side Panel Content ──────────────────────────────── */
+.sideTitleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 4px 0 10px;
+}
+
 .sideTitle {
   font-size: 13.5px;
   font-weight: 700;
   margin: 0;
   color: #1a1a1a;
+}
+
+.refreshBtn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  border: 1.5px solid #e5e7eb;
+  background: #fff;
+  color: #555;
+}
+
+.refreshBtn:hover:not(:disabled) {
+  border-color: #e53935;
+  color: #e53935;
+}
+
+.refreshBtn:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.refreshSpin {
+  animation: liveRefreshSpin 0.8s linear infinite;
+}
+
+@keyframes liveRefreshSpin {
+  to { transform: rotate(360deg); }
 }
 
 .emptyBox {

@@ -33,6 +33,163 @@
   flex-wrap: wrap;
 }
 
+.cardHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.cardHead h4 {
+  margin: 0;
+}
+
+.chartDownloadBtn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.chartDownloadBtn:hover:not(:disabled) {
+  border-color: #c1121f;
+  color: #c1121f;
+}
+
+.chartDownloadBtn:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.printPrimaryBtn {
+  height: 36px;
+  padding: 0 14px;
+  border: 1.5px solid #c1121f;
+  border-radius: 10px;
+  background: #c1121f;
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.printPrimaryBtn:hover {
+  background: #a50e19;
+  border-color: #a50e19;
+}
+
+.printOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.printModal {
+  width: min(520px, 100%);
+  max-height: min(90vh, 720px);
+  overflow: auto;
+  background: #fff;
+  border-radius: 14px;
+  border: 1.5px solid #e5e7eb;
+  padding: 20px 22px;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.18);
+}
+
+.printModalTitle {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  color: #111827;
+}
+
+.printModalHint {
+  margin: 6px 0 14px;
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.printField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
+}
+
+.printField input,
+.printField textarea {
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #0f172a;
+  resize: vertical;
+}
+
+.printField input:focus,
+.printField textarea:focus {
+  outline: none;
+  border-color: #c1121f;
+}
+
+.printPreviewBox {
+  background: #f8fafc;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  font-size: 12px;
+  color: #334155;
+}
+
+.printPreviewBox strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.printPreviewBox ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 2px;
+}
+
+.printModalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .rangeGroup {
   display: flex;
   background: #fff;
@@ -166,6 +323,63 @@
 
 .donutSvg {
   display: block;
+  cursor: crosshair;
+}
+
+.donutHit {
+  pointer-events: stroke;
+}
+
+.tipHost {
+  position: relative;
+}
+
+.chartTooltip {
+  position: absolute;
+  z-index: 20;
+  min-width: 120px;
+  max-width: 220px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #0f172a;
+  color: #fff;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.28);
+  pointer-events: none;
+  transform: translateY(-100%);
+  animation: tipFade 0.12s ease-out;
+}
+
+.chartTooltipTitle {
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.25;
+  margin-bottom: 2px;
+}
+
+.chartTooltipValue,
+.chartTooltipPct {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.82);
+  line-height: 1.35;
+}
+
+@keyframes tipFade {
+  from { opacity: 0; transform: translateY(calc(-100% + 4px)); }
+  to { opacity: 1; transform: translateY(-100%); }
+}
+
+.legendItem {
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 2px 4px;
+  margin: 0 -4px;
+}
+
+.legendItem:hover,
+.legendItem:focus-visible {
+  background: #f8fafc;
+  outline: none;
 }
 
 .donutValue {
@@ -264,6 +478,16 @@
   grid-template-columns: minmax(90px, 140px) 1fr 28px 44px;
   align-items: center;
   gap: 8px;
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 2px 4px;
+  margin: 0 -4px;
+}
+
+.barRow:hover,
+.barRow:focus-visible {
+  background: #f8fafc;
+  outline: none;
 }
 
 .barLabel {
@@ -318,6 +542,17 @@
   align-items: center;
   justify-content: flex-end;
   gap: 4px;
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.col:hover .colBar,
+.col:focus-visible .colBar {
+  filter: brightness(0.92);
+}
+
+.col:focus-visible {
+  outline: none;
 }
 
 .colValue {
@@ -384,7 +619,11 @@
 }
 
 @media print {
-  .toolbarRight { display: none; }
+  .toolbarRight,
+  .chartDownloadBtn,
+  .printOverlay,
+  .chartTooltip { display: none !important; }
   .printMeta { display: block; }
   .card, .kpi, .rateCard { break-inside: avoid; }
+  .cardHead { margin-bottom: 10px; }
 }

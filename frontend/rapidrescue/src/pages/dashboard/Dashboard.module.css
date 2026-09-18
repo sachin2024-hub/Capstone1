@@ -554,6 +554,17 @@
   transform: translateY(0) scale(0.97);
 }
 
+.refreshBtn:disabled {
+  opacity: 0.65;
+  cursor: wait;
+  transform: none;
+  box-shadow: none;
+}
+
+.refreshSpin {
+  animation: spin 0.8s linear infinite;
+}
+
 .tabHeaderActions {
   display: flex;
   align-items: center;
@@ -1152,6 +1163,119 @@
   gap: 4px;
 }
 
+.actionMenuWrap {
+  position: relative;
+  display: inline-flex;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.actionMenuBtn {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1.5px solid #e5e7eb;
+  background: #fff;
+  color: #475569;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.actionMenuBtn:hover,
+.actionMenuBtn[aria-expanded='true'] {
+  border-color: #c1121f;
+  color: #c1121f;
+  background: #fff5f5;
+}
+
+.actionMenuDropdown {
+  position: fixed;
+  z-index: 4000;
+  min-width: 200px;
+  padding: 6px;
+  background: #fff;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.16);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.actionMenuItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  color: #1e293b;
+  cursor: pointer;
+}
+
+.actionMenuItem:hover:not(:disabled) {
+  background: #f8fafc;
+}
+
+.actionMenuItem:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.actionMenuIcon {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid #e5e7eb;
+  background: #fff;
+  flex-shrink: 0;
+  color: #475569;
+}
+
+.actionMenuItemMap .actionMenuIcon {
+  color: #2e7d32;
+  border-color: #c8e6c9;
+}
+
+.actionMenuItemAssign .actionMenuIcon {
+  color: #0277bd;
+  border-color: #b3e5fc;
+}
+
+.actionMenuItemEdit .actionMenuIcon {
+  color: #1565c0;
+  border-color: #bbdefb;
+}
+
+.actionMenuItemArchive .actionMenuIcon {
+  color: #6a1b9a;
+  border-color: #e1bee7;
+}
+
+.actionMenuItemRestore .actionMenuIcon {
+  color: #2e7d32;
+  border-color: #c8e6c9;
+}
+
+.actionMenuItemDelete .actionMenuIcon {
+  color: #c62828;
+  border-color: #ffcdd2;
+}
+
 .archiveBtn {
   background: #fff;
   color: #6a1b9a;
@@ -1378,6 +1502,26 @@
   border-radius: 12px;
 }
 
+.archivePeriodBarOpen {
+  align-items: flex-start;
+}
+
+.archivePeriodToggle {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  flex: 1 1 220px;
+  min-width: 180px;
+}
+
+.archivePeriodToggle:hover .archivePeriodCopy strong {
+  text-decoration: underline;
+}
+
 .archivePeriodCopy {
   display: flex;
   flex-direction: column;
@@ -1389,6 +1533,9 @@
   font-size: 13px;
   font-weight: 800;
   color: #9a3412;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .archivePeriodCopy span {
@@ -1401,6 +1548,18 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  width: 100%;
+}
+
+.archivePeriodBtnActive {
+  background: #9a3412 !important;
+  border-color: #9a3412 !important;
+  color: #fff !important;
+}
+
+.archivePeriodBtnActive .archivePeriodCount {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
 }
 
 .archivePeriodBtn {

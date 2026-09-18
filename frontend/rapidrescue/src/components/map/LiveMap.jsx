@@ -57,6 +57,8 @@ export default function LiveMap({
     focusIncidentId != null ? Number(focusIncidentId) : null
   );
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const loadLockRef = useRef(false);
   const [outsideAlerts, setOutsideAlerts] = useState([]);
   const [mapLayer, setMapLayer] = useState('hybrid');
   const [layersOpen, setLayersOpen] = useState(false);
@@ -79,7 +81,13 @@ export default function LiveMap({
   const activeLayer = MAP_LAYERS.find((l) => l.id === mapLayer) || MAP_LAYERS[0];
   const isSatelliteView = mapLayer === 'hybrid';
 
-  const loadLive = useCallback(async () => {
+  const loadLive = useCallback(async ({ showLoader = false } = {}) => {
+    if (loadLockRef.current) return;
+    loadLockRef.current = true;
+    if (showLoader) {
+      setLoading(true);
+      setRefreshing(true);
+    }
     try {
       const res = await api.get('/dispatch/live');
       const data = (res.data || []).map((inc) => ({
@@ -115,13 +123,19 @@ export default function LiveMap({
       setMapError(err.message || 'Failed to load live map data.');
     } finally {
       setLoading(false);
+      setRefreshing(false);
+      loadLockRef.current = false;
     }
   }, []);
 
   useEffect(() => {
-    loadLive();
-    const interval = setInterval(loadLive, 8000);
+    loadLive({ showLoader: true });
+    const interval = setInterval(() => loadLive(), 8000);
     return () => clearInterval(interval);
+  }, [loadLive]);
+
+  const handleRefresh = useCallback(() => {
+    loadLive({ showLoader: true });
   }, [loadLive]);
 
   const selectedForRoute = liveIncidents.find((inc) => sameIncidentId(inc.incident_id, selectedId)) || liveIncidents[0];
@@ -788,7 +802,20 @@ export default function LiveMap({
           </div>
         </div>
 
-        <h3 className={styles.sideTitle}><Icon name="emergency" size={18} /> Active Help Alerts</h3>
+        <div className={styles.sideTitleRow}>
+          <h3 className={styles.sideTitle}><Icon name="emergency" size={18} /> Active Help Alerts</h3>
+          <button
+            type="button"
+            className={styles.refreshBtn}
+            onClick={handleRefresh}
+            disabled={refreshing}
+            aria-busy={refreshing}
+            title="Reload live map"
+          >
+            <Icon name="refresh" size={16} className={refreshing ? styles.refreshSpin : undefined} />
+            Refresh
+          </button>
+        </div>
         {liveIncidents.length === 0 ? (
           <div className={styles.emptyBox}>
             <div className={styles.emptyIcon}><Icon name="cell_tower" size={36} /></div>

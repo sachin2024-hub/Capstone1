@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import TablePager from '../common/TablePager';
 import { resolvePageSize, usePersistedPageSize } from '../common/tablePageSize';
 import {
@@ -50,6 +50,7 @@ export default function DispatchPage() {
   const [logDate, setLogDate] = useState(todayStr);
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [modalEntry, setModalEntry] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -57,9 +58,13 @@ export default function DispatchPage() {
   const [viewing, setViewing] = useState(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = usePersistedPageSize('dispatch');
+  const loadLockRef = useRef(false);
 
   const loadRecords = useCallback(async () => {
+    if (loadLockRef.current) return;
+    loadLockRef.current = true;
     setLoading(true);
+    setRefreshing(true);
     setError('');
     try {
       const data = await fetchDispatchRecords({ date: logDate });
@@ -67,13 +72,20 @@ export default function DispatchPage() {
     } catch (err) {
       setError(err.message || 'Failed to load dispatch records.');
     } finally {
+      loadLockRef.current = false;
       setLoading(false);
+      setRefreshing(false);
     }
   }, [logDate]);
 
   useEffect(() => {
-    loadRecords();
+    const timer = setTimeout(() => { loadRecords(); }, 0);
+    return () => clearTimeout(timer);
   }, [loadRecords]);
+
+  const handleRefresh = () => {
+    loadRecords();
+  };
 
   useEffect(() => {
     setPage(1);
@@ -128,7 +140,16 @@ export default function DispatchPage() {
           </label>
         </div>
         <div className={styles.toolbarRight}>
-          <button type="button" className={styles.refreshBtn} onClick={loadRecords}><Icon name="refresh" size={16} /> Refresh</button>
+          <button
+            type="button"
+            className={styles.refreshBtn}
+            onClick={handleRefresh}
+            disabled={refreshing}
+            aria-busy={refreshing}
+          >
+            <Icon name="refresh" size={16} className={refreshing ? styles.refreshSpin : undefined} />
+            Refresh
+          </button>
           <button type="button" className={styles.addBtn} onClick={handleAdd}><Icon name="add" size={16} /> Add Dispatch</button>
         </div>
       </div>
