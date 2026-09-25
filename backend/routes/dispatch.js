@@ -32,7 +32,7 @@ router.get('/live', async (req, res) => {
       .from('incidents')
       .select(`
         *,
-        users(first_name, last_name, phone_number, email),
+        users(first_name, last_name, phone_number, username),
         locations(*),
         dispatch(
           dispatch_id, dispatch_status, dispatch_time,

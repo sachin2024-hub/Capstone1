@@ -238,7 +238,7 @@ router.get('/all', async (req, res) => {
       .from('incidents')
       .select(`
         *,
-        users(user_id, first_name, middle_name, last_name, email, phone_number, address),
+        users(user_id, first_name, middle_name, last_name, username, phone_number, address),
         locations(*),
         dispatch(dispatch_id, responder_id, dispatch_status, dispatch_time, responders(responder_id, vehicle, team))
       `)
@@ -251,12 +251,12 @@ router.get('/all', async (req, res) => {
     if (userIds.length) {
       let { data: userRows, error: userErr } = await supabase
         .from('users')
-        .select('user_id, first_name, middle_name, last_name, email, phone_number, address, id_type, id_number, verification_status')
+        .select('user_id, first_name, middle_name, last_name, username, phone_number, address, id_type, id_number')
         .in('user_id', userIds);
       if (userErr && isMissingColumnError(userErr)) {
         ({ data: userRows } = await supabase
           .from('users')
-          .select('user_id, first_name, middle_name, last_name, email, phone_number, address')
+          .select('user_id, first_name, middle_name, last_name, username, phone_number, address')
           .in('user_id', userIds));
       }
       registeredById = Object.fromEntries((userRows || []).map((u) => [String(u.user_id), u]));

@@ -5,7 +5,7 @@ const supabase = require('../config/supabase');
 const META_FILE = path.join(__dirname, '..', 'data', 'valid-ids.json');
 const IMAGE_DIR = path.join(__dirname, '..', 'data', 'valid-ids');
 const MAX_BYTES = 7 * 1024 * 1024;
-const IDENTITY_COLUMNS = 'id_type, id_number, verification_status';
+const IDENTITY_COLUMNS = 'id_type, id_number';
 
 function loadMeta() {
   try {
@@ -62,8 +62,7 @@ function isMissingColumnError(error) {
     msg.includes('schema cache') ||
     msg.includes('id_type') ||
     msg.includes('id_image') ||
-    msg.includes('id_number') ||
-    msg.includes('verification_status')
+    msg.includes('id_number')
   );
 }
 
@@ -107,28 +106,34 @@ async function saveValidId(userId, { id_type, id_number, id_image }) {
     id_type: String(id_type || '').trim() || null,
     id_number: String(id_number || '').trim() || null,
     id_image_url: publicApiUrl(userId),
-    verification_status: 'Pending review',
   };
   const ext = extensionFor(parsed.mime);
   saveLocalRecord(userId, record, parsed.buffer, ext);
 
+  // Write to users table — try full update, then fall back column-by-column
+  // so a missing column never blocks id_type/id_image.
+  const payload = {
+    id_type: record.id_type,
+    id_number: record.id_number,
+    id_image: parsed.dataUrl,
+  };
+
   const { error } = await supabase
     .from('users')
-    .update({
-      id_type: record.id_type,
-      id_number: record.id_number,
-      id_image: parsed.dataUrl,
-      verification_status: record.verification_status,
-    })
+    .update(payload)
     .eq('user_id', userId);
 
   if (error) {
-    if (isMissingColumnError(error)) {
-      console.warn(
-        '[valid-id] users table is missing ID columns. Run backend/sql/add_user_valid_id.sql in Supabase SQL Editor.'
-      );
-    } else {
-      console.warn('[valid-id] could not write ID to database:', error.message);
+    console.warn('[valid-id] full update failed:', error.message);
+    // Retry each field alone so ID photo still lands in pgAdmin
+    for (const [col, value] of Object.entries(payload)) {
+      const retry = await supabase
+        .from('users')
+        .update({ [col]: value })
+        .eq('user_id', userId);
+      if (retry.error) {
+        console.warn(`[valid-id] could not write ${col}:`, retry.error.message);
+      }
     }
   }
 
@@ -138,13 +143,12 @@ async function saveValidId(userId, { id_type, id_number, id_image }) {
 function attachIdentity(user) {
   if (!user || user.user_id == null) return user;
   const local = getLocalRecord(user.user_id);
-  const hasDbImage = Boolean(user.id_image || user.id_type || user.id_number || user.verification_status);
+  const hasDbImage = Boolean(user.id_image || user.id_type || user.id_number);
   const withId = {
     ...user,
     id_type: user.id_type || local.id_type || null,
     id_number: user.id_number || local.id_number || null,
     id_image_url: user.id_image_url || (hasDbImage || local.id_image_url ? publicApiUrl(user.user_id) : local.id_image_url) || null,
-    verification_status: user.verification_status || local.verification_status || null,
   };
   const { attachProfilePhoto } = require('./profilePhotoStore');
   return attachProfilePhoto(withId);
@@ -186,7 +190,6 @@ async function removeValidId(userId) {
       id_type: null,
       id_number: null,
       id_image: null,
-      verification_status: null,
     })
     .eq('user_id', userId);
 }

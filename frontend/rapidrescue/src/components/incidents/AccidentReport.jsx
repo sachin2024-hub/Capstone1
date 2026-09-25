@@ -504,11 +504,11 @@ function ChartCard({ title, note, children, wide = false }) {
           className={styles.chartDownloadBtn}
           onClick={handleDownload}
           disabled={busy}
-          title="Download Image"
+          aria-label={busy ? 'Saving chart image' : 'Download image'}
+          data-tooltip={busy ? 'Saving…' : 'Download image'}
           data-capture-ignore="true"
         >
-          <Icon name="download" size={14} />
-          {busy ? 'Saving…' : 'Download Image'}
+          <Icon name={busy ? 'progress_activity' : 'download'} size={18} />
         </button>
       </div>
       {note ? <p className={styles.chartNote}>{note}</p> : null}

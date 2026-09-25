@@ -1,0 +1,192 @@
+.section {
+  margin: 8px 0 24px;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.link {
+  border: none;
+  background: none;
+  color: #c1121f;
+  font-size: 12px;
+  font-weight: 650;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 0.9fr 1.2fr 1.2fr;
+  gap: 12px;
+}
+
+.card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+
+.cardLabel {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 650;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.bigNum {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 750;
+  color: #0f172a;
+  letter-spacing: -0.6px;
+  line-height: 1.1;
+}
+
+.hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.donutRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.donut {
+  flex-shrink: 0;
+}
+
+.donutTotal {
+  font-size: 14px;
+  font-weight: 750;
+  fill: #0f172a;
+  font-family: Inter, system-ui, sans-serif;
+}
+
+.donutSub {
+  font-size: 8px;
+  font-weight: 600;
+  fill: #94a3b8;
+  font-family: Inter, system-ui, sans-serif;
+}
+
+.legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.legendLabel {
+  flex: 1;
+  color: #475569;
+  font-weight: 550;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.legendCount {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.bars {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.barRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.4fr) 28px;
+  gap: 8px;
+  align-items: center;
+}
+
+.barName {
+  font-size: 11px;
+  font-weight: 550;
+  color: #475569;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.barTrack {
+  height: 8px;
+  background: #f1f5f9;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.barFill {
+  height: 100%;
+  background: #94a3b8;
+  border-radius: 999px;
+}
+
+.barCount {
+  font-size: 11px;
+  font-weight: 700;
+  color: #0f172a;
+  text-align: right;
+}
+
+.empty {
+  margin: 0;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+@media (max-width: 1000px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -10,13 +10,97 @@ const { saveValidId, attachIdentity, removeValidId, loadIdImage, IDENTITY_COLUMN
 const { saveProfilePhoto, loadProfilePhoto, removeProfilePhoto } = require('../utils/profilePhotoStore');
 const { verifyIdImage } = require('../utils/idScanner');
 const { logActivity } = require('../utils/activityLogger');
+const {
+  getContacts: getEmergencyContacts,
+  setContacts: setEmergencyContacts,
+  sanitizeContacts,
+} = require('../utils/emergencyContactStore');
+
+const USERNAME_REGEX = /^[a-zA-Z0-9.@_-]{3,50}$/;
+
+function normalizeUsername(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function validateUsername(value) {
+  const username = normalizeUsername(value);
+  if (!username) return { ok: false, message: 'Username is required.' };
+  if (!USERNAME_REGEX.test(username)) {
+    return {
+      ok: false,
+      message: 'Username must be 3–50 characters (letters, numbers, . @ _ - only).',
+    };
+  }
+  return { ok: true, username };
+}
+
+// POST /api/auth/check-availability — realtime uniqueness for register
+router.post('/check-availability', async (req, res) => {
+  try {
+    const phone = String(req.body?.phone_number || '').replace(/\D/g, '').trim();
+    const usernameRaw = String(req.body?.username || '').trim();
+    const result = {
+      phone_taken: false,
+      username_taken: false,
+      phone_message: null,
+      username_message: null,
+    };
+
+    if (phone && /^09\d{9}$/.test(phone)) {
+      const { data } = await supabase
+        .from('users')
+        .select('user_id')
+        .eq('phone_number', phone)
+        .limit(1);
+      const rows = Array.isArray(data) ? data : data ? [data] : [];
+      if (rows.length > 0) {
+        result.phone_taken = true;
+        result.phone_message =
+          'This mobile number is already registered. Please use a different mobile number.';
+      }
+    }
+
+    if (usernameRaw) {
+      const check = validateUsername(usernameRaw);
+      if (check.ok) {
+        const { data } = await supabase
+          .from('users')
+          .select('user_id')
+          .ilike('username', check.username)
+          .limit(1);
+        const rows = Array.isArray(data) ? data : data ? [data] : [];
+        if (rows.length > 0) {
+          result.username_taken = true;
+          result.username_message =
+            'This username is already taken. Please choose a different username.';
+        }
+      }
+    }
+
+    return res.json(result);
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+});
 
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
-  const { first_name, middle_name, last_name, phone_number, email, password, address, id_type, id_number, id_image } = req.body;
+  const {
+    first_name,
+    middle_name,
+    last_name,
+    phone_number,
+    username,
+    password,
+    address,
+    id_type,
+    id_number,
+    id_image,
+    emergency_contacts,
+  } = req.body;
 
-  if (!first_name || !last_name || !email || !password) {
-    return res.status(400).json({ message: 'First name, last name, email, and password are required.' });
+  if (!first_name || !last_name || !username || !password) {
+    return res.status(400).json({ message: 'First name, last name, username, and password are required.' });
   }
 
   if (!String(id_type || '').trim() || !id_image) {
@@ -26,30 +110,42 @@ router.post('/register', async (req, res) => {
     });
   }
 
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
-    return res.status(400).json({ message: 'Invalid email format.' });
+  const usernameCheck = validateUsername(username);
+  if (!usernameCheck.ok) {
+    return res.status(400).json({ field: 'username', message: usernameCheck.message });
   }
 
-  if (password.length < 6) {
-    return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+  if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+    return res.status(400).json({
+      message: 'Password must be at least 8 characters and include a letter and a number.',
+    });
+  }
+
+  let optionalContacts = [];
+  try {
+    optionalContacts = sanitizeContacts(emergency_contacts);
+  } catch (contactErr) {
+    return res.status(400).json({
+      field: 'emergency_contacts',
+      message: contactErr.message || 'Invalid emergency contact.',
+    });
   }
 
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
-    const normalizedEmail = String(email).trim().toLowerCase();
+    const normalizedUsername = usernameCheck.username;
     const normalizedPhone = phone_number ? String(phone_number).trim() : '';
 
-    const { data: existingEmail } = await supabase
+    const { data: existingUsername } = await supabase
       .from('users')
       .select('user_id')
-      .ilike('email', normalizedEmail)
+      .ilike('username', normalizedUsername)
       .maybeSingle();
 
-    if (existingEmail) {
+    if (existingUsername) {
       return res.status(409).json({
-        field: 'email',
-        message: 'This email address is already registered. Please use a different email address.',
+        field: 'username',
+        message: 'This username is already taken. Please choose a different username.',
       });
     }
 
@@ -85,13 +181,13 @@ router.post('/register', async (req, res) => {
           middle_name: middle_name || null,
           last_name,
           phone_number: normalizedPhone || null,
-          email: normalizedEmail,
+          username: normalizedUsername,
           password: hashedPassword,
           address: address || null,
           account_status: 'Active',
         },
       ])
-      .select('user_id, first_name, middle_name, last_name, email, phone_number, address, account_status')
+      .select('user_id, first_name, middle_name, last_name, username, phone_number, address, account_status')
       .single();
 
     if (error) {
@@ -104,8 +200,8 @@ router.post('/register', async (req, res) => {
           });
         }
         return res.status(409).json({
-          field: 'email',
-          message: 'This email address is already registered. Please use a different email address.',
+          field: 'username',
+          message: 'This username is already taken. Please choose a different username.',
         });
       }
       return res.status(500).json({ message: error.message });
@@ -126,8 +222,18 @@ router.post('/register', async (req, res) => {
       });
     }
 
+    // Optional emergency contacts — saved on users.emergency_contacts
+    let savedContacts = [];
+    try {
+      if (optionalContacts.length) {
+        savedContacts = await setEmergencyContacts(data.user_id, optionalContacts);
+      }
+    } catch {
+      savedContacts = [];
+    }
+
     const token = jwt.sign(
-      { user_id: data.user_id, email: data.email },
+      { user_id: data.user_id, username: data.username },
       process.env.JWT_SECRET,
       { expiresIn: '365d' }
     );
@@ -138,12 +244,12 @@ router.post('/register', async (req, res) => {
       entity_type: 'user',
       entity_id: data.user_id,
       target: `${data.first_name} ${data.last_name}`.trim(),
-      details: `${data.first_name} ${data.last_name} registered a mobile account (${data.email}${identity?.id_type ? `, ID: ${identity.id_type}` : ''}).`,
+      details: `${data.first_name} ${data.last_name} registered a mobile account (${data.username}${identity?.id_type ? `, ID: ${identity.id_type}` : ''}).`,
     });
 
     return res.status(201).json({
       message: 'Registration successful!',
-      user: { ...data, ...identity },
+      user: { ...data, ...identity, emergency_contacts: savedContacts },
       token,
     });
   } catch (err) {
@@ -153,21 +259,22 @@ router.post('/register', async (req, res) => {
 
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
+  const username = normalizeUsername(req.body?.username);
+  const { password } = req.body;
 
-  if (!email || !password) {
-    return res.status(400).json({ message: 'Email and password are required.' });
+  if (!username || !password) {
+    return res.status(400).json({ message: 'Username and password are required.' });
   }
 
   try {
     const { data, error } = await supabase
       .from('users')
       .select('*')
-      .eq('email', email)
-      .single();
+      .ilike('username', username)
+      .maybeSingle();
 
     if (error || !data) {
-      return res.status(401).json({ message: 'Invalid email or password.' });
+      return res.status(401).json({ message: 'Invalid username or password.' });
     }
 
     if (data.account_status === 'Blocked') {
@@ -182,11 +289,11 @@ router.post('/login', async (req, res) => {
 
     const isMatch = await bcrypt.compare(password, data.password);
     if (!isMatch) {
-      return res.status(401).json({ message: 'Invalid email or password.' });
+      return res.status(401).json({ message: 'Invalid username or password.' });
     }
 
     const token = jwt.sign(
-      { user_id: data.user_id, email: data.email },
+      { user_id: data.user_id, username: data.username },
       process.env.JWT_SECRET,
       { expiresIn: '365d' }
     );
@@ -228,32 +335,57 @@ router.get('/me', authenticateToken, async (req, res) => {
     if (error || !data) {
       return res.status(404).json({ message: 'User not found.' });
     }
-    return res.json({ user: attachIdentity(data) });
+    return res.json({
+      user: {
+        ...attachIdentity(data),
+        emergency_contacts: await getEmergencyContacts(user_id),
+      },
+    });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }
 });
 
+// GET /api/auth/emergency-contacts — optional contacts for logged-in user
+router.get('/emergency-contacts', authenticateToken, async (req, res) => {
+  const user_id = req.user?.user_id;
+  if (!user_id) return res.status(401).json({ message: 'Access denied.' });
+  return res.json({ contacts: await getEmergencyContacts(user_id) });
+});
+
+// PUT /api/auth/emergency-contacts — replace full list (empty array clears)
+router.put('/emergency-contacts', authenticateToken, async (req, res) => {
+  const user_id = req.user?.user_id;
+  if (!user_id) return res.status(401).json({ message: 'Access denied.' });
+
+  try {
+    const contacts = await setEmergencyContacts(user_id, req.body?.contacts ?? req.body?.emergency_contacts ?? []);
+    return res.json({ message: 'Emergency contacts saved.', contacts });
+  } catch (err) {
+    return res.status(400).json({ message: err.message || 'Could not save emergency contacts.' });
+  }
+});
+
 // POST /api/auth/forgot-password/verify
 router.post('/forgot-password/verify', async (req, res) => {
-  const email = String(req.body?.email || '').trim().toLowerCase();
+  const username = normalizeUsername(req.body?.username);
   const phone_number = String(req.body?.phone_number || '').trim();
 
-  if (!email || !phone_number) {
-    return res.status(400).json({ message: 'Email and mobile number are required.' });
+  if (!username || !phone_number) {
+    return res.status(400).json({ message: 'Username and mobile number are required.' });
   }
 
   try {
     const { data } = await supabase
       .from('users')
-      .select('user_id, email, phone_number, account_status')
-      .ilike('email', email)
+      .select('user_id, username, phone_number, account_status')
+      .ilike('username', username)
       .eq('phone_number', phone_number)
       .maybeSingle();
 
     if (!data) {
       return res.status(404).json({
-        message: 'No account matches that email and mobile number.',
+        message: 'No account matches that username and mobile number.',
       });
     }
 
@@ -289,14 +421,35 @@ router.post('/forgot-password/reset', async (req, res) => {
   if (!reset_token || !password) {
     return res.status(400).json({ message: 'Reset token and new password are required.' });
   }
-  if (String(password).length < 6) {
-    return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+  if (String(password).length < 8 || !/[A-Za-z]/.test(String(password)) || !/\d/.test(String(password))) {
+    return res.status(400).json({
+      field: 'password',
+      message: 'Password must be at least 8 characters and include a letter and a number.',
+    });
   }
 
   try {
     const decoded = jwt.verify(reset_token, process.env.JWT_SECRET);
     if (!decoded || decoded.purpose !== 'password_reset' || !decoded.user_id) {
       return res.status(403).json({ message: 'Invalid or expired reset link. Please verify again.' });
+    }
+
+    const { data: existing, error: existingError } = await supabase
+      .from('users')
+      .select('password')
+      .eq('user_id', decoded.user_id)
+      .single();
+
+    if (existingError || !existing) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    const sameAsOld = await bcrypt.compare(String(password), existing.password);
+    if (sameAsOld) {
+      return res.status(400).json({
+        field: 'password',
+        message: 'New password must be different from your current password.',
+      });
     }
 
     const hashedPassword = await bcrypt.hash(String(password), 10);
@@ -313,7 +466,7 @@ router.post('/forgot-password/reset', async (req, res) => {
   }
 });
 
-const USER_SAFE_FIELDS = 'user_id, first_name, middle_name, last_name, email, phone_number, address, account_status, date_registered';
+const USER_SAFE_FIELDS = 'user_id, first_name, middle_name, last_name, username, phone_number, address, account_status, date_registered';
 const USER_SAFE_FIELDS_WITH_ID = `${USER_SAFE_FIELDS}, ${IDENTITY_COLUMNS}`;
 
 // PATCH /api/auth/profile — logged-in user updates own account
@@ -323,19 +476,18 @@ router.patch('/profile', authenticateToken, async (req, res) => {
     return res.status(401).json({ message: 'Access denied.' });
   }
 
-  const { first_name, middle_name, last_name, email, phone_number, address, password, current_password, profile_picture } = req.body;
+  const { first_name, middle_name, last_name, username, phone_number, address, password, current_password, profile_picture } = req.body;
   const updates = {};
 
   if (first_name !== undefined) updates.first_name = String(first_name).trim();
   if (middle_name !== undefined) updates.middle_name = String(middle_name).trim() || null;
   if (last_name !== undefined) updates.last_name = String(last_name).trim();
-  if (email !== undefined) {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const normalizedEmail = String(email).trim().toLowerCase();
-    if (!emailRegex.test(normalizedEmail)) {
-      return res.status(400).json({ message: 'Invalid email format.' });
+  if (username !== undefined) {
+    const usernameCheck = validateUsername(username);
+    if (!usernameCheck.ok) {
+      return res.status(400).json({ field: 'username', message: usernameCheck.message });
     }
-    updates.email = normalizedEmail;
+    updates.username = usernameCheck.username;
   }
   if (phone_number !== undefined) updates.phone_number = String(phone_number).trim() || null;
   if (address !== undefined) updates.address = String(address).trim() || null;
@@ -401,7 +553,7 @@ router.patch('/profile', authenticateToken, async (req, res) => {
           .single();
         if (retry.error) {
           if (retry.error.code === '23505') {
-            return res.status(409).json({ message: 'Email or phone number already in use.' });
+            return res.status(409).json({ message: 'Username or phone number already in use.' });
           }
           return res.status(500).json({ message: retry.error.message });
         }
@@ -409,7 +561,7 @@ router.patch('/profile', authenticateToken, async (req, res) => {
         return res.json({ message: 'Profile updated.', user: attachIdentity(retry.data) });
       }
       if (error.code === '23505') {
-        return res.status(409).json({ message: 'Email or phone number already in use.' });
+        return res.status(409).json({ message: 'Username or phone number already in use.' });
       }
       return res.status(500).json({ message: error.message });
     }
@@ -421,6 +573,7 @@ router.patch('/profile', authenticateToken, async (req, res) => {
 });
 
 // POST /api/auth/profile-picture — save avatar only
+
 router.post('/profile-picture', authenticateToken, async (req, res) => {
   const user_id = req.user?.user_id;
   if (!user_id) {
@@ -504,18 +657,18 @@ router.get('/users/:id/id-image', async (req, res) => {
 
 // PATCH /api/auth/users/:id — edit profile or block/unblock
 router.patch('/users/:id', async (req, res) => {
-  const { first_name, middle_name, last_name, email, phone_number, address, account_status, password, block_reason } = req.body;
+  const { first_name, middle_name, last_name, username, phone_number, address, account_status, password, block_reason } = req.body;
   const updates = {};
 
   if (first_name !== undefined) updates.first_name = first_name.trim();
   if (middle_name !== undefined) updates.middle_name = middle_name.trim() || null;
   if (last_name !== undefined) updates.last_name = last_name.trim();
-  if (email !== undefined) {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({ message: 'Invalid email format.' });
+  if (username !== undefined) {
+    const usernameCheck = validateUsername(username);
+    if (!usernameCheck.ok) {
+      return res.status(400).json({ field: 'username', message: usernameCheck.message });
     }
-    updates.email = email.trim();
+    updates.username = usernameCheck.username;
   }
   if (phone_number !== undefined) updates.phone_number = phone_number.trim() || null;
   if (address !== undefined) updates.address = address.trim() || null;
@@ -561,7 +714,7 @@ router.patch('/users/:id', async (req, res) => {
           .single();
         if (retry.error) {
           if (retry.error.code === '23505') {
-            return res.status(409).json({ message: 'Email or phone number already in use.' });
+            return res.status(409).json({ message: 'Username or phone number already in use.' });
           }
           return res.status(500).json({ message: retry.error.message });
         }
@@ -580,7 +733,7 @@ router.patch('/users/:id', async (req, res) => {
         });
       }
       if (error.code === '23505') {
-        return res.status(409).json({ message: 'Email or phone number already in use.' });
+        return res.status(409).json({ message: 'Username or phone number already in use.' });
       }
       return res.status(500).json({ message: error.message });
     }

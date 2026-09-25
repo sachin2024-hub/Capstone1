@@ -28,6 +28,7 @@ import { isWithinCabadbaran } from '../../utils/geofence';
 import { rememberIncidentStatus, peekIncidentStatus, takeIncidentStatus } from '../../utils/restoreMemory';
 import { APP_IMAGES } from '../../constants/images';
 import { INCIDENT_TYPE_GROUPS, matchingTypeNames, matchingSubTypeNames } from '../../constants/incidentTypes';
+import MiniAnalyticsPreview from '../../components/dashboard/MiniAnalyticsPreview';
 import styles from './Dashboard.module.css';
 
 const ONGOING_STATUSES = ['Pending', 'Dispatch', 'In Progress', 'En Route', 'Arrived'];
@@ -405,7 +406,7 @@ const CALL_LOG_ARCHIVE_COLUMNS = [
 const USER_ARCHIVE_COLUMNS = [
   { key: 'user_id', label: 'ID', render: (row) => <strong>#{row.user_id}</strong> },
   { key: 'name', label: 'Name', render: (row) => `${row.first_name || ''} ${row.last_name || ''}`.trim() || '—' },
-  { key: 'email', label: 'Email' },
+  { key: 'username', label: 'Username' },
   { key: 'phone_number', label: 'Phone' },
   { key: 'account_status', label: 'Status', render: () => 'Deleted' },
   { key: 'date_registered', label: 'Registered', render: (row) => formatDate(row.date_registered) },
@@ -425,7 +426,7 @@ function userSearchText(row) {
     row.user_id,
     row.first_name,
     row.last_name,
-    row.email,
+    row.username,
     row.phone_number,
     row.address,
   ].filter(Boolean).join(' ');
@@ -1322,7 +1323,7 @@ function UserDetailsModal({ user: target, onClose }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <DetailCell label="Name" value={fullName || '—'} />
           <DetailCell label="Status" value={blocked ? 'Blocked' : (target.account_status || 'Active')} />
-          <DetailCell label="Email" value={target.email || '—'} />
+          <DetailCell label="Username" value={target.username || '—'} />
           <DetailCell label="Mobile Number" value={target.phone_number || '—'} />
           <DetailCell label="Address" value={target.address || '—'} wide />
           <DetailCell label="Registered" value={formatDate(target.date_registered)} />
@@ -1426,7 +1427,7 @@ function EditUserModal({ user: target, onClose, onSaved }) {
     first_name: target.first_name || '',
     middle_name: target.middle_name || '',
     last_name: target.last_name || '',
-    email: target.email || '',
+    username: target.username || '',
     phone_number: target.phone_number || '',
     address: target.address || '',
     password: '',
@@ -1441,8 +1442,8 @@ function EditUserModal({ user: target, onClose, onSaved }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.first_name || !form.last_name || !form.email) {
-      setErr('First name, last name, and email are required.');
+    if (!form.first_name || !form.last_name || !form.username) {
+      setErr('First name, last name, and username are required.');
       return;
     }
     if (form.password && form.password.length < 6) {
@@ -1456,7 +1457,7 @@ function EditUserModal({ user: target, onClose, onSaved }) {
         first_name: form.first_name.trim(),
         middle_name: form.middle_name.trim(),
         last_name: form.last_name.trim(),
-        email: form.email.trim(),
+        username: form.username.trim(),
         phone_number: form.phone_number.trim(),
         address: form.address.trim(),
       };
@@ -1486,7 +1487,7 @@ function EditUserModal({ user: target, onClose, onSaved }) {
             <MField label="Last Name *" name="last_name" value={form.last_name} onChange={handleChange} placeholder="Last name" />
           </div>
           <MField label="Middle Name" name="middle_name" value={form.middle_name} onChange={handleChange} placeholder="Optional" />
-          <MField label="Email *" name="email" value={form.email} onChange={handleChange} placeholder="email@example.com" />
+          <MField label="Username *" name="username" value={form.username} onChange={handleChange} placeholder="username" />
           <div style={TWO_COL}>
             <MField label="Phone" name="phone_number" value={form.phone_number} onChange={handleChange} placeholder="09XXXXXXXXX" />
             <MField label="New Password" name="password" value={form.password} onChange={handleChange} placeholder="Leave blank to keep" type="password" />
@@ -2659,6 +2660,15 @@ export default function Dashboard() {
                 ))}
               </div>
 
+              {/* Compact Analytics preview — same definitions as Analytics tab */}
+              <MiniAnalyticsPreview
+                incidents={dashboardIncidents}
+                onViewFull={() => {
+                  setAnalyticsDateFilter({ ...dashboardDateFilter });
+                  setActiveTab('analytics');
+                }}
+              />
+
               {/* Recent Incidents */}
               <div className={styles.tableCard}>
                 <div className={styles.tableCardHeader}>
@@ -3087,8 +3097,8 @@ export default function Dashboard() {
                     <strong>{fullName}</strong>
                   </div>
                   <div className={styles.settingsRow}>
-                    <span>Email</span>
-                    <strong>{user?.email || '—'}</strong>
+                    <span>Username</span>
+                    <strong>{user?.username || '—'}</strong>
                   </div>
                   <div className={styles.settingsRow}>
                     <span>Role</span>
@@ -3310,7 +3320,7 @@ export default function Dashboard() {
                     <input
                       type="search"
                       className={styles.incidentSearch}
-                      placeholder="Search users by name, email, or phone..."
+                      placeholder="Search users by name, username, or phone..."
                       value={userSearch}
                       onChange={(e) => setUserSearch(e.target.value)}
                     />
@@ -3329,7 +3339,7 @@ export default function Dashboard() {
                     <table className={styles.table}>
                       <thead>
                         <tr>
-                          <th>ID</th><th>Name</th><th>Email</th><th>Phone</th>
+                          <th>ID</th><th>Name</th><th>Username</th><th>Phone</th>
                             <th>Address</th><th>Status</th><th>Registered</th><th>Action</th>
                         </tr>
                       </thead>
@@ -3353,7 +3363,7 @@ export default function Dashboard() {
                                 <span className={styles.userName2}>{u.first_name} {u.last_name}</span>
                               </div>
                             </td>
-                            <td style={{ color: '#555' }}>{u.email}</td>
+                            <td style={{ color: '#555' }}>{u.username}</td>
                             <td style={{ color: '#888' }}>{u.phone_number || '—'}</td>
                             <td className={styles.descCell} style={{ color: '#888' }}>{u.address || '—'}</td>
                             <td>

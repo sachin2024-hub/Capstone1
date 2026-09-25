@@ -38,15 +38,14 @@ function resolveImageSrc(url) {
 }
 
 function verificationInfo(user) {
-  const raw = pick(user, ['verification_status', 'id_verification_status', 'identity_status']);
-  const hasId = Boolean(pick(user, ['id_image_url', 'valid_id_url', 'id_image', 'valid_id_image']));
-  const normalized = raw.toLowerCase();
+  // ID review status column removed — show based on whether an ID photo exists
+  const hasId = Boolean(pick(user, ['id_image_url', 'valid_id_url', 'id_image', 'valid_id_image', 'id_type']));
 
-  if (normalized === 'verified' || normalized === 'approved' || user?.id_verified === true) {
+  if (user?.id_verified === true) {
     return { label: 'Verified', tone: 'verified' };
   }
-  if (normalized === 'pending' || normalized === 'in review' || normalized === 'submitted' || hasId) {
-    return { label: 'Pending review', tone: 'pending' };
+  if (hasId) {
+    return { label: 'ID on file', tone: 'pending' };
   }
   if (user?.account_status === 'Blocked') {
     return { label: 'Blocked', tone: 'blocked' };
@@ -73,7 +72,7 @@ export default function ReporterInformationModal({ user, onClose }) {
   const name = fullName(user);
   const photo = userProfilePhotoUrl(user) || resolveImageSrc(pick(user, ['profile_picture', 'avatar_url', 'photo_url', 'profile_photo']));
   const phone = pick(user, ['phone_number', 'contact_number']);
-  const email = pick(user, ['email']);
+  const username = pick(user, ['username', 'email']);
   const address = pick(user, ['address']);
   const idType = pick(user, ['id_type', 'valid_id_type', 'identity_type']);
   const idNumber = pick(user, ['id_number', 'valid_id_number', 'identity_number']);
@@ -123,9 +122,9 @@ export default function ReporterInformationModal({ user, onClose }) {
               )}
             </div>
             <div className={styles.cell}>
-              <span className={styles.label}>Email Address</span>
-              {email ? (
-                <a className={styles.emailLink} href={`mailto:${email}`}>{email}</a>
+              <span className={styles.label}>Username</span>
+              {username ? (
+                <span className={styles.value}>{username}</span>
               ) : (
                 <span className={styles.value}>—</span>
               )}

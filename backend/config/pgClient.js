@@ -22,6 +22,16 @@ function quoteIdent(name) {
   return `"${String(name).replace(/"/g, '""')}"`;
 }
 
+/** Prepare values for pg — objects/arrays must be JSON text for jsonb/json columns. */
+function toPgValue(value) {
+  if (value === undefined) return null;
+  if (value === null) return null;
+  if (Array.isArray(value) || (typeof value === 'object' && !(value instanceof Date) && !Buffer.isBuffer(value))) {
+    return JSON.stringify(value);
+  }
+  return value;
+}
+
 function asError(err) {
   if (!err) return null;
   return {
@@ -391,7 +401,7 @@ class QueryBuilder {
           const values = [];
           const placeholders = rows.map((row, rIdx) => {
             const parts = keys.map((k, cIdx) => {
-              values.push(row[k]);
+              values.push(toPgValue(row[k]));
               return `$${rIdx * keys.length + cIdx + 1}`;
             });
             return `(${parts.join(', ')})`;
@@ -427,7 +437,7 @@ class QueryBuilder {
           data = null;
         } else {
           const setParts = keys.map((k, i) => `${quoteIdent(k)} = $${i + 1}`);
-          const params = keys.map((k) => values[k]);
+          const params = keys.map((k) => toPgValue(values[k]));
           const where = buildWhere(this._filters, params.length + 1);
           const returning = this._returnSelect != null ? ' RETURNING *' : '';
           const sql = `UPDATE ${quoteIdent(this.table)} SET ${setParts.join(', ')}${where.sql}${returning}`;
