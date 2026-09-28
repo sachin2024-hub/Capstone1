@@ -1516,13 +1516,27 @@ function EditAdminModal({ admin, onClose, onSaved }) {
     contact_number: admin.contact_number || '',
     role: ADMIN_ROLES.includes(admin.role) ? admin.role : 'Admin',
     password: '',
+    confirm_password: '',
   });
+  const [changePassword, setChangePassword] = useState(false);
+  const [pwdError, setPwdError] = useState('');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
   const handleChange = (e) => {
     setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
     setErr('');
+    setPwdError('');
+  };
+
+  const handleToggleChangePassword = (e) => {
+    const on = e.target.checked;
+    setChangePassword(on);
+    setPwdError('');
+    setErr('');
+    if (!on) {
+      setForm((p) => ({ ...p, password: '', confirm_password: '' }));
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -1531,12 +1545,25 @@ function EditAdminModal({ admin, onClose, onSaved }) {
       setErr('First name, last name, and username are required.');
       return;
     }
-    if (form.password && form.password.length < 6) {
-      setErr('New password must be at least 6 characters.');
-      return;
+
+    if (changePassword) {
+      if (!form.password || !form.confirm_password) {
+        setPwdError('New password and confirmation are required.');
+        return;
+      }
+      if (form.password.length < 8) {
+        setPwdError('Password must be at least 8 characters.');
+        return;
+      }
+      if (form.password !== form.confirm_password) {
+        setPwdError('Passwords do not match.');
+        return;
+      }
     }
+
     setSaving(true);
     setErr('');
+    setPwdError('');
     try {
       const payload = {
         first_name: form.first_name.trim(),
@@ -1546,7 +1573,7 @@ function EditAdminModal({ admin, onClose, onSaved }) {
         contact_number: form.contact_number.trim(),
         role: form.role,
       };
-      if (form.password) payload.password = form.password;
+      if (changePassword) payload.password = form.password;
       await api.patch(`/admin/${admin.admin_id}`, payload);
       onSaved();
     } catch (e2) {
@@ -1582,7 +1609,62 @@ function EditAdminModal({ admin, onClose, onSaved }) {
               {ADMIN_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
           </div>
-          <MField label="New Password" name="password" value={form.password} onChange={handleChange} placeholder="Leave blank to keep" type="password" />
+
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              marginBottom: changePassword ? 12 : 16,
+              padding: '10px 12px',
+              borderRadius: 10,
+              border: '1.5px solid #E5E7EB',
+              background: changePassword ? '#EFF6FF' : '#FAFAFA',
+              cursor: 'pointer',
+              userSelect: 'none',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={changePassword}
+              onChange={handleToggleChangePassword}
+              style={{ width: 16, height: 16, accentColor: '#2563eb', cursor: 'pointer' }}
+            />
+            <span style={{ fontSize: 13.5, fontWeight: 650, color: '#1E293B' }}>
+              Change password
+            </span>
+          </label>
+
+          {changePassword && (
+            <div style={{ marginBottom: 4 }}>
+              <MField
+                label="New Password *"
+                name="password"
+                value={form.password}
+                onChange={handleChange}
+                placeholder="At least 8 characters"
+                type="password"
+              />
+              <MField
+                label="Confirm New Password *"
+                name="confirm_password"
+                value={form.confirm_password}
+                onChange={handleChange}
+                placeholder="Re-enter new password"
+                type="password"
+              />
+              {pwdError ? (
+                <div style={{ ...ERR_BOX, marginTop: -4, marginBottom: 12, padding: '8px 10px', fontSize: 12.5 }}>
+                  <Icon name="warning" size={15} /> {pwdError}
+                </div>
+              ) : (
+                <p style={{ margin: '-4px 0 12px', fontSize: 12, color: '#64748B', fontWeight: 500 }}>
+                  Password must be at least 8 characters and both fields must match.
+                </p>
+              )}
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
             <button type="button" onClick={onClose} style={{ flex: 1, height: 44, border: '1.5px solid #E5E7EB', borderRadius: 10, background: '#fff', color: '#374151', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
               Cancel
