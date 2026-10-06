@@ -35,6 +35,16 @@
   50%      { transform: translate(14px, 16px) scale(1.08); }
 }
 
+@keyframes bannerReveal {
+  from { opacity: 0; transform: scale(1.08); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes dashboardEnter {
+  from { opacity: 0; transform: translateY(28px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* ─── Layout ─────────────────────────────────────────── */
 .wrapper {
   display: flex;
@@ -464,6 +474,10 @@
   letter-spacing: 0.3px;
 }
 
+.dashboardEnter {
+  animation: dashboardEnter 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 /* ─── Content Area ────────────────────────────────────── */
 .content {
   padding: 28px;
@@ -629,44 +643,34 @@
 .overviewBanner {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(120deg, #b71c1c 0%, #d32f2f 48%, #e53935 100%);
+  background: #6b0f14;
   border-radius: 18px;
-  padding: 24px 26px;
+  padding: 28px 26px;
+  min-height: 132px;
   margin-bottom: 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
   color: #fff;
-  box-shadow: 0 10px 30px rgba(198, 40, 40, 0.32);
+  box-shadow: 0 10px 30px rgba(120, 16, 16, 0.28);
   animation: dashFadeUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.12s backwards;
 }
 
-/* soft floating orbs */
-.overviewBanner::before {
-  content: '';
+.bannerPhoto {
   position: absolute;
-  width: 240px;
-  height: 240px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.09);
-  top: -110px;
-  right: 12%;
+  inset: 0;
+  background: url('/images/cabadbaran-banner.png') center right / cover no-repeat;
+  transform-origin: 72% center;
+  animation: bannerReveal 1.05s cubic-bezier(0.22, 1, 0.36, 1) 0.08s both;
   pointer-events: none;
-  animation: dashDrift 15s ease-in-out infinite;
 }
 
-.overviewBanner::after {
-  content: '';
+.bannerScrim {
   position: absolute;
-  width: 150px;
-  height: 150px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.07);
-  bottom: -85px;
-  left: 34%;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(70, 0, 0, 0.42) 0%, rgba(90, 0, 0, 0.12) 46%, rgba(40, 0, 0, 0.05) 100%);
   pointer-events: none;
-  animation: dashDrift 19s ease-in-out infinite reverse;
 }
 
 .bannerText {
@@ -2345,11 +2349,11 @@
 /* Respect users who prefer no motion */
 @media (prefers-reduced-motion: reduce) {
   .topbar,
+  .dashboardEnter,
   .tabHeader,
   .navItem,
   .overviewBanner,
-  .overviewBanner::before,
-  .overviewBanner::after,
+  .bannerPhoto,
   .statCard,
   .statCard::after,
   .tableCard,

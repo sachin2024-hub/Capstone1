@@ -46,10 +46,10 @@ function buildPreview(incidents) {
   const resolutionRate = rows.length ? (resolved.length / rows.length) * 100 : 0;
 
   const statusSlices = [
-    { label: 'Pending', count: pending.length, color: '#f59e0b' },
-    { label: 'Active', count: active.length, color: '#3b82f6' },
+    { label: 'Pending', count: pending.length, color: '#f5a524' },
+    { label: 'Active', count: active.length, color: '#6366f1' },
     { label: 'Resolved', count: resolved.length, color: '#22c55e' },
-    { label: 'Outside', count: outside.length, color: '#fb923c' },
+    { label: 'Outside', count: outside.length, color: '#3b82f6' },
     { label: 'Cancelled', count: cancelled.length, color: '#94a3b8' },
   ].filter((s) => s.count > 0);
 
@@ -74,8 +74,8 @@ function buildPreview(incidents) {
 }
 
 function MiniDonut({ slices, total }) {
-  const size = 96;
-  const stroke = 14;
+  const size = 112;
+  const stroke = 16;
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   let offset = 0;
@@ -103,8 +103,8 @@ function MiniDonut({ slices, total }) {
         offset += len;
         return el;
       })}
-      <text x="50%" y="48%" textAnchor="middle" className={styles.donutTotal}>{total}</text>
-      <text x="50%" y="62%" textAnchor="middle" className={styles.donutSub}>total</text>
+      <text x="50%" y="46%" textAnchor="middle" className={styles.donutTotal}>{total}</text>
+      <text x="50%" y="60%" textAnchor="middle" className={styles.donutSub}>Total</text>
     </svg>
   );
 }
@@ -113,15 +113,16 @@ function MiniDonut({ slices, total }) {
  * Compact Analytics strip for Dashboard — same Pending/status logic as Analytics page.
  * Full charts remain on the Analytics tab.
  */
-export default function MiniAnalyticsPreview({ incidents = [], onViewFull }) {
+export default function MiniAnalyticsPreview({ incidents = [], periodLabel = 'All time', onViewFull }) {
   const data = useMemo(() => buildPreview(incidents), [incidents]);
   const maxType = Math.max(1, ...data.types.map((t) => t.count));
+  const rateLabel = `${data.resolutionRate.toFixed(1)}%`;
 
   return (
     <section className={styles.section}>
       <div className={styles.head}>
         <h3 className={styles.title}>
-          <Icon name="monitoring" size={18} /> Analytics snapshot
+          <Icon name="monitoring" size={18} /> Analytics Snapshot
         </h3>
         <button type="button" className={styles.link} onClick={onViewFull}>
           View full analytics →
@@ -130,23 +131,38 @@ export default function MiniAnalyticsPreview({ incidents = [], onViewFull }) {
 
       <div className={styles.grid}>
         <div className={styles.card}>
-          <p className={styles.cardLabel}>Resolution rate</p>
-          <p className={styles.bigNum}>{data.resolutionRate.toFixed(1)}%</p>
+          <div className={styles.cardHead}>
+            <p className={styles.cardLabel}>Resolution rate</p>
+            <span className={styles.pill}>{periodLabel}</span>
+          </div>
+          <p className={styles.bigNum}>{rateLabel}</p>
           <p className={styles.hint}>{data.resolved} resolved · {data.stillOpen} still open</p>
+          <div className={styles.rateFoot}>
+            <div className={styles.rateTrack}>
+              <div className={styles.rateFill} style={{ width: `${Math.min(100, data.resolutionRate)}%` }} />
+            </div>
+            <span className={styles.ratePct}>{rateLabel}</span>
+          </div>
         </div>
 
         <div className={styles.card}>
-          <p className={styles.cardLabel}>Status share</p>
+          <div className={styles.cardHead}>
+            <p className={styles.cardLabel}>Status share</p>
+            <span className={styles.pill}>{periodLabel}</span>
+          </div>
           <div className={styles.donutRow}>
             <MiniDonut slices={data.statusSlices} total={data.total} />
             <ul className={styles.legend}>
-              {data.statusSlices.map((s) => (
-                <li key={s.label}>
-                  <span className={styles.swatch} style={{ background: s.color }} />
-                  <span className={styles.legendLabel}>{s.label}</span>
-                  <span className={styles.legendCount}>{s.count}</span>
-                </li>
-              ))}
+              {data.statusSlices.map((s) => {
+                const pct = data.total ? ((s.count / data.total) * 100).toFixed(1) : '0.0';
+                return (
+                  <li key={s.label}>
+                    <span className={styles.swatch} style={{ background: s.color }} />
+                    <span className={styles.legendLabel}>{s.label}</span>
+                    <span className={styles.legendCount}>{s.count} ({pct}%)</span>
+                  </li>
+                );
+              })}
               {data.statusSlices.length === 0 && (
                 <li className={styles.empty}>No incidents in this filter</li>
               )}
@@ -155,15 +171,21 @@ export default function MiniAnalyticsPreview({ incidents = [], onViewFull }) {
         </div>
 
         <div className={styles.card}>
-          <p className={styles.cardLabel}>Top types</p>
+          <div className={styles.cardHead}>
+            <p className={styles.cardLabel}>Top incident types</p>
+            <span className={styles.pill}>{periodLabel}</span>
+          </div>
           <div className={styles.bars}>
-            {data.types.map((t) => (
+            {data.types.map((t, index) => (
               <div key={t.label} className={styles.barRow}>
                 <span className={styles.barName} title={t.label}>{t.label}</span>
                 <div className={styles.barTrack}>
                   <div
                     className={styles.barFill}
-                    style={{ width: `${(t.count / maxType) * 100}%` }}
+                    style={{
+                      width: `${(t.count / maxType) * 100}%`,
+                      animationDelay: `${0.5 + index * 0.07}s`,
+                    }}
                   />
                 </div>
                 <span className={styles.barCount}>{t.count}</span>

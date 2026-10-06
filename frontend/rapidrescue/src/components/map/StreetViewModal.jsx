@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { findNearbyStreetView, getGoogleMapsApiKey, loadGoogleMaps } from './googleMapsLoader';
 import { headingBetween, nearestRoadPoint } from './routeService';
-import { findNearestPano } from './streetViewPano';
+import { findNearestPano, pickCloserPano } from './streetViewPano';
 import styles from './StreetViewModal.module.css';
 
 function embedStreetViewUrl(lat, lng, heading = 0, pano = '') {
@@ -47,10 +47,15 @@ export default function StreetViewModal({ target, onClose, portalTarget = null }
     (async () => {
       const origin = { lat: Number(target.lat), lng: Number(target.lng) };
       const road = await nearestRoadPoint(origin.lat, origin.lng);
-      const lookAt = road && road.distance < 800 ? road : origin;
       if (cancelled) return;
 
-      const found = await findNearestPano(lookAt.lat, lookAt.lng);
+      const [pinPano, roadPano] = await Promise.all([
+        findNearestPano(origin.lat, origin.lng),
+        road && road.distance < 800
+          ? findNearestPano(road.lat, road.lng)
+          : Promise.resolve(null),
+      ]);
+      const found = pickCloserPano(origin, pinPano, roadPano);
       if (cancelled) return;
 
       const panoSpot = found || lookAt;

@@ -415,7 +415,7 @@ const USER_ARCHIVE_COLUMNS = [
 const ADMIN_ARCHIVE_COLUMNS = [
   { key: 'admin_id', label: 'ID', render: (row) => <strong>#{row.admin_id}</strong> },
   { key: 'name', label: 'Name', render: (row) => `${row.first_name || ''} ${row.last_name || ''}`.trim() || '—' },
-  { key: 'username', label: 'Username', render: (row) => `@${row.username}` },
+  { key: 'username', label: 'Username' },
   { key: 'role', label: 'Role' },
   { key: 'contact_number', label: 'Contact' },
   { key: 'account_status', label: 'Status', render: () => 'Deleted' },
@@ -1377,7 +1377,7 @@ function AdminDetailsModal({ admin: target, onClose }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <DetailCell label="Name" value={fullName || '—'} />
           <DetailCell label="Status" value={blocked ? 'Blocked' : (target.account_status || 'Active')} />
-          <DetailCell label="Username" value={target.username ? `@${target.username}` : '—'} />
+          <DetailCell label="Username" value={target.username || '—'} />
           <DetailCell label="Role" value={target.role || '—'} />
           <DetailCell label="Contact" value={target.contact_number || '—'} wide />
         </div>
@@ -2683,7 +2683,7 @@ export default function Dashboard() {
 
           {/* ── OVERVIEW ────────────────────────────────── */}
           {activeTab === 'dashboard' && (
-            <div>
+            <div className={styles.dashboardEnter}>
               <div className={styles.tabHeader}>
                 <h2 className={styles.sectionTitle}>Dashboard</h2>
                 <button
@@ -2706,6 +2706,8 @@ export default function Dashboard() {
 
               {/* Banner */}
               <div className={styles.overviewBanner}>
+                <div className={styles.bannerPhoto} aria-hidden="true" />
+                <div className={styles.bannerScrim} aria-hidden="true" />
                 <div className={styles.bannerText}>
                   <h3>Cabadbaran City Emergency System</h3>
                   <p>Cabadbaran City, Agusan del Norte</p>
@@ -2745,6 +2747,7 @@ export default function Dashboard() {
               {/* Compact Analytics preview — same definitions as Analytics tab */}
               <MiniAnalyticsPreview
                 incidents={dashboardIncidents}
+                periodLabel={describeDateFilter(dashboardDateFilter)}
                 onViewFull={() => {
                   setAnalyticsDateFilter({ ...dashboardDateFilter });
                   setActiveTab('analytics');
@@ -3547,7 +3550,7 @@ export default function Dashboard() {
                                   <span className={styles.userName2}>{a.first_name} {a.last_name}</span>
                                 </div>
                               </td>
-                              <td><code style={{ fontSize: 12, background: '#f3f4f6', padding: '2px 6px', borderRadius: 4 }}>@{a.username}</code></td>
+                              <td style={{ color: '#555' }}>{a.username || '—'}</td>
                               <td>
                                 <span className={`${styles.statusBadge} ${styles.statusActive}`}
                                   style={{ background: '#ede9fe', color: '#5b21b6', borderColor: '#ddd6fe' }}>

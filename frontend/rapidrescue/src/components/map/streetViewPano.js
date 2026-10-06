@@ -1,11 +1,6 @@
 const RADII = [80, 200, 500, 1200, 2500, 5000];
-
-function searchUrl(lat, lng, radius, callback) {
-  const pb =
-    `!1m5!1sapiv3!5sPH!11m2!1m1!1b0!2m4!1m2!3d${lat}!4d${lng}!2d${radius}` +
-    '!3m18!2m2!1sen!2sPH!9m1!1e2!11m12!1m3!1e2!2b1!3e2!1m3!1e3!2b1!3e2!1m3!1e10!2b1!3e2!4m6!1e1!1e2!1e3!1e4!1e8!1e6';
-  return `https://maps.googleapis.com/maps/api/js/GeoPhotoService.SingleImageSearch?pb=${pb}&callback=${callback}`;
-}
+const SEARCH_URL =
+  'https://maps.googleapis.com/$rpc/google.internal.maps.mapsjs.v1.MapsJsInternalService/SingleImageSearch';
 
 function walk(node, visit) {
   if (!Array.isArray(node)) return;
@@ -54,27 +49,34 @@ function extractResult(data) {
   return { pano, lat, lng };
 }
 
-function jsonpSearch(lat, lng, radius) {
-  return new Promise((resolve) => {
-    const name = `__rrPano${Math.random().toString(36).slice(2)}`;
-    let settled = false;
-    const script = document.createElement('script');
+export function panoDistanceMeters(from, to) {
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(to.lat - from.lat);
+  const dLng = toRad(to.lng - from.lng);
+  const lat1 = toRad(from.lat);
+  const lat2 = toRad(to.lat);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371000 * Math.asin(Math.min(1, Math.sqrt(h)));
+}
 
-    const finish = (result) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      delete window[name];
-      script.remove();
-      resolve(result);
-    };
+async function rpcSearch(lat, lng, radius) {
+  const body = [
+    ['apiv3', null, null, null, 'PH', null, null, null, null, null, [[false]]],
+    [[null, null, lat, lng], radius],
+    [null, null, null, null, null, null, null, null, [2], null, [[[2, true, 2], [3, true, 2], [10, true, 2]]]],
+    [[1, 2, 3, 4, 8, 6]],
+  ];
 
-    const timer = setTimeout(() => finish(null), 4000);
-    window[name] = (payload) => finish(extractResult(payload));
-    script.onerror = () => finish(null);
-    script.src = searchUrl(lat, lng, radius, name);
-    document.head.appendChild(script);
+  const res = await fetch(SEARCH_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json+protobuf' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(8000),
   });
+  if (!res.ok) return null;
+  return extractResult(await res.json());
 }
 
 export async function findNearestPano(lat, lng) {
@@ -82,8 +84,27 @@ export async function findNearestPano(lat, lng) {
   if (!Number.isFinite(origin.lat) || !Number.isFinite(origin.lng)) return null;
 
   for (const radius of RADII) {
-    const found = await jsonpSearch(origin.lat, origin.lng, radius);
-    if (found?.pano) return found;
+    try {
+      const found = await rpcSearch(origin.lat, origin.lng, radius);
+      if (!found?.pano) continue;
+      if (panoDistanceMeters(origin, found) <= radius) return found;
+    } catch {
+      return null;
+    }
   }
   return null;
+}
+
+export function pickCloserPano(origin, ...candidates) {
+  let best = null;
+  let bestDistance = Infinity;
+  for (const candidate of candidates) {
+    if (!candidate?.pano) continue;
+    const distance = panoDistanceMeters(origin, candidate);
+    if (distance < bestDistance) {
+      best = candidate;
+      bestDistance = distance;
+    }
+  }
+  return best;
 }
