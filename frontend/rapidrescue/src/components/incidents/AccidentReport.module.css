@@ -359,6 +359,17 @@
   pointer-events: stroke;
 }
 
+.donutSlice {
+  stroke-dasharray: 100;
+  stroke-dashoffset: 0;
+  animation: donutDraw 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes donutDraw {
+  from { stroke-dashoffset: 100; }
+  to { stroke-dashoffset: 0; }
+}
+
 .tipHost {
   position: relative;
 }
@@ -539,6 +550,13 @@
   height: 100%;
   border-radius: 999px;
   min-width: 4px;
+  transform-origin: left center;
+  animation: barGrow 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes barGrow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
 }
 
 .barCount {
@@ -604,6 +622,13 @@
   max-width: 18px;
   border-radius: 6px 6px 2px 2px;
   min-height: 2px;
+  transform-origin: bottom center;
+  animation: colRise 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes colRise {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
 }
 
 .colLabel {
@@ -645,6 +670,14 @@
   .kpiGrid { grid-template-columns: repeat(2, 1fr); }
   .rateRow, .grid, .donutGrid { grid-template-columns: 1fr; }
   .wide { grid-column: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .donutSlice,
+  .barFill,
+  .colBar {
+    animation: none !important;
+  }
 }
 
 @media print {

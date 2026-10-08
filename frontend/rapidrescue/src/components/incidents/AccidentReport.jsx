@@ -364,10 +364,11 @@ function DonutChart({ items, size = 168, stroke = 22, centerValue, centerLabel }
             fill="none"
             stroke={sliceMeta[0].color}
             strokeWidth={stroke}
-            className={styles.donutHit}
+            pathLength="100"
+            className={`${styles.donutHit} ${styles.donutSlice}`}
           />
         )}
-        {total > 0 && sliceMeta.length > 1 && sliceMeta.map((item) => (
+        {total > 0 && sliceMeta.length > 1 && sliceMeta.map((item, index) => (
           <path
             key={item.label}
             d={arcPath(cx, cy, radius, item.start, item.end)}
@@ -375,7 +376,9 @@ function DonutChart({ items, size = 168, stroke = 22, centerValue, centerLabel }
             stroke={item.color}
             strokeWidth={stroke}
             strokeLinecap="butt"
-            className={styles.donutHit}
+            pathLength="100"
+            className={`${styles.donutHit} ${styles.donutSlice}`}
+            style={{ animationDelay: `${index * 0.12}s` }}
           />
         ))}
         <text x={cx} y={cy - 6} textAnchor="middle" className={styles.donutValue}>{centerValue}</text>
@@ -430,6 +433,7 @@ function BarList({ items, colors, total }) {
                 style={{
                   width: `${(item.count / max) * 100}%`,
                   background: Array.isArray(colors) ? colors[idx % colors.length] : (colors[item.label] || colors.default || '#c1121f'),
+                  animationDelay: `${idx * 0.06}s`,
                 }}
               />
             </div>
@@ -449,7 +453,7 @@ function ColumnChart({ points, color = '#c1121f' }) {
 
   return (
     <div className={`${styles.columns} ${styles.tipHost}`} ref={hostRef} onMouseLeave={hide}>
-      {points.map((point) => {
+      {points.map((point, index) => {
         const payload = {
           label: point.label,
           value: requestLabel(point.count),
@@ -466,7 +470,11 @@ function ColumnChart({ points, color = '#c1121f' }) {
             <div className={styles.colTrack}>
               <div
                 className={styles.colBar}
-                style={{ height: `${Math.max(point.count ? 8 : 2, (point.count / max) * 100)}%`, background: color }}
+                style={{
+                  height: `${Math.max(point.count ? 8 : 2, (point.count / max) * 100)}%`,
+                  background: color,
+                  animationDelay: `${index * 0.05}s`,
+                }}
               />
             </div>
             <span className={styles.colLabel}>{point.label}</span>
