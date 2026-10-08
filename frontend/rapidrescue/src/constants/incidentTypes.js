@@ -84,10 +84,9 @@ export const INCIDENT_TYPE_GROUPS = [
   {
     category: 'Other Emergency',
     options: [
-      'Power Outage Emergency',
-      'Gas Leak',
+      'Electrocuted',
       'Animal Attack',
-      'Missing Person',
+      'Found missing person',
       'Structural Collapse',
       'Other Emergency',
     ],
@@ -101,6 +100,8 @@ export const INCIDENT_TYPE_ALIASES = {
 
 export const INCIDENT_SUBTYPE_ALIASES = {
   'Other Vehicular Accident': ['Other Traffic Accident'],
+  Electrocuted: ['Power Outage Emergency'],
+  'Found missing person': ['Missing Person'],
 };
 
 export function matchingTypeNames(category) {

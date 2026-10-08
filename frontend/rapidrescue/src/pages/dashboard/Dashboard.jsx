@@ -2556,7 +2556,7 @@ export default function Dashboard() {
       tab: 'incidents',
       filter: 'pending',
     },
-    { label: 'Available', value: stats.available, icon: 'check_circle', color: STAT_COLORS[4], tab: 'responders' },
+    { label: 'Available Vehicle', value: stats.available, icon: 'check_circle', color: STAT_COLORS[4], tab: 'responders' },
   ];
 
   const openStatCard = (card) => {
@@ -2736,7 +2736,7 @@ export default function Dashboard() {
                       {card.label === 'Pending' && !isLoading && card.value > 0 && (
                         <div className={`${styles.statTrend} ${styles.trendWarn}`}><Icon name="warning" size={14} /> Needs attention</div>
                       )}
-                      {card.label === 'Available' && !isLoading && (
+                      {card.label === 'Available Vehicle' && !isLoading && (
                         <div className={`${styles.statTrend} ${styles.trendUp}`}>● Ready to respond</div>
                       )}
                 </div>
