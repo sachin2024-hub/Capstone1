@@ -13,6 +13,11 @@ export default function ConfirmModal({
   onCancel,
 }) {
   const [reason, setReason] = useState('');
+  const [otherNote, setOtherNote] = useState('');
+  const [otherOpen, setOtherOpen] = useState(false);
+  const [otherDraft, setOtherDraft] = useState('');
+  const otherSelected = reason === 'others';
+  const otherReady = otherNote.trim().length > 0;
   const iconClass = {
     danger: styles.iconDanger,
     warning: styles.iconWarning,
@@ -49,10 +54,19 @@ export default function ConfirmModal({
                   key={item.id}
                   type="button"
                   className={`${styles.reasonItem} ${reason === item.id ? styles.reasonItemActive : ''}`}
-                  onClick={() => setReason(item.id)}
+                  onClick={() => {
+                    if (item.id === 'others') {
+                      setOtherDraft(otherNote);
+                      setOtherOpen(true);
+                      return;
+                    }
+                    setReason(item.id);
+                  }}
                 >
                   <span className={styles.reasonName}>{item.label}</span>
-                  <span className={styles.reasonDetail}>{item.detail}</span>
+                  <span className={styles.reasonDetail}>
+                    {item.id === 'others' && otherNote ? otherNote : item.detail}
+                  </span>
                 </button>
               ))}
             </div>
@@ -65,13 +79,70 @@ export default function ConfirmModal({
           <button
             type="button"
             className={`${styles.confirmBtn} ${confirmClass}`}
-            disabled={Boolean(reasonOptions?.length) && !reason}
-            onClick={() => onConfirm?.(reasonOptions?.length ? reason : undefined)}
+            disabled={Boolean(reasonOptions?.length) && (!reason || (otherSelected && !otherReady))}
+            onClick={() => {
+              if (!reasonOptions?.length) {
+                onConfirm?.();
+                return;
+              }
+              if (otherSelected) {
+                const note = otherNote.replace(/\s+/g, ' ').trim().slice(0, 160);
+                onConfirm?.(`others::${note}`);
+                return;
+              }
+              onConfirm?.(reason);
+            }}
           >
             {confirmLabel}
           </button>
         </div>
       </div>
+      {otherOpen && (
+        <div
+          className={styles.otherOverlay}
+          onClick={(e) => {
+            e.stopPropagation();
+            setOtherOpen(false);
+          }}
+        >
+          <div
+            className={styles.otherPopup}
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Other reason"
+          >
+            <h4 className={styles.otherTitle}>Others</h4>
+            <p className={styles.otherHint}>I-type ang specific nga rason.</p>
+            <textarea
+              className={styles.otherNote}
+              value={otherDraft}
+              maxLength={160}
+              rows={4}
+              autoFocus
+              placeholder="I-type ang rason..."
+              onChange={(e) => setOtherDraft(e.target.value)}
+            />
+            <div className={styles.actions}>
+              <button type="button" className={styles.cancelBtn} onClick={() => setOtherOpen(false)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={`${styles.confirmBtn} ${confirmClass}`}
+                disabled={!otherDraft.trim()}
+                onClick={() => {
+                  setOtherNote(otherDraft.replace(/\s+/g, ' ').trim().slice(0, 160));
+                  setReason('others');
+                  setOtherOpen(false);
+                }}
+              >
+                Use this reason
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

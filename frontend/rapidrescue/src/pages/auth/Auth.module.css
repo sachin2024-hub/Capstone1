@@ -810,4 +810,368 @@
   .slide:first-child {
     opacity: 1;
   }
+
+  .loginPage .leftArt,
+  .ambulanceBg,
+  .loginPage .leftPanel,
+  .curveLine,
+  .loginPage .formCard {
+    animation: none !important;
+  }
+}
+
+@keyframes loginPanelIn {
+  from { opacity: 0; transform: translateX(-40px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes loginCardIn {
+  from { opacity: 0; transform: translateY(26px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes loginBgIn {
+  from { transform: scale(1.08); }
+  to { transform: scale(1); }
+}
+
+/* Login landing only. Register keeps the styles above. */
+.loginPage {
+  position: relative;
+  background: #111827;
+}
+
+.ambulanceBg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.12) 38%, rgba(0, 0, 0, 0.28) 100%),
+    url('/images/login-ambulance.png') center / cover no-repeat;
+  animation: loginBgIn 1.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.loginPage .leftPanel,
+.loginPage .rightPanel {
+  position: relative;
+  z-index: 1;
+}
+
+.loginPage .leftPanel {
+  width: 48%;
+  flex: 0 0 48%;
+  padding: 28px 20% 22px 32px;
+  justify-content: center;
+  overflow: visible;
+  background: #9b0000;
+  border-radius: 0;
+  clip-path: url(#loginPanelClip);
+  filter: drop-shadow(14px 0 18px rgba(0, 0, 0, 0.22));
+  animation: loginPanelIn 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.loginPage .leftPanel::before,
+.loginPage .leftPanel::after {
+  display: none;
+}
+
+.clipDefs {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+.curveLine {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 48%;
+  height: 100%;
+  z-index: 2;
+  pointer-events: none;
+  overflow: visible;
+  animation: loginPanelIn 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.leftArt {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(90, 0, 8, 0.2) 0%, rgba(70, 0, 6, 0.28) 48%, rgba(40, 0, 4, 0.45) 100%),
+    url('/images/landing-page.png') center / cover no-repeat;
+  pointer-events: none;
+}
+
+.loginPage .brandBox {
+  max-width: 390px;
+  margin: 0 auto;
+}
+
+.loginPage .brandLogoWrap {
+  width: 78px;
+  height: 78px;
+  margin-bottom: 12px;
+  animation: authPopIn 0.7s cubic-bezier(0.34, 1.4, 0.64, 1) both;
+}
+
+.loginPage .brandName {
+  font-size: 40px;
+  font-weight: 800;
+  letter-spacing: -1px;
+  margin-bottom: 4px;
+  color: #fff;
+}
+
+.brandAccent {
+  color: #ff2a2a;
+}
+
+.loginPage .brandTagline {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: #fff;
+  opacity: 0.95;
+}
+
+.loginPage .brandCity {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0 0 16px;
+  font-size: 12px;
+  opacity: 0.9;
+  letter-spacing: 0.1px;
+}
+
+.loginPage .features {
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.loginPage .feature {
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: rgba(80, 0, 8, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(4px);
+}
+
+.loginPage .feature:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.34);
+  transform: translateX(4px);
+  box-shadow: 0 8px 18px rgba(80, 0, 0, 0.16);
+}
+
+.loginPage .featureIcon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  justify-content: center;
+  color: #fff;
+  background: rgba(220, 0, 0, 0.45);
+  border: 1px solid rgba(255, 120, 120, 0.35);
+  box-shadow: 0 0 12px rgba(255, 23, 23, 0.28);
+}
+
+.featureCopy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.featureLabel {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #fff;
+}
+
+.featureDetail {
+  font-size: 11px;
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.74);
+}
+
+.loginPage .statsRow {
+  gap: 8px;
+  margin-bottom: 12px;
+  background: transparent;
+  border: none;
+  overflow: visible;
+}
+
+.loginPage .statItem {
+  border-right: none;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  background: rgba(80, 0, 8, 0.28);
+  padding: 10px 6px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.loginPage .statVal {
+  font-size: 18px;
+}
+
+.loginPage .statKey {
+  font-size: 10px;
+}
+
+.loginPage .panelFooter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.loginPage .rightPanel {
+  flex: 1;
+  background: transparent;
+  padding: 24px;
+}
+
+.loginPage .rightPanelHero .formCard {
+  max-height: none;
+  overflow: visible;
+}
+
+.loginPage .formCard {
+  width: min(420px, 100%);
+  padding: 28px 28px 24px;
+  border-radius: 24px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+  animation: loginCardIn 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.18s both;
+}
+
+.loginPage .formLogoWrap {
+  width: 68px;
+  height: 68px;
+  margin: 0 auto 12px;
+}
+
+.loginPage .adminBadge {
+  background: #fff;
+  color: #dc0000;
+  border: 1.5px solid #fecaca;
+  box-shadow: none;
+}
+
+.loginPage .formTitle {
+  color: #111827;
+  font-size: 30px;
+}
+
+.loginPage .formSubtitle {
+  color: #6b7280;
+  margin-bottom: 20px;
+}
+
+.loginPage .label,
+.loginPage .form {
+  text-align: left;
+}
+
+.loginPage .label {
+  color: #111827;
+}
+
+.loginPage .inputWithIcon {
+  background: #f3f4f6;
+  border-color: #e5e7eb;
+  border-radius: 12px;
+}
+
+.loginPage .inputWithIcon:focus {
+  border-color: #dc0000;
+  box-shadow: 0 0 0 4px rgba(220, 0, 0, 0.12);
+}
+
+.loginPage .submitBtn {
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ff1717 0%, #dc0000 55%, #850000 100%);
+  box-shadow: 0 8px 22px rgba(220, 0, 0, 0.38);
+}
+
+.loginPage .submitBtn:hover:not(:disabled) {
+  box-shadow: 0 12px 28px rgba(220, 0, 0, 0.48);
+}
+
+.loginPage .submitBtn:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 3px;
+}
+
+@media (max-width: 1100px) {
+  .loginPage .leftPanel,
+  .curveLine {
+    width: 46%;
+  }
+  .loginPage .leftPanel {
+    flex-basis: 46%;
+  }
+  .loginPage .brandName { font-size: 32px; }
+  .loginPage .formCard { padding: 24px 22px 20px; }
+}
+
+@media (max-height: 760px) {
+  .loginPage .leftPanel {
+    justify-content: center;
+    padding-top: 16px;
+    padding-bottom: 14px;
+  }
+  .loginPage .brandLogoWrap {
+    width: 64px;
+    height: 64px;
+    margin-bottom: 8px;
+  }
+  .loginPage .brandName { font-size: 30px; }
+  .loginPage .brandCity { margin-bottom: 10px; }
+  .loginPage .features { gap: 6px; margin-bottom: 8px; }
+  .loginPage .feature { padding: 6px 8px; }
+  .loginPage .formLogoWrap { width: 56px; height: 56px; }
+  .loginPage .formCard { padding: 20px 22px 18px; }
+  .loginPage .formSubtitle { margin-bottom: 12px; }
+}
+
+@media (max-width: 768px) {
+  .loginPage .leftPanel {
+    width: 100%;
+    flex-basis: auto;
+    clip-path: none;
+    filter: none;
+    border-radius: 0 0 28px 28px;
+    padding: 24px 18px 18px;
+  }
+  .curveLine {
+    display: none;
+  }
+  .loginPage .features,
+  .loginPage .statsRow {
+    display: none;
+  }
+  .loginPage .brandCity { margin-bottom: 8px; }
+  .loginPage .rightPanel {
+    min-height: 560px;
+  }
+  .ambulanceBg {
+    background-position: 70% center;
+  }
 }

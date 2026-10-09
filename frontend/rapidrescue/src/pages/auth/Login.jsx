@@ -8,7 +8,7 @@ import styles from './Auth.module.css';
 const FEATURES = [
   { icon: 'monitoring', label: 'Monitor all incidents' },
   { icon: 'group', label: 'Manage users & responders' },
-  { icon: 'ambulance', label: 'Dispatch emergency units fast' },
+  { icon: 'notifications_active', label: 'Dispatch emergency units fast' },
   { icon: 'map', label: 'Live GPS tracking & routing' },
 ];
 
@@ -42,9 +42,18 @@ export default function Login() {
   };
 
   return (
-    <div className={styles.pageWrapper}>
+    <div className={`${styles.pageWrapper} ${styles.loginPage}`}>
+      <svg className={styles.clipDefs} width="0" height="0" aria-hidden="true">
+        <defs>
+          <clipPath id="loginPanelClip" clipPathUnits="objectBoundingBox">
+            <path d="M0,0 L0.94,0 C0.98,0.16 0.84,0.34 0.78,0.50 C0.72,0.66 0.88,0.84 0.98,1 L0,1 Z" />
+          </clipPath>
+        </defs>
+      </svg>
+      <div className={styles.ambulanceBg} aria-hidden="true" />
       {/* ── Left Panel ─────────────────────────────── */}
       <div className={styles.leftPanel}>
+        <div className={styles.leftArt} aria-hidden="true" />
         <div className={styles.brandBox}>
           <div className={styles.brandLogoWrap}>
             <img
@@ -53,17 +62,15 @@ export default function Login() {
               className={styles.brandLogoImg}
             />
           </div>
-          <h1 className={styles.brandName}>RapidRescue</h1>
+          <h1 className={styles.brandName}>Rapid<span className={styles.brandAccent}>Rescue</span></h1>
           <p className={styles.brandTagline}>Admin Control Panel</p>
           <p className={styles.brandCity}><Icon name="location_on" size={14} /> Cabadbaran City, Agusan del Norte</p>
-
-          <div className={styles.brandDivider} />
 
           <div className={styles.features}>
             {FEATURES.map((f) => (
               <div key={f.label} className={styles.feature}>
                 <span className={styles.featureIcon}><Icon name={f.icon} size={18} /></span>
-                <span>{f.label}</span>
+                <span className={styles.featureLabel}>{f.label}</span>
               </div>
             ))}
           </div>
@@ -74,32 +81,57 @@ export default function Login() {
               <div className={styles.statKey}>Available</div>
             </div>
             <div className={styles.statItem}>
+              <Icon name="apartment" size={15} />
               <div className={styles.statVal}>1</div>
               <div className={styles.statKey}>Station</div>
             </div>
             <div className={styles.statItem}>
+              <Icon name="favorite" size={15} />
               <div className={styles.statVal}>Free</div>
               <div className={styles.statKey}>Service</div>
             </div>
           </div>
 
-          <p className={styles.panelFooter}>🏥 Powered by Cabadbaran City DRRMO</p>
+          <p className={styles.panelFooter}><Icon name="shield" size={13} /> Powered by Cabadbaran City DRRMO</p>
         </div>
       </div>
+      <svg className={styles.curveLine} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <filter id="dividerGlow" x="-30%" y="-8%" width="160%" height="116%">
+            <feGaussianBlur stdDeviation="1.4" />
+          </filter>
+        </defs>
+        <path
+          d="M94,0 C98,16 84,34 78,50 C72,66 88,84 98,100 L108,100 C98,84 82,66 88,50 C94,34 108,16 104,0 Z"
+          fill="rgba(80,0,8,0.55)"
+        />
+        <path
+          d="M94,0 C98,16 84,34 78,50 C72,66 88,84 98,100 L103,100 C93,84 77,66 83,50 C89,34 103,16 99,0 Z"
+          fill="#850000"
+        />
+        <path
+          d="M94,0 C98,16 84,34 78,50 C72,66 88,84 98,100 L100.4,100 C90.4,84 74.4,66 80.4,50 C86.4,34 100.4,16 96.4,0 Z"
+          fill="#ff1717"
+        />
+        <path
+          d="M94,0 C98,16 84,34 78,50 C72,66 88,84 98,100"
+          fill="none"
+          stroke="#ff4a4a"
+          strokeWidth="5"
+          vectorEffect="non-scaling-stroke"
+          filter="url(#dividerGlow)"
+        />
+        <path
+          d="M94,0 C98,16 84,34 78,50 C72,66 88,84 98,100"
+          fill="none"
+          stroke="#fff6f6"
+          strokeWidth="1.2"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
 
       {/* ── Right Panel ────────────────────────────── */}
       <div className={`${styles.rightPanel} ${styles.rightPanelHero}`}>
-        {/* Animated photo slideshow behind the form */}
-        <div className={styles.slideshow} aria-hidden="true">
-          {APP_IMAGES.showcase.map((src, i) => (
-            <div
-              key={src}
-              className={styles.slide}
-              style={{ animationDelay: `${i * 6}s`, backgroundImage: `url(${src})` }}
-            />
-          ))}
-          <div className={styles.slideOverlay} />
-        </div>
 
         <div className={styles.formCard}>
           <div className={styles.formLogoWrap}>
@@ -164,9 +196,9 @@ export default function Login() {
 
             <button type="submit" className={styles.submitBtn} disabled={isLoading}>
               {isLoading ? (
-                <><span className={styles.spinner} /> Signing In...</>
+                <><span className={styles.spinner} /> Logging in...</>
               ) : (
-                <><Icon name="login" size={18} /> Sign In</>
+                <><Icon name="login" size={18} /> Login</>
               )}
             </button>
           </form>

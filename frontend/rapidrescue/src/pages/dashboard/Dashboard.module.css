@@ -1167,6 +1167,14 @@
   gap: 4px;
 }
 
+.userActionCol {
+  width: 72px;
+  min-width: 72px;
+  text-align: right;
+  padding-right: 16px !important;
+  padding-left: 8px !important;
+}
+
 .actionMenuWrap {
   position: relative;
   display: inline-flex;
@@ -1278,6 +1286,16 @@
 .actionMenuItemDelete .actionMenuIcon {
   color: #c62828;
   border-color: #ffcdd2;
+}
+
+.actionMenuItemBlock .actionMenuIcon {
+  color: #e65100;
+  border-color: #ffe0b2;
+}
+
+.actionMenuItemUnblock .actionMenuIcon {
+  color: #2e7d32;
+  border-color: #c8e6c9;
 }
 
 .archiveBtn {

@@ -11,7 +11,7 @@ const {
   getAdminBlockReason,
   setAdminBlockReason,
 } = require('../utils/archiveStore');
-const { BLOCK_REASONS, blockedAccountMessage } = require('../utils/blockReasons');
+const { normalizeBlockReason, blockedAccountMessage } = require('../utils/blockReasons');
 const { logActivity } = require('../utils/activityLogger');
 
 const ADMIN_ROLES = ['Admin', 'User'];
@@ -241,8 +241,7 @@ router.patch('/:id', async (req, res) => {
         setAdminArchived(req.params.id, false);
         setAdminBlocked(req.params.id, account_status === 'Blocked');
         if (account_status === 'Blocked') {
-          const validReason = BLOCK_REASONS.some((r) => r.id === block_reason);
-          setAdminBlockReason(req.params.id, validReason ? block_reason : 'admin');
+          setAdminBlockReason(req.params.id, normalizeBlockReason(block_reason) || 'admin');
         } else {
           setAdminBlockReason(req.params.id, null);
         }

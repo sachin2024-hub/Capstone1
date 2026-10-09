@@ -21,7 +21,7 @@ import { archiveIncident, restoreIncident, deleteIncident, permanentDeleteIncide
 import { deleteResponder } from '../../services/responderService';
 import { fetchCallLogs, restoreCallLog, permanentDeleteCallLog } from '../../services/callLogService';
 import { STATUS_COLORS, displayIncidentStatus, statusColor } from '../../constants/statusColors';
-import { BLOCK_REASONS } from '../../constants/blockReasons';
+import { BLOCK_REASONS, formatBlockReason } from '../../constants/blockReasons';
 import { formatDate } from '../../utils/formatDate';
 import { formatIncidentLocation } from '../../utils/locationFormat';
 import { isWithinCabadbaran } from '../../utils/geofence';
@@ -1287,10 +1287,44 @@ function AddAdminModal({ onClose, onCreated }) {
 
 /* ── Modal helpers ── */
 function MField({ label, name, value, onChange, placeholder, type = 'text' }) {
+  const [visible, setVisible] = useState(false);
+  const isPassword = type === 'password';
   return (
     <div style={FIELD_WRAP}>
       <label style={LBL}>{label}</label>
-      <input type={type} name={name} value={value} onChange={onChange} placeholder={placeholder} style={INPUT_STYLE} autoComplete="off" />
+      <div style={{ position: 'relative' }}>
+        <input
+          type={isPassword && visible ? 'text' : type}
+          name={name}
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          style={{ ...INPUT_STYLE, paddingRight: isPassword ? 40 : 12 }}
+          autoComplete="off"
+        />
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setVisible((v) => !v)}
+            aria-label={visible ? 'Hide password' : 'Show password'}
+            style={{
+              position: 'absolute',
+              right: 10,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: '#9CA3AF',
+              display: 'flex',
+              alignItems: 'center',
+              padding: 0,
+            }}
+          >
+            <Icon name={visible ? 'visibility_off' : 'visibility'} size={18} />
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -1308,7 +1342,7 @@ const SUC_BOX    = { background: '#f0fdf4', border: '1.5px solid #86efac', borde
 
 function UserDetailsModal({ user: target, onClose }) {
   const blocked = target.account_status !== 'Active';
-  const reason = BLOCK_REASONS.find((r) => r.id === target.block_reason);
+  const reason = formatBlockReason(target.block_reason);
   const fullName = [target.first_name, target.middle_name, target.last_name].filter(Boolean).join(' ');
 
   return (
@@ -1362,7 +1396,7 @@ function UserDetailsModal({ user: target, onClose }) {
 
 function AdminDetailsModal({ admin: target, onClose }) {
   const blocked = target.account_status === 'Blocked';
-  const reason = BLOCK_REASONS.find((r) => r.id === target.block_reason);
+  const reason = formatBlockReason(target.block_reason);
   const fullName = [target.first_name, target.middle_name, target.last_name].filter(Boolean).join(' ');
 
   return (
@@ -3425,7 +3459,7 @@ export default function Dashboard() {
                       <thead>
                         <tr>
                           <th>ID</th><th>Name</th><th>Username</th><th>Phone</th>
-                            <th>Address</th><th>Status</th><th>Registered</th><th>Action</th>
+                            <th>Address</th><th>Status</th><th>Registered</th><th className={styles.userActionCol}>Action</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -3458,27 +3492,42 @@ export default function Dashboard() {
                               </span>
                                 {blocked && u.block_reason && (
                                   <div style={{ fontSize: 11, color: '#9a3412', marginTop: 4, maxWidth: 160 }}>
-                                    {BLOCK_REASONS.find((r) => r.id === u.block_reason)?.label || u.block_reason}
+                                    {u.block_reason?.startsWith('others::')
+                                      ? `Others — ${formatBlockReason(u.block_reason)?.detail}`
+                                      : (formatBlockReason(u.block_reason)?.label || u.block_reason)}
                                   </div>
                                 )}
                             </td>
                             <td style={{ color: '#888', fontSize: 12 }}>{formatDate(u.date_registered)}</td>
-                              <td onClick={(e) => e.stopPropagation()}>
-                                <div className={styles.actionGroup}>
-                                  <button type="button" className={styles.editBtn} onClick={() => setEditingUser(u)}>
-                                    Edit
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className={blocked ? styles.unblockBtn : styles.blockBtn}
-                                    onClick={() => handleBlockUser(u)}
-                                  >
-                                    {blocked ? 'Unblock' : 'Block'}
-                                  </button>
-                                  <button type="button" className={styles.deleteBtn} onClick={() => handleDeleteUser(u)}>
-                                    Delete
-                                  </button>
-                                </div>
+                              <td className={styles.userActionCol} onClick={(e) => e.stopPropagation()}>
+                                <IncidentRowActionsMenu
+                                  items={[
+                                    {
+                                      key: 'edit',
+                                      label: 'Edit',
+                                      icon: 'edit',
+                                      btnClass: styles.actionMenuItemEdit,
+                                      title: 'Edit',
+                                      onClick: () => setEditingUser(u),
+                                    },
+                                    {
+                                      key: 'block',
+                                      label: blocked ? 'Unblock' : 'Block',
+                                      icon: blocked ? 'lock_open' : 'block',
+                                      btnClass: blocked ? styles.actionMenuItemUnblock : styles.actionMenuItemBlock,
+                                      title: blocked ? 'Unblock' : 'Block',
+                                      onClick: () => handleBlockUser(u),
+                                    },
+                                    {
+                                      key: 'delete',
+                                      label: 'Delete',
+                                      icon: 'delete',
+                                      btnClass: styles.actionMenuItemDelete,
+                                      title: 'Delete',
+                                      onClick: () => handleDeleteUser(u),
+                                    },
+                                  ]}
+                                />
                               </td>
                           </tr>
                             );
@@ -3529,7 +3578,7 @@ export default function Dashboard() {
                         <thead>
                           <tr>
                             <th>ID</th><th>Name</th><th>Username</th><th>Role</th>
-                            <th>Contact</th><th>Status</th><th>Action</th>
+                            <th>Contact</th><th>Status</th><th className={styles.userActionCol}>Action</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -3565,26 +3614,41 @@ export default function Dashboard() {
                                 </span>
                                 {blocked && a.block_reason && (
                                   <div style={{ fontSize: 11, color: '#9a3412', marginTop: 4, maxWidth: 160 }}>
-                                    {BLOCK_REASONS.find((r) => r.id === a.block_reason)?.label || a.block_reason}
+                                    {a.block_reason?.startsWith('others::')
+                                      ? `Others — ${formatBlockReason(a.block_reason)?.detail}`
+                                      : (formatBlockReason(a.block_reason)?.label || a.block_reason)}
             </div>
           )}
                               </td>
-                              <td onClick={(e) => e.stopPropagation()}>
-                                <div className={styles.actionGroup}>
-                                  <button type="button" className={styles.editBtn} onClick={() => setEditingAdmin(a)}>
-                                    Edit
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className={blocked ? styles.unblockBtn : styles.blockBtn}
-                                    onClick={() => handleBlockAdmin(a)}
-                                  >
-                                    {blocked ? 'Unblock' : 'Block'}
-                                  </button>
-                                  <button type="button" className={styles.deleteBtn} onClick={() => handleDeleteAdmin(a)}>
-                                    Delete
-                                  </button>
-                                </div>
+                              <td className={styles.userActionCol} onClick={(e) => e.stopPropagation()}>
+                                <IncidentRowActionsMenu
+                                  items={[
+                                    {
+                                      key: 'edit',
+                                      label: 'Edit',
+                                      icon: 'edit',
+                                      btnClass: styles.actionMenuItemEdit,
+                                      title: 'Edit',
+                                      onClick: () => setEditingAdmin(a),
+                                    },
+                                    {
+                                      key: 'block',
+                                      label: blocked ? 'Unblock' : 'Block',
+                                      icon: blocked ? 'lock_open' : 'block',
+                                      btnClass: blocked ? styles.actionMenuItemUnblock : styles.actionMenuItemBlock,
+                                      title: blocked ? 'Unblock' : 'Block',
+                                      onClick: () => handleBlockAdmin(a),
+                                    },
+                                    {
+                                      key: 'delete',
+                                      label: 'Delete',
+                                      icon: 'delete',
+                                      btnClass: styles.actionMenuItemDelete,
+                                      title: 'Delete',
+                                      onClick: () => handleDeleteAdmin(a),
+                                    },
+                                  ]}
+                                />
                               </td>
                             </tr>
                             );

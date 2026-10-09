@@ -5,7 +5,7 @@ const jwt = require('jsonwebtoken');
 const supabase = require('../config/supabase');
 const authenticateToken = require('../middleware/auth');
 const { getUserBlockReason, setUserBlockReason } = require('../utils/archiveStore');
-const { BLOCK_REASONS, blockedAccountMessage } = require('../utils/blockReasons');
+const { normalizeBlockReason, blockedAccountMessage } = require('../utils/blockReasons');
 const { saveValidId, attachIdentity, removeValidId, loadIdImage, IDENTITY_COLUMNS, isMissingColumnError } = require('../utils/identityStore');
 const { saveProfilePhoto, loadProfilePhoto, removeProfilePhoto } = require('../utils/profilePhotoStore');
 const { verifyIdImage } = require('../utils/idScanner');
@@ -679,8 +679,7 @@ router.patch('/users/:id', async (req, res) => {
     updates.account_status = account_status;
   }
   if (account_status === 'Blocked') {
-    const validReason = BLOCK_REASONS.some((r) => r.id === block_reason);
-    setUserBlockReason(req.params.id, validReason ? block_reason : 'admin');
+    setUserBlockReason(req.params.id, normalizeBlockReason(block_reason) || 'admin');
   }
   if (account_status === 'Active' || account_status === 'Deleted') {
     setUserBlockReason(req.params.id, null);
