@@ -2417,3 +2417,363 @@
     padding: 0 !important;
   }
 }
+
+/* ─── Command-center overview (home tab) ─────────────── */
+@keyframes cmdPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.55); }
+  70%  { box-shadow: 0 0 0 7px rgba(34, 197, 94, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
+@keyframes cmdAlertPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(229, 57, 53, 0.28); }
+  50%      { box-shadow: 0 0 0 5px rgba(229, 57, 53, 0); }
+}
+
+.cmdBar {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 18px 22px;
+  margin-bottom: 18px;
+  border-radius: 14px;
+  color: #fff;
+  background:
+    linear-gradient(100deg, #5c0d12 0%, #8f1219 55%, rgba(143, 18, 25, 0.82) 100%),
+    url('/images/cabadbaran-banner.png') center right / cover no-repeat;
+  box-shadow: 0 6px 18px rgba(120, 16, 16, 0.22);
+  animation: dashFadeUp 0.45s cubic-bezier(0.22, 1, 0.36, 1) 0.08s backwards;
+}
+
+.cmdBarText h3 {
+  margin: 0 0 4px;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+}
+
+.cmdBarText p {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  opacity: 0.92;
+}
+
+.cmdLiveDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  animation: cmdPulse 1.8s ease-out infinite;
+}
+
+.cmdBarActions { display: flex; gap: 8px; }
+
+.cmdBtnPrimary,
+.cmdBtnGhost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 14px;
+  border-radius: 9px;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 0.18s ease, background 0.18s ease;
+}
+
+.cmdBtnPrimary { background: #fff; color: #b71c1c; border: 1px solid #fff; }
+.cmdBtnGhost   { background: rgba(255, 255, 255, 0.12); color: #fff; border: 1px solid rgba(255, 255, 255, 0.45); }
+.cmdBtnPrimary:hover,
+.cmdBtnGhost:hover { transform: translateY(-1px); }
+.cmdBtnGhost:hover { background: rgba(255, 255, 255, 0.22); }
+.cmdBtnPrimary:focus-visible,
+.cmdBtnGhost:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+.kpiGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.kpiCard {
+  --kpi: #64748b;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  padding: 14px 16px 12px;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+  background: #fff;
+  border: 1px solid #e8ebf0;
+  border-radius: 12px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  animation: dashFadeUp 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.kpiCard::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--kpi);
+}
+
+.kpiGrid .kpiCard:nth-child(1) { animation-delay: 0.12s; }
+.kpiGrid .kpiCard:nth-child(2) { animation-delay: 0.17s; }
+.kpiGrid .kpiCard:nth-child(3) { animation-delay: 0.22s; }
+.kpiGrid .kpiCard:nth-child(4) { animation-delay: 0.27s; }
+.kpiGrid .kpiCard:nth-child(5) { animation-delay: 0.32s; }
+
+.kpiCard:hover {
+  transform: translateY(-2px);
+  border-color: var(--kpi);
+  box-shadow: 0 8px 20px rgba(17, 24, 39, 0.09);
+}
+
+.kpiCard:focus-visible { outline: 2px solid var(--kpi); outline-offset: 2px; }
+
+.kpiCard.statRed    { --kpi: #e53935; }
+.kpiCard.statOrange { --kpi: #ea580c; }
+.kpiCard.statYellow { --kpi: #d97706; }
+.kpiCard.statGreen  { --kpi: #16a34a; }
+.kpiCard.statBlue   { --kpi: #2563eb; }
+.kpiCard.statPurple { --kpi: #9333ea; }
+
+.kpiAlert {
+  background: #fff7f6;
+  border-color: #f6c5c2;
+  animation: dashFadeUp 0.45s cubic-bezier(0.22, 1, 0.36, 1) 0.27s backwards, cmdAlertPulse 2.2s ease-in-out 1s infinite;
+}
+
+.kpiTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.kpiLabel {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.kpiIcon {
+  display: inline-flex;
+  color: var(--kpi);
+  opacity: 0.9;
+}
+
+.kpiValue {
+  font-size: 32px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -1px;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+
+.kpiFoot {
+  min-height: 16px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.kpiWarn { color: #d97706; }
+.kpiOk   { color: #16a34a; }
+
+.cmdSplit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+  align-items: start;
+}
+
+.queueCard {
+  background: #fff;
+  border: 1px solid #e8ebf0;
+  border-radius: 14px;
+  overflow: hidden;
+  margin-bottom: 20px;
+  animation: dashFadeUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.4s backwards;
+}
+
+.queueHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #f1f3f6;
+}
+
+.queueHeader h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.queueCount {
+  min-width: 24px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.queueList { list-style: none; margin: 0; padding: 6px; }
+
+.queueItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.queueItem:hover { background: #f8fafc; }
+.queueItem:focus-visible { outline: 2px solid #e53935; outline-offset: -2px; }
+
+.queueMain { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.queueMain strong { font-size: 13px; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.queueMain small  { font-size: 11.5px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.queuePriority {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 10.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.queueCritical { background: #fee2e2; color: #b91c1c; }
+
+.queueEmpty { padding: 28px 16px; text-align: center; font-size: 13px; color: #64748b; }
+
+.queueMore {
+  width: 100%;
+  padding: 11px 16px;
+  border: none;
+  border-top: 1px solid #f1f3f6;
+  background: #fafbfc;
+  color: #b71c1c;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.queueMore:hover { background: #f4f6f8; }
+
+@media (max-width: 1200px) {
+  .kpiGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .cmdSplit { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 640px) {
+  .kpiGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpiValue { font-size: 26px; }
+  .cmdBarActions { width: 100%; }
+  .cmdBtnPrimary, .cmdBtnGhost { flex: 1; justify-content: center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cmdLiveDot, .kpiAlert { animation: none; }
+}
+
+.waitBadge {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.wait_ok {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.wait_warn {
+  background: #fff3cd;
+  color: #9a6700;
+}
+
+.wait_late {
+  background: #c1121f;
+  color: #fff;
+  animation: waitPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes waitPulse {
+  50% { opacity: 0.65; }
+}
+
+.alarmToggle {
+  border: 1px solid #d0d5dd;
+  background: #fff;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.alarmToggleOn {
+  border-color: #c1121f;
+  color: #c1121f;
+}
+
+.sosToast {
+  display: block;
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 12px 16px;
+  border: 0;
+  border-radius: 10px;
+  background: #c1121f;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  animation: waitPulse 1s ease-in-out infinite;
+}

@@ -12,7 +12,29 @@ import styles from './AccidentReport.module.css';
 
 const ACTIVE_STATUSES = ['Dispatch', 'In Progress', 'En Route', 'Arrived'];
 const HIDDEN_STATUSES = ['Archived', 'Deleted'];
-const TYPE_COLORS = ['#c1121f', '#e53935', '#fb8c00', '#1565c0', '#6d28d9', '#0f766e', '#b45309', '#334155'];
+// Categorical slots 1-5 (blue, orange, aqua, yellow, magenta) pass the CVD / normal-vision
+// checks of the dataviz validator; everything past 5 folds into a neutral "Other".
+const TYPE_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4'];
+const OTHER_COLOR = '#94a3b8';
+const BRAND = '#c1121f';
+const MAX_TYPE_SLICES = TYPE_COLORS.length;
+
+function foldTypes(types) {
+  if (types.length <= MAX_TYPE_SLICES) {
+    return types.map((item, idx) => ({ ...item, color: TYPE_COLORS[idx] }));
+  }
+  const head = types.slice(0, MAX_TYPE_SLICES - 1).map((item, idx) => ({ ...item, color: TYPE_COLORS[idx] }));
+  const rest = types.slice(MAX_TYPE_SLICES - 1);
+  return [...head, { label: 'Other', count: rest.reduce((sum, item) => sum + item.count, 0), color: OTHER_COLOR }];
+}
+
+/** One-hue sequential ramp (light → brand red) for magnitude, e.g. the hour heat strip. */
+function heatColor(t) {
+  const from = [253, 232, 232];
+  const to = [159, 15, 26];
+  const mix = from.map((c, i) => Math.round(c + (to[i] - c) * t));
+  return `rgb(${mix[0]}, ${mix[1]}, ${mix[2]})`;
+}
 
 function startOfLocalDay(date) {
   const d = new Date(date);
@@ -486,7 +508,94 @@ function ColumnChart({ points, color = '#c1121f' }) {
   );
 }
 
-function ChartCard({ title, note, children, wide = false }) {
+function RingGauge({ value, size = 96, stroke = 10, color = '#4ade80' }) {
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const clamped = Math.min(100, Math.max(0, value));
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className={styles.ring} aria-hidden="true">
+      <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth={stroke} />
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="none"
+        stroke={color}
+        strokeWidth={stroke}
+        strokeLinecap="round"
+        strokeDasharray={`${(clamped / 100) * circumference} ${circumference}`}
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        className={styles.ringArc}
+      />
+    </svg>
+  );
+}
+
+function StackBar({ items, total }) {
+  const { hostRef, tip, hide, bindItem } = useHoverTip();
+  const segments = items.filter((item) => item.count > 0);
+  return (
+    <div className={`${styles.stack} ${styles.tipHost}`} ref={hostRef} onMouseLeave={hide}>
+      <div className={styles.stackTrack}>
+        {segments.length === 0 && <span className={styles.stackEmpty} />}
+        {segments.map((item) => (
+          <span
+            key={item.label}
+            className={styles.stackSeg}
+            style={{ flexGrow: item.count, background: item.color }}
+            tabIndex={0}
+            {...bindItem({ label: item.label, value: requestLabel(item.count), pct: pct(item.count, total) })}
+          />
+        ))}
+      </div>
+      <ul className={styles.stackLegend}>
+        {items.map((item) => (
+          <li key={item.label}>
+            <span className={styles.legendDot} style={{ background: item.color }} />
+            <span>{item.label}</span>
+            <strong>{item.count}</strong>
+          </li>
+        ))}
+      </ul>
+      <ChartTipBubble tip={tip} />
+    </div>
+  );
+}
+
+function HeatStrip({ hours }) {
+  const { hostRef, tip, hide, bindItem } = useHoverTip();
+  const max = Math.max(1, ...hours.map((h) => h.count));
+  return (
+    <div className={`${styles.heat} ${styles.tipHost}`} ref={hostRef} onMouseLeave={hide}>
+      <div className={styles.heatCells}>
+        {hours.map((h) => (
+          <div
+            key={h.label}
+            className={styles.heatCell}
+            style={{ background: h.count ? heatColor(0.15 + 0.85 * (h.count / max)) : '#f1f5f9' }}
+            tabIndex={0}
+            {...bindItem({ label: h.label, value: requestLabel(h.count), pct: null })}
+          >
+            {h.count > 0 && <span style={{ color: h.count / max > 0.45 ? '#fff' : '#7f1d1d' }}>{h.count}</span>}
+          </div>
+        ))}
+      </div>
+      <div className={styles.heatAxis}>
+        {['12 AM', '3 AM', '6 AM', '9 AM', '12 PM', '3 PM', '6 PM', '9 PM'].map((label) => (
+          <span key={label}>{label}</span>
+        ))}
+      </div>
+      <div className={styles.heatLegend}>
+        <span>Fewer</span>
+        <span className={styles.heatRamp} />
+        <span>More requests</span>
+      </div>
+      <ChartTipBubble tip={tip} />
+    </div>
+  );
+}
+
+function ChartCard({ title, note, children, wide = false, className = '' }) {
   const cardRef = useRef(null);
   const [busy, setBusy] = useState(false);
 
@@ -504,7 +613,7 @@ function ChartCard({ title, note, children, wide = false }) {
   };
 
   return (
-    <section ref={cardRef} className={`${styles.card} ${wide ? styles.wide : ''}`}>
+    <section ref={cardRef} className={`${styles.card} ${wide ? styles.wide : ''} ${className}`}>
       <div className={styles.cardHead}>
         <h4>{title}</h4>
         <button
@@ -567,7 +676,8 @@ export default function AccidentReport({
     });
     const response = averageResponseMs(rows);
     const types = countBy(rows, (inc) => incidentCategory(inc.incident_type));
-    const typeColorMap = Object.fromEntries(types.map((item, idx) => [item.label, TYPE_COLORS[idx % TYPE_COLORS.length]]));
+    const barangays = countBy(rows, barangayOf);
+    const peak = hours.reduce((best, h) => (h.count > best.count ? h : best), hours[0]);
 
     return {
       rows,
@@ -582,7 +692,6 @@ export default function AccidentReport({
       resolutionRate,
       openRate,
       types,
-      typeColorMap,
       statusSlices: [
         { label: 'Pending', count: pending.length, color: STATUS_COLORS.Pending },
         { label: 'Active response', count: active.length, color: '#1565c0' },
@@ -590,12 +699,12 @@ export default function AccidentReport({
         { label: 'Outside', count: outside.length, color: STATUS_COLORS.Outside },
         { label: 'Cancelled', count: cancelled.length, color: STATUS_COLORS.Cancelled },
       ],
-      typeSlices: types.map((item) => ({
-        ...item,
-        color: typeColorMap[item.label],
-      })),
+      typeSlices: foldTypes(types),
       statuses: countBy(rows, (inc) => inc.incident_status),
-      barangays: countBy(rows, barangayOf),
+      barangays,
+      topType: types[0] || null,
+      topArea: barangays[0] || null,
+      peakHour: peak && peak.count > 0 ? hourLabel(peak.hour) : null,
       trend: buildTrend(rows, dateFilter),
       hours: hours.map((item) => ({ label: hourLabel(item.hour), count: item.count })),
       avgResponse: formatDuration(response.avgMs),
@@ -715,13 +824,30 @@ export default function AccidentReport({
   }
 
   const kpis = [
-    { label: 'Total requests', value: report.total, tone: 'dark' },
-    { label: 'Pending', value: report.pending, tone: 'warn' },
-    { label: 'Active response', value: report.active, tone: 'info' },
-    { label: 'Resolved', value: report.resolved, tone: 'ok' },
-    { label: 'Outside', value: report.outside, tone: 'orange' },
-    { label: 'Cancelled', value: report.cancelled, tone: 'mute' },
-    { label: 'Not reviewed', value: report.unreviewed, tone: 'danger' },
+    { label: 'Pending', value: report.pending, color: STATUS_COLORS.Pending },
+    { label: 'Active response', value: report.active, color: '#1565c0' },
+    { label: 'Resolved', value: report.resolved, color: STATUS_COLORS.Resolved },
+    { label: 'Outside', value: report.outside, color: STATUS_COLORS.Outside },
+    { label: 'Cancelled', value: report.cancelled, color: STATUS_COLORS.Cancelled },
+    { label: 'Not reviewed', value: report.unreviewed, color: BRAND, alert: report.unreviewed > 0 },
+  ];
+
+  const insights = [
+    {
+      label: 'Most common type',
+      value: report.topType ? report.topType.label : '—',
+      hint: report.topType ? `${report.topType.count} requests · ${pct(report.topType.count, report.total)}` : 'No data yet',
+    },
+    {
+      label: 'Hotspot area',
+      value: report.topArea ? report.topArea.label : '—',
+      hint: report.topArea ? `${report.topArea.count} requests · ${pct(report.topArea.count, report.total)}` : 'No data yet',
+    },
+    {
+      label: 'Busiest hour',
+      value: report.peakHour || '—',
+      hint: report.peakHour ? 'Most requests are reported around this time' : 'No data yet',
+    },
   ];
 
   const trendTitle =
@@ -777,48 +903,74 @@ export default function AccidentReport({
         {reportMeta.notes ? ` · Notes: ${reportMeta.notes}` : ''}
       </p>
 
-      <div className={styles.kpiGrid}>
-        {kpis.map((kpi) => (
-          <div key={kpi.label} className={`${styles.kpi} ${styles[`kpi_${kpi.tone}`]}`}>
-            <div className={styles.kpiValue}>{kpi.value}</div>
-            <div className={styles.kpiLabel}>{kpi.label}</div>
+      <section className={styles.hero}>
+        <div className={styles.heroMain}>
+          <span className={styles.heroEyebrow}>Total requests</span>
+          <strong className={styles.heroValue}>{report.total}</strong>
+          <span className={styles.heroSub}>{periodLabel}</span>
+        </div>
+        <div className={styles.heroGauge}>
+          <div className={styles.ringWrap}>
+            <RingGauge value={report.total ? (report.resolved / report.total) * 100 : 0} />
+            <span className={styles.ringValue}>{pct(report.resolved, report.total)}</span>
+          </div>
+          <div>
+            <span className={styles.heroEyebrow}>Resolution rate</span>
+            <span className={styles.heroHint}>{report.resolved} resolved of {report.total}</span>
+          </div>
+        </div>
+        <div className={styles.heroStat}>
+          <span className={styles.heroEyebrow}>Still open</span>
+          <strong>{pct(report.stillOpen, report.total)}</strong>
+          <span className={styles.heroHint}>
+            {report.pending} pending · {report.active} active · {report.outside} outside
+          </span>
+        </div>
+        <div className={styles.heroStat}>
+          <span className={styles.heroEyebrow}>Average response</span>
+          <strong>{report.avgResponse}</strong>
+          <span className={styles.heroHint}>
+            {report.avgResponseCount
+              ? `Report to dispatch · ${report.avgResponseCount} request${report.avgResponseCount === 1 ? '' : 's'}`
+              : 'No dispatched requests in this period'}
+          </span>
+        </div>
+        <div className={styles.heroBar}>
+          <StackBar items={report.statusSlices} total={report.total} />
+        </div>
+      </section>
+
+      <div className={styles.insightGrid}>
+        {insights.map((item) => (
+          <div key={item.label} className={styles.insight}>
+            <span className={styles.insightLabel}>{item.label}</span>
+            <strong className={styles.insightValue}>{item.value}</strong>
+            <span className={styles.insightHint}>{item.hint}</span>
           </div>
         ))}
       </div>
 
-      <div className={styles.rateRow}>
-        <div className={styles.rateCard}>
-          <span className={styles.rateLabel}>Resolution rate</span>
-          <strong>{pct(report.resolved, report.total)}</strong>
-          <span className={styles.rateHint}>{report.resolved} resolved / {report.total} total</span>
-        </div>
-        <div className={styles.rateCard}>
-          <span className={styles.rateLabel}>Still open</span>
-          <strong>{pct(report.stillOpen, report.total)}</strong>
-          <span className={styles.rateHint}>
-            {report.pending} pending + {report.active} active + {report.outside} outside
-          </span>
-        </div>
-        <div className={styles.rateCard}>
-          <span className={styles.rateLabel}>Average response time</span>
-          <strong>{report.avgResponse}</strong>
-          <span className={styles.rateHint}>
-            {report.avgResponseCount
-              ? `Report to dispatch · ${report.avgResponseCount} dispatched request${report.avgResponseCount === 1 ? '' : 's'}`
-              : 'No dispatched requests in this period'}
-          </span>
-        </div>
+      <div className={styles.kpiGrid}>
+        {kpis.map((kpi) => (
+          <div key={kpi.label} className={`${styles.kpi} ${kpi.alert ? styles.kpiAlert : ''}`}>
+            <div className={styles.kpiTop}>
+              <span className={styles.legendDot} style={{ background: kpi.color }} />
+              <span className={styles.kpiLabel}>{kpi.label}</span>
+            </div>
+            <div className={styles.kpiValue}>{kpi.value}</div>
+            <div className={styles.kpiBar}>
+              <span style={{ width: report.total ? `${(kpi.value / report.total) * 100}%` : 0, background: kpi.color }} />
+            </div>
+            <div className={styles.kpiShare}>{pct(kpi.value, report.total)} of requests</div>
+          </div>
+        ))}
       </div>
 
-      <div className={styles.donutGrid}>
-        <ChartCard title="Status share">
-          <DonutChart
-            items={report.statusSlices}
-            centerValue={report.total}
-            centerLabel="requests"
-          />
+      <div className={styles.mainGrid}>
+        <ChartCard title={trendTitle} note={trendNote}>
+          <ColumnChart points={mode === 'day' ? report.hours : report.trend} />
         </ChartCard>
-        <ChartCard title="Type share">
+        <ChartCard title="By incident type">
           <DonutChart
             items={report.typeSlices}
             centerValue={report.total}
@@ -827,12 +979,19 @@ export default function AccidentReport({
         </ChartCard>
       </div>
 
+      <ChartCard
+        title="Busiest hours of the day"
+        note={report.peakHour
+          ? `Most requests come in around ${report.peakHour}. Each box is one hour; the number inside is how many requests.`
+          : 'No requests in this period yet. Each box is one hour of the day.'}
+        wide
+      >
+        <HeatStrip hours={report.hours} />
+      </ChartCard>
+
       <div className={styles.grid}>
-        <ChartCard title={trendTitle} note={trendNote}>
-          <ColumnChart points={mode === 'day' ? report.hours : report.trend} />
-        </ChartCard>
-        <ChartCard title={`By incident type (${report.total})`}>
-          <BarList items={report.types} colors={TYPE_COLORS} total={report.total} />
+        <ChartCard title="Top locations">
+          <BarList items={report.barangays.slice(0, 8)} colors={[BRAND]} total={report.total} />
         </ChartCard>
         <ChartCard title="By exact status">
           <BarList
@@ -840,9 +999,6 @@ export default function AccidentReport({
             colors={{ ...STATUS_COLORS, default: '#64748b' }}
             total={report.total}
           />
-        </ChartCard>
-        <ChartCard title="Top locations">
-          <BarList items={report.barangays} colors={TYPE_COLORS} total={report.total} />
         </ChartCard>
       </div>
 

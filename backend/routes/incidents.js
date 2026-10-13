@@ -10,107 +10,94 @@ const { rememberStatus, takeSavedStatus, SAVED_STATUSES } = require('../utils/re
 const { listViewedIncidents, markIncidentViewed, clearIncidentViewed } = require('../utils/archiveStore');
 const { attachIdentity, isMissingColumnError } = require('../utils/identityStore');
 const { logActivity } = require('../utils/activityLogger');
+const { validateSosBody, createIncidentOnce, findExisting } = require('../utils/sosService');
 
 // POST /api/incidents/sos  - Send SOS emergency alert
+// Idempotent: the mobile app sends the same client_request_id on every retry, so a retry after a
+// lost response returns the original incident (HTTP 200, duplicate: true) instead of a new one.
 router.post('/sos', authenticateToken, async (req, res) => {
-  const {
-    incident_type,
-    incident_description,
-    latitude,
-    longitude,
-    location_address,
-    purok,
-    barangay,
-    city,
-    priority_level,
-  } = req.body;
-
-  const VALID_PRIORITIES = ['Normal', 'High', 'Critical'];
-  const resolvedPriority = VALID_PRIORITIES.includes(priority_level) ? priority_level : 'High';
   const user_id = req.user.user_id;
-
-  if (!latitude || !longitude) {
-    return res.status(400).json({ message: 'Location is required. Please enable GPS.' });
+  if (!user_id) {
+    return res.status(403).json({ message: 'User access required.' });
   }
 
-  const withinCity = isWithinCabadbaran(Number(latitude), Number(longitude));
+  const checked = validateSosBody(req.body);
+  if (!checked.ok) {
+    return res.status(400).json({ field: checked.field, message: checked.message });
+  }
+  const sos = checked.value;
+
+  const withinCity = isWithinCabadbaran(sos.latitude, sos.longitude);
   const OUTSIDE_MESSAGE =
     'Out of area of responsibility. Please wait while we refer you to the nearest station.';
-
-  try {
-    const resolvedLocation = await resolveLocationFromGps(
-      Number(latitude),
-      Number(longitude)
-    );
-
-    const baseDescription = incident_description || 'SOS alert triggered.';
-    const payload = {
-      user_id,
-      incident_type: incident_type || 'Emergency',
-      incident_description: withinCity
-        ? baseDescription
-        : `${baseDescription} ${OUTSIDE_MESSAGE}`,
-      incident_status: withinCity ? 'Pending' : 'Outside',
-      priority_level: resolvedPriority,
-    };
-
-    let { data: incident, error: incidentError } = await supabase
-      .from('incidents')
-      .insert([payload])
-      .select()
-      .single();
-
-    if (incidentError && !withinCity) {
-      const retry = await supabase
-        .from('incidents')
-        .insert([{ ...payload, incident_status: 'Pending' }])
-        .select()
-        .single();
-      incident = retry.data;
-      incidentError = retry.error;
-    }
-
-    if (incidentError) {
-      return res.status(500).json({ message: incidentError.message });
-    }
-
-    if (latitude && longitude) {
-      const { error: locationError } = await supabase
-        .from('locations')
-        .insert([
-          {
-            incident_id: incident.incident_id,
-            latitude,
-            longitude,
-            location_address: buildLocationAddress({
-              purok: resolvedLocation.purok,
-              area: resolvedLocation.area,
-              barangay: resolvedLocation.barangay,
-              city: resolvedLocation.city,
-              location_address,
-            }),
-          },
-        ]);
-
-      if (locationError) {
-        console.error('Location insert error:', locationError.message);
-      }
-    }
-
-    const referralOnly = isReferralOnlyType(incident_type);
-    const dispatch =
-      withinCity && !referralOnly ? await autoDispatch(incident.incident_id) : null;
-
-    return res.status(201).json({
+  const respond = (status, incident, extra) =>
+    res.status(status).json({
       message: withinCity
-        ? 'SOS sent successfully! Help is on the way.'
+        ? 'SOS sent successfully! Your request was received and is waiting for a dispatcher.'
         : OUTSIDE_MESSAGE,
       outside_boundary: !withinCity,
       incident,
-      dispatch,
-      location: resolvedLocation,
+      client_request_id: sos.key,
+      server_received_at: new Date().toISOString(),
+      ...extra,
     });
+
+  try {
+    // Retry of a request the server already stored: answer without repeating any work.
+    if (sos.key) {
+      const existing = await findExisting(user_id, sos.key);
+      if (existing) {
+        return respond(200, existing, { duplicate: true, dispatch: null });
+      }
+    }
+
+    const resolvedLocation = await resolveLocationFromGps(sos.latitude, sos.longitude);
+    const location = {
+      address: buildLocationAddress({
+        purok: resolvedLocation.purok,
+        area: resolvedLocation.area,
+        barangay: resolvedLocation.barangay,
+        city: resolvedLocation.city,
+        location_address: sos.location_address,
+      }),
+    };
+
+    const baseDescription = sos.incident_description || 'SOS alert triggered.';
+    const description = withinCity ? baseDescription : `${baseDescription} ${OUTSIDE_MESSAGE}`;
+
+    let result;
+    try {
+      result = await createIncidentOnce({
+        userId: user_id,
+        sos,
+        status: withinCity ? 'Pending' : 'Outside',
+        description,
+        location,
+      });
+    } catch (err) {
+      if (withinCity) throw err;
+      // some databases do not accept the "Outside" status: fall back to Pending
+      result = await createIncidentOnce({ userId: user_id, sos, status: 'Pending', description, location });
+    }
+
+    const { incident, created } = result;
+    if (!created) {
+      return respond(200, incident, { duplicate: true, dispatch: null, location: resolvedLocation });
+    }
+
+    const referralOnly = isReferralOnlyType(sos.incident_type);
+    // Dispatch is manual by default: the incident stays "Pending" until an admin assigns a
+    // unit. Set AUTO_DISPATCH=true in backend/.env to restore automatic assignment.
+    // Only the first (created) request can ever dispatch, never a retry.
+    const autoDispatchEnabled = String(process.env.AUTO_DISPATCH || '').toLowerCase() === 'true';
+    const dispatch =
+      autoDispatchEnabled && withinCity && !referralOnly
+        ? await autoDispatch(incident.incident_id)
+        : null;
+
+    return respond(201, incident, { dispatch, location: resolvedLocation });
   } catch (err) {
+    console.error('[sos] failed:', err?.message || err);
     return res.status(500).json({ message: 'Server error. Please try again.' });
   }
 });
@@ -461,9 +448,9 @@ router.patch('/:id/archive', async (req, res) => {
     if (fetchErr) return res.status(500).json({ message: fetchErr.message });
     if (!existing) return res.status(404).json({ message: 'Incident not found.' });
 
-    if (!['Resolved', 'Cancelled'].includes(existing.incident_status)) {
+    if (!['Resolved', 'Cancelled', 'Referred', 'Completed'].includes(existing.incident_status)) {
       return res.status(400).json({
-        message: 'Only resolved or cancelled incidents can be archived.',
+        message: 'Only resolved, cancelled or referred incidents can be archived.',
       });
     }
 

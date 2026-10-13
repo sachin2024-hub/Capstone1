@@ -340,6 +340,47 @@ function isIncomingIncident(inc) {
   return inc?.incident_status === 'Pending' || inc?.incident_status === 'Outside';
 }
 
+/** Re-renders on an interval so "waiting" times stay fresh. */
+function useNowMs(intervalMs = 30000) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+  return now;
+}
+
+/** Waiting time for a request nobody has taken yet; null once it is handled. */
+function getWaiting(inc, nowMs) {
+  if (!isIncomingIncident(inc) || getAssignedResponder(inc)) return null;
+  const reported = new Date(inc.date_reported).getTime();
+  if (Number.isNaN(reported)) return null;
+  const mins = Math.max(0, Math.floor((nowMs - reported) / 60000));
+  let label;
+  if (mins < 1) label = 'Just now';
+  else if (mins < 60) label = `${mins} min`;
+  else if (mins < 1440) label = `${Math.floor(mins / 60)}h ${mins % 60}m`;
+  else label = `${Math.floor(mins / 1440)}d ${Math.floor((mins % 1440) / 60)}h`;
+  const level = mins >= 10 ? 'late' : mins >= 5 ? 'warn' : 'ok';
+  return { label, level };
+}
+
+/** Two-tone siren played through the Web Audio API (no audio file needed). */
+function playSosAlarm(ctx, seconds = 4) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'square';
+  gain.gain.value = 0.15;
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  const start = ctx.currentTime;
+  for (let t = 0; t < seconds; t += 0.5) {
+    osc.frequency.setValueAtTime(t % 1 === 0 ? 880 : 660, start + t);
+  }
+  osc.start(start);
+  osc.stop(start + seconds);
+}
+
 function useClock() {
   const [time, setTime] = useState(() => new Date());
   useEffect(() => {
@@ -630,6 +671,7 @@ function IncidentTableSection({
   bulkDeleteLabel = 'Delete',
   bulkArchiveLabel = 'Archive',
 }) {
+  const nowMs = useNowMs();
   const {
     edit = true,
     archive = false,
@@ -792,12 +834,13 @@ function IncidentTableSection({
                     </th>
                   )}
                   <th>ID</th><th>Type</th><th>Description</th><th>Reporter</th>
-                  <th>Location</th><th>Assigned</th><th>Status</th><th>Date</th>
+                  <th>Location</th><th>Assigned</th><th>Status</th><th>Waiting</th><th>Date</th>
                   {hasActions && <th>Action</th>}
                 </tr>
               </thead>
               <tbody>
                 {pagedRows.map((inc) => {
+                  const waiting = getWaiting(inc, nowMs);
                   const loc = Array.isArray(inc.locations) ? inc.locations[0] : inc.locations;
                   const assigned = getAssignedResponder(inc);
                   const statusOptions = getStatusesForIncident(inc, inc.incident_status, true);
@@ -890,6 +933,13 @@ function IncidentTableSection({
                             {displayIncidentStatus(inc.incident_status)}
                         </span>
                         )}
+                      </td>
+                      <td>
+                        {waiting ? (
+                          <span className={`${styles.waitBadge} ${styles[`wait_${waiting.level}`]}`}>
+                            {waiting.label}
+                          </span>
+                        ) : <span style={{ color: '#bbb' }}>—</span>}
                       </td>
                       <td style={{ color: '#888', fontSize: 12 }}>{formatDate(inc.date_reported)}</td>
                       {hasActions && (
@@ -1732,6 +1782,13 @@ export default function Dashboard() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState('');
   const refreshLockRef = useRef(false);
+  const audioCtxRef = useRef(null);
+  const knownIncidentIdsRef = useRef(null);
+  const incidentsFetchedRef = useRef(false);
+  const [alarmOn, setAlarmOn] = useState(() => {
+    try { return localStorage.getItem('sosAlarm') !== 'off'; } catch { return true; }
+  });
+  const [sosToast, setSosToast] = useState(null);
   const [liveMapRefreshKey, setLiveMapRefreshKey] = useState(0);
   const [admins, setAdmins] = useState([]);
   const [showAddAdmin, setShowAddAdmin] = useState(false);
@@ -1789,6 +1846,7 @@ export default function Dashboard() {
 
       setUsers(usersData);
       setAdmins(adminsRes.data || []);
+      incidentsFetchedRef.current = true;
       setIncidents(incidentsData);
       setResponders(respondersData);
       setDispatches(dispatchData);
@@ -1848,9 +1906,68 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchData({ showLoader: true });
-    const interval = setInterval(() => fetchData(), 15000);
+    const interval = setInterval(() => fetchData(), 5000);
     return () => clearInterval(interval);
   }, [fetchData]);
+
+  // Browsers only allow sound after a user gesture, so unlock audio on the first click/key.
+  useEffect(() => {
+    const unlock = () => {
+      try {
+        if (!audioCtxRef.current) {
+          const Ctx = window.AudioContext || window.webkitAudioContext;
+          if (Ctx) audioCtxRef.current = new Ctx();
+        }
+        audioCtxRef.current?.resume?.();
+      } catch { /* audio unavailable */ }
+    };
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+  }, []);
+
+  // Ring the alarm when a new help request arrives (not for the first load).
+  useEffect(() => {
+    if (!incidentsFetchedRef.current) return;
+    const currentIds = new Set(incidents.map((i) => Number(i.incident_id)));
+    const known = knownIncidentIdsRef.current;
+    knownIncidentIdsRef.current = currentIds;
+    if (!known) return;
+    const fresh = incidents.filter(
+      (i) => !known.has(Number(i.incident_id)) && isIncomingIncident(i) && !i.viewed
+    );
+    if (fresh.length === 0) return;
+    setSosToast({
+      count: fresh.length,
+      id: fresh[0].incident_id,
+      type: fresh[0].incident_type,
+    });
+    if (alarmOn && audioCtxRef.current?.state === 'running') {
+      try { playSosAlarm(audioCtxRef.current); } catch { /* ignore */ }
+    }
+  }, [incidents, alarmOn]);
+
+  // The banner only points people to the Accident page, so drop it once they are there.
+  useEffect(() => {
+    if (activeTab === 'incidents') setSosToast(null);
+  }, [activeTab, sosToast]);
+
+  useEffect(() => {
+    if (!sosToast) return undefined;
+    const id = setTimeout(() => setSosToast(null), 15000);
+    return () => clearTimeout(id);
+  }, [sosToast]);
+
+  const toggleAlarm = () => {
+    setAlarmOn((prev) => {
+      const next = !prev;
+      try { localStorage.setItem('sosAlarm', next ? 'on' : 'off'); } catch { /* ignore */ }
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (activeTab !== 'archive') return undefined;
@@ -2212,12 +2329,10 @@ export default function Dashboard() {
         try {
           rememberIncidentStatus(inc.incident_id, inc.incident_status);
           await deleteIncident(inc.incident_id, inc.incident_status);
-      await fetchData();
-      setActiveTab('archive');
-          setArchiveModule('accident');
-    } catch (err) {
-      setError(err.message || 'Failed to delete incident.');
-    }
+          await fetchData();
+        } catch (err) {
+          setError(err.message || 'Failed to delete incident.');
+        }
       },
     });
   };
@@ -2593,6 +2708,11 @@ export default function Dashboard() {
     { label: 'Available Vehicle', value: stats.available, icon: 'check_circle', color: STAT_COLORS[4], tab: 'responders' },
   ];
 
+  // Oldest pending first, so the request that has waited longest is on top.
+  const pendingQueue = dashboardIncidents
+    .filter((i) => i.incident_status === 'Pending')
+    .sort((a, b) => new Date(a.date_reported) - new Date(b.date_reported));
+
   const openStatCard = (card) => {
     if (card.filter) setIncidentFilter(card.filter);
     if (card.tab === 'incidents' && dashboardDateFilter.mode !== 'all') {
@@ -2684,6 +2804,14 @@ export default function Dashboard() {
             </span>
             <button
               type="button"
+              className={`${styles.alarmToggle} ${alarmOn ? styles.alarmToggleOn : ''}`}
+              title={alarmOn ? 'Alarm sound is ON for new help requests' : 'Alarm sound is OFF'}
+              onClick={toggleAlarm}
+            >
+              {alarmOn ? '🔔 Alarm on' : '🔕 Alarm off'}
+            </button>
+            <button
+              type="button"
               className={styles.notifBtn}
               title="View new accident requests"
               onClick={() => {
@@ -2708,6 +2836,20 @@ export default function Dashboard() {
 
         {/* Content */}
         <div className={`${styles.content} ${(activeTab === 'live-map' || activeTab === 'call-log') ? styles.contentPanel : ''}`}>
+          {sosToast && activeTab !== 'incidents' && (
+            <button
+              type="button"
+              className={styles.sosToast}
+              onClick={() => {
+                setSosToast(null);
+                setActiveTab('incidents');
+                setIncidentFilter('pending');
+              }}
+            >
+              🚨 {sosToast.count > 1 ? `${sosToast.count} new help requests` : `New help request #${sosToast.id}`}
+              {sosToast.count === 1 && sosToast.type ? ` — ${sosToast.type}` : ''} · Click to view
+            </button>
+          )}
           {error && (
             <div className={styles.errorBanner}>
               <span><Icon name="warning" size={16} /> {error}</span>
@@ -2738,44 +2880,50 @@ export default function Dashboard() {
                 years={filterYears}
               />
 
-              {/* Banner */}
-              <div className={styles.overviewBanner}>
-                <div className={styles.bannerPhoto} aria-hidden="true" />
-                <div className={styles.bannerScrim} aria-hidden="true" />
-                <div className={styles.bannerText}>
+              {/* Command bar */}
+              <div className={styles.cmdBar}>
+                <div className={styles.cmdBarText}>
                   <h3>Cabadbaran City Emergency System</h3>
-                  <p>Cabadbaran City, Agusan del Norte</p>
+                  <p>
+                    <span className={styles.cmdLiveDot} aria-hidden="true" />
+                    Live · {pendingQueue.length > 0
+                      ? `${pendingQueue.length} request${pendingQueue.length === 1 ? '' : 's'} waiting for dispatch`
+                      : 'No requests waiting'}
+                  </p>
                 </div>
-                <div className={styles.bannerActions}>
-                  <button className={styles.bannerBtn} onClick={() => setActiveTab('live-map')}><Icon name="map" size={16} /> Live Map</button>
-                  <button className={styles.bannerBtn} onClick={() => setActiveTab('incidents')}><Icon name="emergency" size={16} /> Accident</button>
+                <div className={styles.cmdBarActions}>
+                  <button type="button" className={styles.cmdBtnPrimary} onClick={() => setActiveTab('live-map')}><Icon name="map" size={16} /> Live Map</button>
+                  <button type="button" className={styles.cmdBtnGhost} onClick={() => setActiveTab('incidents')}><Icon name="emergency" size={16} /> Accident</button>
                 </div>
-                  </div>
+              </div>
 
-              {/* Stats */}
-              <div className={styles.statsGrid}>
-                {statCards.map((card) => (
-                  <button
-                    key={card.label}
-                    type="button"
-                    className={`${styles.statCard} ${styles.statCardClickable} ${styles[card.color]}`}
-                    onClick={() => openStatCard(card)}
-                  >
-                    <div className={styles.statIconBox}>
-                      <Icon name={card.icon} size={26} />
-                </div>
-                  <div className={styles.statBody}>
-                      <div className={styles.statValue}>{isLoading ? '—' : card.value}</div>
-                      <div className={styles.statLabel}>{card.label}</div>
-                      {card.label === 'Pending' && !isLoading && card.value > 0 && (
-                        <div className={`${styles.statTrend} ${styles.trendWarn}`}><Icon name="warning" size={14} /> Needs attention</div>
-                      )}
-                      {card.label === 'Available Vehicle' && !isLoading && (
-                        <div className={`${styles.statTrend} ${styles.trendUp}`}>● Ready to respond</div>
-                      )}
-                </div>
-                  </button>
-                ))}
+              {/* KPIs */}
+              <div className={styles.kpiGrid}>
+                {statCards.map((card) => {
+                  const isAlert = card.label === 'Pending' && !isLoading && card.value > 0;
+                  return (
+                    <button
+                      key={card.label}
+                      type="button"
+                      className={`${styles.kpiCard} ${styles[card.color]} ${isAlert ? styles.kpiAlert : ''}`}
+                      onClick={() => openStatCard(card)}
+                    >
+                      <div className={styles.kpiTop}>
+                        <span className={styles.kpiLabel}>{card.label}</span>
+                        <span className={styles.kpiIcon}><Icon name={card.icon} size={18} /></span>
+                      </div>
+                      <div className={styles.kpiValue}>{isLoading ? '—' : card.value}</div>
+                      <div className={styles.kpiFoot}>
+                        {isAlert && <span className={styles.kpiWarn}>● Needs attention</span>}
+                        {card.label === 'Available Vehicle' && !isLoading && (
+                          card.value > 0
+                            ? <span className={styles.kpiOk}>● Ready to respond</span>
+                            : <span className={styles.kpiWarn}>● None free</span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Compact Analytics preview — same definitions as Analytics tab */}
@@ -2788,6 +2936,7 @@ export default function Dashboard() {
                 }}
               />
 
+              <div className={styles.cmdSplit}>
               {/* Recent Incidents */}
               <div className={styles.tableCard}>
                 <div className={styles.tableCardHeader}>
@@ -2834,6 +2983,50 @@ export default function Dashboard() {
                     </table>
                   </div>
                 )}
+              </div>
+
+              {/* Pending queue */}
+              <aside className={styles.queueCard} aria-label="Pending dispatch queue">
+                <div className={styles.queueHeader}>
+                  <h3><Icon name="hourglass_empty" size={16} /> Waiting for dispatch</h3>
+                  <span className={styles.queueCount}>{isLoading ? '—' : pendingQueue.length}</span>
+                </div>
+                {isLoading ? (
+                  <div className={styles.queueEmpty}>Loading…</div>
+                ) : pendingQueue.length === 0 ? (
+                  <div className={styles.queueEmpty}>All clear. No pending requests.</div>
+                ) : (
+                  <ul className={styles.queueList}>
+                    {pendingQueue.slice(0, 6).map((inc) => (
+                      <li key={inc.incident_id}>
+                        <button type="button" className={styles.queueItem} onClick={() => handleOpenIncident(inc)}>
+                          <span className={styles.queueMain}>
+                            <strong>#{inc.incident_id} · {inc.incident_type || 'Emergency'}</strong>
+                            <small>
+                              {inc.users ? `${inc.users.first_name} ${inc.users.last_name}` : 'Unknown reporter'}
+                              {' · '}{formatDate(inc.date_reported)}
+                            </small>
+                          </span>
+                          {inc.priority_level && inc.priority_level !== 'Normal' && (
+                            <span className={`${styles.queuePriority} ${inc.priority_level === 'Critical' ? styles.queueCritical : ''}`}>
+                              {inc.priority_level}
+                            </span>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {pendingQueue.length > 6 && (
+                  <button
+                    type="button"
+                    className={styles.queueMore}
+                    onClick={() => { setIncidentFilter('pending'); setActiveTab('incidents'); }}
+                  >
+                    View all {pendingQueue.length} pending →
+                  </button>
+                )}
+              </aside>
               </div>
             </div>
           )}

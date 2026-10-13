@@ -67,6 +67,7 @@ export default function LiveMap({
   const [isExpanded, setIsExpanded] = useState(false);
   const [streetViewTarget, setStreetViewTarget] = useState(null);
   const hasAutoSelected = useRef(false);
+  const markerRefs = useRef({});
   const mapPanelRef = useRef(null);
   const alertListRef = useRef(null);
   const pendingFocusId = useRef(
@@ -245,6 +246,16 @@ export default function LiveMap({
   const mapOutsideAlerts = selectedId != null
     ? outsideAlerts.filter((inc) => sameIncidentId(inc.incident_id, selectedId))
     : outsideAlerts;
+
+  // After a pin/card click the map flies to the incident and the popup can get closed by
+  // the move, so re-open the info box once the animation has settled.
+  useEffect(() => {
+    if (!focusRequestId || selectedId == null) return undefined;
+    const timer = setTimeout(() => {
+      markerRefs.current[Number(selectedId)]?.openPopup();
+    }, 700);
+    return () => clearTimeout(timer);
+  }, [focusRequestId, selectedId]);
 
   const focusOnIncident = (incidentId) => {
     const id = Number(incidentId);
@@ -513,6 +524,7 @@ export default function LiveMap({
                 <Marker
                   position={[inc.victim.lat, inc.victim.lng]}
                   icon={victimIcon}
+                  ref={(m) => { if (m) markerRefs.current[Number(inc.incident_id)] = m; }}
                   zIndexOffset={isSelected ? 1000 : 0}
                   eventHandlers={{ click: () => focusOnIncident(inc.incident_id) }}
                 >
@@ -643,6 +655,7 @@ export default function LiveMap({
                 <Marker
                   position={[inc.victim.lat, inc.victim.lng]}
                   icon={outsideIcon}
+                  ref={(m) => { if (m) markerRefs.current[Number(inc.incident_id)] = m; }}
                   zIndexOffset={isSelected ? 1000 : 0}
                   eventHandlers={{
                     click: () => focusOnIncident(inc.incident_id),

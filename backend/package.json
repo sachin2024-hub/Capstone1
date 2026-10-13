@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node server.js",
+    "test": "node --test \"tests/*.test.js\"",
     "dev": "nodemon server.js",
     "stop": "npx --yes kill-port 5000",
     "restart": "npx --yes kill-port 5000 && node server.js",
