@@ -3007,11 +3007,6 @@ export default function Dashboard() {
                               {' · '}{formatDate(inc.date_reported)}
                             </small>
                           </span>
-                          {inc.priority_level && inc.priority_level !== 'Normal' && (
-                            <span className={`${styles.queuePriority} ${inc.priority_level === 'Critical' ? styles.queueCritical : ''}`}>
-                              {inc.priority_level}
-                            </span>
-                          )}
                         </button>
                       </li>
                     ))}
