@@ -25,6 +25,7 @@
     "express": "^5.2.1",
     "jpeg-js": "^0.4.4",
     "jsonwebtoken": "^9.0.3",
+    "nodemailer": "^10.1.7",
     "pg": "^8.23.0",
     "tesseract.js": "^7.0.0"
   },

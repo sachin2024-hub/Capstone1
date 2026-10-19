@@ -25,3 +25,12 @@ export const getStoredAdmin = () => {
 };
 
 export const isAuthenticated = () => !!localStorage.getItem('rr_token');
+
+export const requestPasswordReset = async (username) =>
+  (await api.post('/admin/forgot-password/request', { username })).data;
+
+export const verifyResetOtp = async (username, otp) =>
+  (await api.post('/admin/forgot-password/verify', { username, otp })).data;
+
+export const resetPassword = async (reset_token, password) =>
+  (await api.post('/admin/forgot-password/reset', { reset_token, password })).data;

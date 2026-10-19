@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { login } from '../../services/authService';
+import { login, requestPasswordReset, verifyResetOtp, resetPassword } from '../../services/authService';
 import { APP_IMAGES } from '../../constants/images';
 import Icon from '../../components/common/Icon';
 import styles from './Auth.module.css';
@@ -12,12 +12,237 @@ const FEATURES = [
   { icon: 'map', label: 'Live GPS tracking & routing' },
 ];
 
+const linkBtn = {
+  background: 'none',
+  border: 'none',
+  padding: 0,
+  color: '#c62828',
+  fontWeight: 700,
+  fontSize: 13,
+  cursor: 'pointer',
+};
+
+function BackLink({ onClick }) {
+  return (
+    <button type="button" onClick={onClick} style={{ ...linkBtn, color: '#555', marginTop: 14 }}>
+      ← Back to login
+    </button>
+  );
+}
+
+const PW_RULES = [
+  { label: 'At least 8 characters', test: (p) => p.length >= 8 },
+  { label: 'Upper & lowercase letters', test: (p) => /[a-z]/.test(p) && /[A-Z]/.test(p) },
+  { label: 'A number', test: (p) => /\d/.test(p) },
+  { label: 'A special character (!@#$…)', test: (p) => /[^A-Za-z0-9]/.test(p) },
+];
+
+const passwordMeetsMinimum = (p) => p.length >= 8 && /[A-Za-z]/.test(p) && /\d/.test(p);
+
+function passwordStrength(p) {
+  const passed = PW_RULES.filter((r) => r.test(p)).length;
+  if (!passwordMeetsMinimum(p) || passed <= 2) return { level: 1, label: 'Weak', color: '#dc2626' };
+  if (passed === 3) return { level: 2, label: 'Medium', color: '#f59e0b' };
+  return { level: 3, label: 'Strong', color: '#16a34a' };
+}
+
+function StrengthMeter({ password }) {
+  const s = passwordStrength(password);
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 5, flex: 1 }}>
+          {[1, 2, 3].map((n) => (
+            <div
+              key={n}
+              style={{
+                flex: 1, height: 6, borderRadius: 4,
+                background: n <= s.level ? s.color : '#e5e7eb',
+                transition: 'background 0.25s',
+              }}
+            />
+          ))}
+        </div>
+        <span style={{ fontSize: 12.5, fontWeight: 800, color: s.color, minWidth: 52, textAlign: 'right' }}>
+          {s.label}
+        </span>
+      </div>
+      <ul style={{ listStyle: 'none', margin: '10px 0 0', padding: 0, display: 'grid', gap: 4 }}>
+        {PW_RULES.map((r) => {
+          const ok = r.test(password);
+          return (
+            <li
+              key={r.label}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 600,
+                color: ok ? '#16a34a' : '#6b7280',
+              }}
+            >
+              <Icon name={ok ? 'check_circle' : 'radio_button_unchecked'} size={15} />
+              {r.label}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+const OTP_LENGTH = 6;
+
+// Six single-digit boxes. Digits are masked as "*" unless `visible` is on.
+function OtpBoxes({ value, onChange, visible, onToggleVisible, disabled }) {
+  const refs = useRef([]);
+  const digits = Array.from({ length: OTP_LENGTH }, (_, i) => value[i] || '');
+
+  const focusBox = (i) => refs.current[Math.max(0, Math.min(OTP_LENGTH - 1, i))]?.focus();
+
+  const setDigit = (i, d) => {
+    const next = digits.slice();
+    next[i] = d;
+    onChange(next.join('').slice(0, OTP_LENGTH));
+  };
+
+  const handleInput = (i, e) => {
+    const typed = e.target.value.replace(/\D/g, '');
+    if (!typed) return;
+    // Replace the box with the newest digit typed; spill extra digits (paste/autofill) forward.
+    const chars = typed.length > 1 && !digits[i] ? typed : typed.slice(-1);
+    const next = digits.slice();
+    for (let k = 0; k < chars.length && i + k < OTP_LENGTH; k += 1) next[i + k] = chars[k];
+    onChange(next.join(''));
+    focusBox(i + chars.length);
+  };
+
+  const handleKeyDown = (i, e) => {
+    if (e.key === 'Backspace') {
+      e.preventDefault();
+      if (digits[i]) setDigit(i, '');
+      else if (i > 0) { setDigit(i - 1, ''); focusBox(i - 1); }
+    } else if (e.key === 'ArrowLeft') focusBox(i - 1);
+    else if (e.key === 'ArrowRight') focusBox(i + 1);
+  };
+
+  const handlePaste = (e) => {
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, OTP_LENGTH);
+    if (!pasted) return;
+    e.preventDefault();
+    onChange(pasted);
+    focusBox(pasted.length);
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 8, flex: 1 }}>
+        {digits.map((d, i) => (
+          <input
+            key={i}
+            ref={(el) => { refs.current[i] = el; }}
+            type="text"
+            inputMode="numeric"
+            autoComplete={i === 0 ? 'one-time-code' : 'off'}
+            aria-label={`Digit ${i + 1}`}
+            value={d ? (visible ? d : '*') : ''}
+            disabled={disabled}
+            onChange={(e) => handleInput(i, e)}
+            onKeyDown={(e) => handleKeyDown(i, e)}
+            onPaste={handlePaste}
+            onFocus={(e) => e.target.select()}
+            style={{
+              width: '100%',
+              minWidth: 0,
+              height: 52,
+              textAlign: 'center',
+              fontSize: 22,
+              fontWeight: 700,
+              color: '#111827',
+              background: d ? '#fff' : '#f3f4f6',
+              border: `1.5px solid ${d ? '#e53935' : '#e5e7eb'}`,
+              borderRadius: 12,
+              outline: 'none',
+            }}
+          />
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={onToggleVisible}
+        aria-label={visible ? 'Hide code' : 'Show code'}
+        style={{ ...linkBtn, color: '#6b7280', display: 'flex', padding: 6 }}
+      >
+        <Icon name={visible ? 'visibility_off' : 'visibility'} size={20} />
+      </button>
+    </div>
+  );
+}
+
 export default function Login() {
   const navigate = useNavigate();
   const [form, setForm] = useState({ username: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  // 'login' | 'request' | 'otp' | 'reset'
+  const [view, setView] = useState('login');
+  const [resetUsername, setResetUsername] = useState('');
+  const [otp, setOtp] = useState('');
+  const [showOtp, setShowOtp] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [resetToken, setResetToken] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  const goTo = (next) => { setView(next); setError(''); setNotice(''); };
+
+  const handleRequestOtp = async (e) => {
+    e.preventDefault();
+    if (!resetUsername.trim()) { setError('Please enter your username.'); return; }
+    setIsLoading(true);
+    try {
+      const res = await requestPasswordReset(resetUsername.trim());
+      setView('otp'); setOtp(''); setError(''); setNotice(res.message);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
+    if (!/^\d{6}$/.test(otp)) { setError('Enter the 6-digit code.'); return; }
+    setIsLoading(true);
+    try {
+      const res = await verifyResetOtp(resetUsername.trim(), otp);
+      setResetToken(res.reset_token);
+      setView('reset'); setError(''); setNotice('');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    if (!passwordMeetsMinimum(newPassword)) {
+      setError('Password must be at least 8 characters with a letter and a number.');
+      return;
+    }
+    if (newPassword !== confirmPassword) { setError('Passwords do not match.'); return; }
+    setIsLoading(true);
+    try {
+      const res = await resetPassword(resetToken, newPassword);
+      setResetToken(''); setNewPassword(''); setConfirmPassword(''); setOtp('');
+      setForm({ username: resetUsername.trim(), password: '' });
+      setView('login'); setError(''); setNotice(res.message);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleChange = (e) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -143,8 +368,19 @@ export default function Login() {
           </div>
 
           <div className={styles.adminBadge}><Icon name="lock" size={16} /> Admin Access</div>
-          <h2 className={styles.formTitle}>Welcome Back</h2>
-          <p className={styles.formSubtitle}>Sign in to the admin control panel</p>
+          <h2 className={styles.formTitle}>{view === 'login' ? 'Welcome Back' : 'Reset Password'}</h2>
+          <p className={styles.formSubtitle}>
+            {view === 'login' && 'Sign in to the admin control panel'}
+            {view === 'request' && 'Enter your username to receive a verification code by email'}
+            {view === 'otp' && 'Enter the 6-digit code sent to your email'}
+            {view === 'reset' && 'Choose a new password'}
+          </p>
+
+          {notice && (
+            <div className={styles.errorAlert} style={{ background: '#e8f5e9', color: '#2e7d32', borderColor: '#c8e6c9' }}>
+              <Icon name="check_circle" size={16} /> {notice}
+            </div>
+          )}
 
           {error && (
             <div className={styles.errorAlert}>
@@ -152,6 +388,7 @@ export default function Login() {
             </div>
           )}
 
+          {view === 'login' && (
           <form onSubmit={handleSubmit} className={styles.form}>
             <div className={styles.inputGroup}>
               <label className={styles.label}>Username</label>
@@ -194,6 +431,16 @@ export default function Login() {
               </div>
             </div>
 
+            <div style={{ textAlign: 'right', margin: '-4px 0 14px' }}>
+              <button
+                type="button"
+                onClick={() => { setResetUsername(form.username); goTo('request'); }}
+                style={linkBtn}
+              >
+                Forgot Password?
+              </button>
+            </div>
+
             <button type="submit" className={styles.submitBtn} disabled={isLoading}>
               {isLoading ? (
                 <><span className={styles.spinner} /> Logging in...</>
@@ -202,6 +449,114 @@ export default function Login() {
               )}
             </button>
           </form>
+          )}
+
+          {view === 'request' && (
+            <form onSubmit={handleRequestOtp} className={styles.form}>
+              <div className={styles.inputGroup}>
+                <label className={styles.label}>Username</label>
+                <div className={styles.inputWrapper}>
+                  <span className={styles.inputIcon}><Icon name="person" size={18} /></span>
+                  <input
+                    type="text"
+                    className={styles.inputWithIcon}
+                    placeholder="Enter your username"
+                    value={resetUsername}
+                    onChange={(e) => { setResetUsername(e.target.value); setError(''); }}
+                    autoCapitalize="none"
+                  />
+                </div>
+              </div>
+              <button type="submit" className={styles.submitBtn} disabled={isLoading}>
+                {isLoading ? <><span className={styles.spinner} /> Sending...</> : <><Icon name="mail" size={18} /> Send Code</>}
+              </button>
+              <BackLink onClick={() => goTo('login')} />
+            </form>
+          )}
+
+          {view === 'otp' && (
+            <form onSubmit={handleVerifyOtp} className={styles.form}>
+              <div className={styles.inputGroup}>
+                <label className={styles.label}>Verification Code</label>
+                <OtpBoxes
+                  value={otp}
+                  onChange={(v) => { setOtp(v); setError(''); }}
+                  visible={showOtp}
+                  onToggleVisible={() => setShowOtp((v) => !v)}
+                  disabled={isLoading}
+                />
+              </div>
+              <button type="submit" className={styles.submitBtn} disabled={isLoading}>
+                {isLoading ? <><span className={styles.spinner} /> Verifying...</> : 'Verify Code'}
+              </button>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <BackLink onClick={() => goTo('login')} />
+                <button
+                  type="button"
+                  disabled={isLoading}
+                  onClick={handleRequestOtp}
+                  style={{ ...linkBtn, marginTop: 14 }}
+                >
+                  Resend code
+                </button>
+              </div>
+            </form>
+          )}
+
+          {view === 'reset' && (
+            <form onSubmit={handleResetPassword} className={styles.form}>
+              <div className={styles.inputGroup}>
+                <label className={styles.label}>New Password</label>
+                <div className={styles.passwordWrapper}>
+                  <span className={styles.inputIcon}><Icon name="lock" size={18} /></span>
+                  <input
+                    type={showNewPw ? 'text' : 'password'}
+                    className={styles.inputWithIcon}
+                    placeholder="Create a strong password"
+                    value={newPassword}
+                    onChange={(e) => { setNewPassword(e.target.value); setError(''); }}
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    className={styles.eyeBtn}
+                    onClick={() => setShowNewPw((v) => !v)}
+                    aria-label={showNewPw ? 'Hide password' : 'Show password'}
+                  >
+                    <Icon name={showNewPw ? 'visibility_off' : 'visibility'} size={18} />
+                  </button>
+                </div>
+                {newPassword && <StrengthMeter password={newPassword} />}
+              </div>
+              <div className={styles.inputGroup}>
+                <label className={styles.label}>Confirm Password</label>
+                <div className={styles.passwordWrapper}>
+                  <span className={styles.inputIcon}><Icon name="lock" size={18} /></span>
+                  <input
+                    type={showNewPw ? 'text' : 'password'}
+                    className={styles.inputWithIcon}
+                    placeholder="Re-enter new password"
+                    value={confirmPassword}
+                    onChange={(e) => { setConfirmPassword(e.target.value); setError(''); }}
+                    autoComplete="new-password"
+                  />
+                </div>
+                {confirmPassword && (
+                  <div style={{
+                    marginTop: 6, fontSize: 12.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5,
+                    color: confirmPassword === newPassword ? '#16a34a' : '#dc2626',
+                  }}>
+                    <Icon name={confirmPassword === newPassword ? 'check_circle' : 'cancel'} size={15} />
+                    {confirmPassword === newPassword ? 'Passwords match' : 'Passwords do not match yet'}
+                  </div>
+                )}
+              </div>
+              <button type="submit" className={styles.submitBtn} disabled={isLoading}>
+                {isLoading ? <><span className={styles.spinner} /> Saving...</> : 'Update Password'}
+              </button>
+              <BackLink onClick={() => goTo('login')} />
+            </form>
+          )}
         </div>
       </div>
     </div>

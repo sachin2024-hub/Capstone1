@@ -2,3 +2,6 @@
 backend/connection-info.json
 backend/bin/
 backend/data/
+
+# Secrets
+backend/.env

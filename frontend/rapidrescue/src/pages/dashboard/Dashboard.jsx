@@ -480,6 +480,7 @@ function adminSearchText(row) {
     row.last_name,
     row.username,
     row.role,
+    row.email,
     row.contact_number,
   ].filter(Boolean).join(' ');
 }
@@ -1219,7 +1220,7 @@ function AddAdminModal({ onClose, onCreated }) {
   const [form, setForm] = useState({
     first_name: '', middle_name: '', last_name: '',
     username: '', password: '', confirm_password: '',
-    role: 'Admin', contact_number: '',
+    role: 'Admin', contact_number: '', email: '',
   });
   const [showPwd, setShowPwd] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1248,6 +1249,7 @@ function AddAdminModal({ onClose, onCreated }) {
         password: form.password,
         role: form.role,
         contact_number: form.contact_number.trim() || undefined,
+        email: form.email.trim() || undefined,
       });
       setSuccess('Admin account created successfully!');
       setTimeout(onCreated, 900);
@@ -1286,6 +1288,7 @@ function AddAdminModal({ onClose, onCreated }) {
             <MField label="Username *"       name="username"       value={form.username}       onChange={handleChange} placeholder="Choose a username" />
             <MField label="Contact Number"   name="contact_number" value={form.contact_number} onChange={handleChange} placeholder="09XXXXXXXXX" />
           </div>
+          <MField label="Email (for password reset code)" name="email" value={form.email} onChange={handleChange} placeholder="name@gmail.com" />
 
           {/* role */}
           <div style={FIELD_WRAP}>
@@ -1598,6 +1601,7 @@ function EditAdminModal({ admin, onClose, onSaved }) {
     last_name: admin.last_name || '',
     username: admin.username || '',
     contact_number: admin.contact_number || '',
+    email: admin.email || '',
     role: ADMIN_ROLES.includes(admin.role) ? admin.role : 'Admin',
     password: '',
     confirm_password: '',
@@ -1655,6 +1659,7 @@ function EditAdminModal({ admin, onClose, onSaved }) {
         last_name: form.last_name.trim(),
         username: form.username.trim(),
         contact_number: form.contact_number.trim(),
+        email: form.email.trim(),
         role: form.role,
       };
       if (changePassword) payload.password = form.password;
@@ -1687,6 +1692,7 @@ function EditAdminModal({ admin, onClose, onSaved }) {
             <MField label="Username *" name="username" value={form.username} onChange={handleChange} placeholder="Username" />
             <MField label="Contact Number" name="contact_number" value={form.contact_number} onChange={handleChange} placeholder="09XXXXXXXXX" />
           </div>
+          <MField label="Email (for password reset code)" name="email" value={form.email} onChange={handleChange} placeholder="name@gmail.com" />
           <div style={FIELD_WRAP}>
             <label style={LBL}>Role</label>
             <select name="role" value={form.role} onChange={handleChange} style={INPUT_STYLE}>
@@ -3765,7 +3771,7 @@ export default function Dashboard() {
                       <table className={styles.table}>
                         <thead>
                           <tr>
-                            <th>ID</th><th>Name</th><th>Username</th><th>Role</th>
+                            <th>ID</th><th>Name</th><th>Username</th><th>Email</th><th>Role</th>
                             <th>Contact</th><th>Status</th><th className={styles.userActionCol}>Action</th>
                           </tr>
                         </thead>
@@ -3788,6 +3794,7 @@ export default function Dashboard() {
                                 </div>
                               </td>
                               <td style={{ color: '#555' }}>{a.username || '—'}</td>
+                              <td style={{ color: '#555' }}>{a.email || '—'}</td>
                               <td>
                                 <span className={`${styles.statusBadge} ${styles.statusActive}`}
                                   style={{ background: '#ede9fe', color: '#5b21b6', borderColor: '#ddd6fe' }}>
