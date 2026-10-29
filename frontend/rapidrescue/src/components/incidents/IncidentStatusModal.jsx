@@ -37,6 +37,7 @@ export default function IncidentStatusModal({ incident, responders = [], users =
       : displayIncidentStatus(currentStatus);
   });
   const [cancelReason, setCancelReason] = useState('');
+  const [adminMessage, setAdminMessage] = useState('');
   const [responderId, setResponderId] = useState(
     assignedResponderId ? String(assignedResponderId) : ''
   );
@@ -94,12 +95,12 @@ export default function IncidentStatusModal({ incident, responders = [], users =
         setSaving(false);
         return;
       }
-      if (status !== statusNow) {
-        await updateIncidentStatus(
-          incident.incident_id,
-          status,
-          status === 'Cancelled' ? { reason: cancelReason.trim() } : {}
-        );
+      const message = adminMessage.trim();
+      if (status !== statusNow || message) {
+        await updateIncidentStatus(incident.incident_id, status, {
+          ...(status === 'Cancelled' ? { reason: cancelReason.trim() } : {}),
+          ...(message ? { admin_response: message } : {}),
+        });
       }
       onUpdated?.();
       onClose();
@@ -268,6 +269,22 @@ export default function IncidentStatusModal({ incident, responders = [], users =
             />
           </>
         )}
+
+        <label className={styles.label}>Message to user (optional)</label>
+        <textarea
+          className={styles.reasonBox}
+          value={adminMessage}
+          onChange={(e) => setAdminMessage(e.target.value)}
+          placeholder="Shown to the user on their phone, e.g. 'Please stay near the gate.'"
+          maxLength={300}
+          rows={2}
+          disabled={saving}
+        />
+        {incident.admin_response ? (
+          <p className={styles.hint}>
+            Last message sent: <strong>{incident.admin_response}</strong>
+          </p>
+        ) : null}
 
         {selectedHint && (
           <p className={styles.hint}>

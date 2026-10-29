@@ -23,6 +23,7 @@ import { fetchCallLogs, restoreCallLog, permanentDeleteCallLog } from '../../ser
 import { STATUS_COLORS, displayIncidentStatus, statusColor } from '../../constants/statusColors';
 import { BLOCK_REASONS, formatBlockReason } from '../../constants/blockReasons';
 import { formatDate } from '../../utils/formatDate';
+import { createSosAlarm, pickNewIncoming } from '../../utils/sosAlarm';
 import { formatIncidentLocation } from '../../utils/locationFormat';
 import { isWithinCabadbaran } from '../../utils/geofence';
 import { rememberIncidentStatus, peekIncidentStatus, takeIncidentStatus } from '../../utils/restoreMemory';
@@ -365,22 +366,6 @@ function getWaiting(inc, nowMs) {
   return { label, level };
 }
 
-/** Two-tone siren played through the Web Audio API (no audio file needed). */
-function playSosAlarm(ctx, seconds = 4) {
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.type = 'square';
-  gain.gain.value = 0.15;
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  const start = ctx.currentTime;
-  for (let t = 0; t < seconds; t += 0.5) {
-    osc.frequency.setValueAtTime(t % 1 === 0 ? 880 : 660, start + t);
-  }
-  osc.start(start);
-  osc.stop(start + seconds);
-}
-
 function useClock() {
   const [time, setTime] = useState(() => new Date());
   useEffect(() => {
@@ -671,6 +656,7 @@ function IncidentTableSection({
   archivingBusy = false,
   bulkDeleteLabel = 'Delete',
   bulkArchiveLabel = 'Archive',
+  showWaiting = false,
 }) {
   const nowMs = useNowMs();
   const {
@@ -715,7 +701,9 @@ function IncidentTableSection({
   const filteredIds = filteredRows.map((inc) => inc.incident_id);
   const selectedCount = filteredIds.filter((id) => selectedSet.has(id)).length;
   const allFilteredSelected = filteredIds.length > 0 && selectedCount === filteredIds.length;
-  const colCount = 8 + (selectable ? 1 : 0) + (hasActions ? 1 : 0);
+  // `showWaiting` is passed only by the Pending and Outside tabs: "waiting" means nothing once a
+  // request is handled (Active, Resolved, Referred, Cancelled).
+  const colCount = 7 + (showWaiting ? 1 : 0) + (selectable ? 1 : 0) + (hasActions ? 1 : 0);
 
   return (
     <div className={styles.incidentSection}>
@@ -835,7 +823,7 @@ function IncidentTableSection({
                     </th>
                   )}
                   <th>ID</th><th>Type</th><th>Description</th><th>Reporter</th>
-                  <th>Location</th><th>Assigned</th><th>Status</th><th>Waiting</th><th>Date</th>
+                  <th>Location</th><th>Assigned</th><th>Status</th>{showWaiting && <th>Waiting</th>}<th>Date</th>
                   {hasActions && <th>Action</th>}
                 </tr>
               </thead>
@@ -935,13 +923,15 @@ function IncidentTableSection({
                         </span>
                         )}
                       </td>
-                      <td>
-                        {waiting ? (
-                          <span className={`${styles.waitBadge} ${styles[`wait_${waiting.level}`]}`}>
-                            {waiting.label}
-                          </span>
-                        ) : <span style={{ color: '#bbb' }}>—</span>}
-                      </td>
+                      {showWaiting && (
+                        <td>
+                          {waiting ? (
+                            <span className={`${styles.waitBadge} ${styles[`wait_${waiting.level}`]}`}>
+                              {waiting.label}
+                            </span>
+                          ) : <span style={{ color: '#bbb' }}>—</span>}
+                        </td>
+                      )}
                       <td style={{ color: '#888', fontSize: 12 }}>{formatDate(inc.date_reported)}</td>
                       {hasActions && (
                         <td onClick={(e) => e.stopPropagation()}>
@@ -1788,12 +1778,14 @@ export default function Dashboard() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState('');
   const refreshLockRef = useRef(false);
-  const audioCtxRef = useRef(null);
   const knownIncidentIdsRef = useRef(null);
   const incidentsFetchedRef = useRef(false);
   const [alarmOn, setAlarmOn] = useState(() => {
     try { return localStorage.getItem('sosAlarm') !== 'off'; } catch { return true; }
   });
+  // ids of new requests that are ringing the alarm right now (cleared when the alarm is turned off)
+  const [alertIds, setAlertIds] = useState(() => new Set());
+  const alarm = useMemo(() => createSosAlarm({}), []);
   const [sosToast, setSosToast] = useState(null);
   const [liveMapRefreshKey, setLiveMapRefreshKey] = useState(0);
   const [admins, setAdmins] = useState([]);
@@ -1918,43 +1910,50 @@ export default function Dashboard() {
 
   // Browsers only allow sound after a user gesture, so unlock audio on the first click/key.
   useEffect(() => {
-    const unlock = () => {
-      try {
-        if (!audioCtxRef.current) {
-          const Ctx = window.AudioContext || window.webkitAudioContext;
-          if (Ctx) audioCtxRef.current = new Ctx();
-        }
-        audioCtxRef.current?.resume?.();
-      } catch { /* audio unavailable */ }
-    };
+    const unlock = () => alarm.unlock();
     window.addEventListener('pointerdown', unlock);
     window.addEventListener('keydown', unlock);
     return () => {
       window.removeEventListener('pointerdown', unlock);
       window.removeEventListener('keydown', unlock);
     };
-  }, []);
+  }, [alarm]);
 
-  // Ring the alarm when a new help request arrives (not for the first load).
+  // Detect a genuinely new help request (not the first load, not requests that already exist).
   useEffect(() => {
     if (!incidentsFetchedRef.current) return;
     const currentIds = new Set(incidents.map((i) => Number(i.incident_id)));
     const known = knownIncidentIdsRef.current;
     knownIncidentIdsRef.current = currentIds;
-    if (!known) return;
-    const fresh = incidents.filter(
-      (i) => !known.has(Number(i.incident_id)) && isIncomingIncident(i) && !i.viewed
-    );
+    const fresh = pickNewIncoming(known, incidents, isIncomingIncident);
     if (fresh.length === 0) return;
     setSosToast({
       count: fresh.length,
       id: fresh[0].incident_id,
       type: fresh[0].incident_type,
     });
-    if (alarmOn && audioCtxRef.current?.state === 'running') {
-      try { playSosAlarm(audioCtxRef.current); } catch { /* ignore */ }
+    // While the alarm is off nothing is added, so turning it on later never replays old requests.
+    if (alarmOn) {
+      setAlertIds((prev) => new Set([...prev, ...fresh.map((i) => Number(i.incident_id))]));
     }
   }, [incidents, alarmOn]);
+
+  // The alarm keeps ringing while the alarm is on and a new request is still waiting (not yet
+  // opened by an admin). `ringing` is a boolean, so the 5-second data refresh does not restart it.
+  const ringing = useMemo(
+    () => alarmOn && incidents.some(
+      (i) => alertIds.has(Number(i.incident_id)) && isIncomingIncident(i) && !i.viewed
+    ),
+    [alarmOn, alertIds, incidents]
+  );
+
+  useEffect(() => {
+    if (!ringing) return undefined;
+    alarm.start();
+    return () => alarm.stop();
+  }, [ringing, alarm]);
+
+  useEffect(() => () => alarm.stop(), [alarm]);
 
   // The banner only points people to the Accident page, so drop it once they are there.
   useEffect(() => {
@@ -1968,11 +1967,14 @@ export default function Dashboard() {
   }, [sosToast]);
 
   const toggleAlarm = () => {
-    setAlarmOn((prev) => {
-      const next = !prev;
-      try { localStorage.setItem('sosAlarm', next ? 'on' : 'off'); } catch { /* ignore */ }
-      return next;
-    });
+    const next = !alarmOn;
+    if (!next) {
+      // silence now, do not wait for the next render
+      alarm.stop();
+      setAlertIds(new Set());
+    }
+    setAlarmOn(next);
+    try { localStorage.setItem('sosAlarm', next ? 'on' : 'off'); } catch { /* ignore */ }
   };
 
   useEffect(() => {
@@ -2813,6 +2815,7 @@ export default function Dashboard() {
               className={`${styles.alarmToggle} ${alarmOn ? styles.alarmToggleOn : ''}`}
               title={alarmOn ? 'Alarm sound is ON for new help requests' : 'Alarm sound is OFF'}
               onClick={toggleAlarm}
+              aria-pressed={alarmOn}
             >
               {alarmOn ? '🔔 Alarm on' : '🔕 Alarm off'}
             </button>
@@ -3146,6 +3149,7 @@ export default function Dashboard() {
 
               {incidentFilter === 'pending' && (
                 <IncidentTableSection
+                  showWaiting
                   title="Pending"
                   icon="hourglass_empty"
                   rows={pendingIncidents}
@@ -3180,6 +3184,7 @@ export default function Dashboard() {
 
               {incidentFilter === 'outside' && (
                 <IncidentTableSection
+                  showWaiting
                   title="Outside"
                   icon="warning"
                   rows={outsideIncidents}

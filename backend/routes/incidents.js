@@ -127,6 +127,37 @@ router.get('/my-incidents', authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/incidents/my-incidents/:id - one of the logged-in user's own incidents (status screen polling)
+router.get('/my-incidents/:id', authenticateToken, async (req, res) => {
+  const user_id = req.user.user_id;
+  const incidentId = Number(req.params.id);
+  if (!incidentId) {
+    return res.status(400).json({ message: 'Incident ID is required.' });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('incidents')
+      .select(`
+        *,
+        locations(*),
+        dispatch(dispatch_id, responder_id, dispatch_status, dispatch_time, responders(responder_id, vehicle, team))
+      `)
+      .eq('incident_id', incidentId)
+      .eq('user_id', user_id)
+      .single();
+
+    // not found and "belongs to someone else" look the same on purpose
+    if (error || !data) {
+      return res.status(404).json({ message: 'Incident not found.' });
+    }
+
+    return res.json(data);
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error. Please try again.' });
+  }
+});
+
 const CLOSED_FOR_CANCEL = ['Resolved', 'Cancelled', 'Archived', 'Completed', 'Deleted'];
 
 function withCancelReason(description, reason, by = 'reporter') {
@@ -367,12 +398,28 @@ router.patch('/:id/status', async (req, res) => {
       updates.incident_description = withCancelReason(existing.incident_description, cancelReason, 'admin');
     }
 
-    const { data: incident, error: incErr } = await supabase
+    // optional message the reporter sees on the mobile status screen
+    const adminResponse = String(req.body?.admin_response || '').trim();
+    if (adminResponse.length > 300) {
+      return res.status(400).json({ message: 'Response message must be 300 characters or less.' });
+    }
+    const updatesWithResponse = adminResponse
+      ? { ...updates, admin_response: adminResponse, admin_response_at: new Date().toISOString() }
+      : updates;
+
+    let { data: incident, error: incErr } = await supabase
       .from('incidents')
-      .update(updates)
+      .update(updatesWithResponse)
       .eq('incident_id', incidentId)
       .select()
       .single();
+
+    if (incErr && adminResponse && isMissingColumnError(incErr)) {
+      // sql/admin_response.sql has not been run yet
+      return res.status(500).json({
+        message: 'Response messages are not set up yet. Run backend/sql/admin_response.sql in pgAdmin first.',
+      });
+    }
 
     if (incErr) return res.status(500).json({ message: incErr.message });
     if (!incident) return res.status(404).json({ message: 'Incident not found.' });

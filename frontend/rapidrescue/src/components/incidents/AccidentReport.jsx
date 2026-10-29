@@ -28,14 +28,6 @@ function foldTypes(types) {
   return [...head, { label: 'Other', count: rest.reduce((sum, item) => sum + item.count, 0), color: OTHER_COLOR }];
 }
 
-/** One-hue sequential ramp (light → brand red) for magnitude, e.g. the hour heat strip. */
-function heatColor(t) {
-  const from = [253, 232, 232];
-  const to = [159, 15, 26];
-  const mix = from.map((c, i) => Math.round(c + (to[i] - c) * t));
-  return `rgb(${mix[0]}, ${mix[1]}, ${mix[2]})`;
-}
-
 function startOfLocalDay(date) {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
@@ -161,6 +153,21 @@ function hourLabel(hour) {
   if (hour === 0) return '12 AM';
   if (hour === 12) return '12 PM';
   return hour < 12 ? `${hour} AM` : `${hour - 12} PM`;
+}
+
+/** Groups the 24 hourly counts into 4 parts of the day, which are easier to read than 24 boxes. */
+const DAY_PARTS = [
+  { label: 'Late night · 12 AM–6 AM', from: 0, to: 6 },
+  { label: 'Morning · 6 AM–12 PM', from: 6, to: 12 },
+  { label: 'Afternoon · 12 PM–6 PM', from: 12, to: 18 },
+  { label: 'Evening · 6 PM–12 AM', from: 18, to: 24 },
+];
+
+function dayParts(hours) {
+  return DAY_PARTS.map((part) => ({
+    label: part.label,
+    count: hours.slice(part.from, part.to).reduce((sum, h) => sum + h.count, 0),
+  }));
 }
 
 function pct(count, total) {
@@ -562,39 +569,6 @@ function StackBar({ items, total }) {
   );
 }
 
-function HeatStrip({ hours }) {
-  const { hostRef, tip, hide, bindItem } = useHoverTip();
-  const max = Math.max(1, ...hours.map((h) => h.count));
-  return (
-    <div className={`${styles.heat} ${styles.tipHost}`} ref={hostRef} onMouseLeave={hide}>
-      <div className={styles.heatCells}>
-        {hours.map((h) => (
-          <div
-            key={h.label}
-            className={styles.heatCell}
-            style={{ background: h.count ? heatColor(0.15 + 0.85 * (h.count / max)) : '#f1f5f9' }}
-            tabIndex={0}
-            {...bindItem({ label: h.label, value: requestLabel(h.count), pct: null })}
-          >
-            {h.count > 0 && <span style={{ color: h.count / max > 0.45 ? '#fff' : '#7f1d1d' }}>{h.count}</span>}
-          </div>
-        ))}
-      </div>
-      <div className={styles.heatAxis}>
-        {['12 AM', '3 AM', '6 AM', '9 AM', '12 PM', '3 PM', '6 PM', '9 PM'].map((label) => (
-          <span key={label}>{label}</span>
-        ))}
-      </div>
-      <div className={styles.heatLegend}>
-        <span>Fewer</span>
-        <span className={styles.heatRamp} />
-        <span>More requests</span>
-      </div>
-      <ChartTipBubble tip={tip} />
-    </div>
-  );
-}
-
 function ChartCard({ title, note, children, wide = false, className = '' }) {
   const cardRef = useRef(null);
   const [busy, setBusy] = useState(false);
@@ -711,6 +685,12 @@ export default function AccidentReport({
       avgResponseCount: response.count,
     };
   }, [incidents, dateFilter]);
+
+  const busy = useMemo(() => {
+    const parts = dayParts(report.hours);
+    const top = parts.reduce((best, part) => (part.count > best.count ? part : best), parts[0]);
+    return { parts, top: top.count > 0 ? top : null };
+  }, [report.hours]);
 
   const printedOn = new Date().toLocaleString('en-PH', {
     dateStyle: 'medium',
@@ -981,12 +961,23 @@ export default function AccidentReport({
 
       <ChartCard
         title="Busiest hours of the day"
-        note={report.peakHour
-          ? `Most requests come in around ${report.peakHour}. Each box is one hour; the number inside is how many requests.`
-          : 'No requests in this period yet. Each box is one hour of the day.'}
+        note={busy.top
+          ? `Most requests come in during the ${busy.top.label.split(' · ')[0].toLowerCase()}${report.peakHour ? `, busiest around ${report.peakHour}` : ''}.`
+          : 'No requests in this period yet.'}
         wide
       >
-        <HeatStrip hours={report.hours} />
+        <p className={styles.emptyChart} style={{ textAlign: 'left', margin: '0 0 8px', fontWeight: 600 }}>
+          By part of the day
+        </p>
+        <BarList
+          items={busy.parts}
+          colors={busy.top ? { [busy.top.label]: '#c1121f', default: '#f1a7ad' } : { default: '#f1a7ad' }}
+          total={report.total}
+        />
+        <p className={styles.emptyChart} style={{ textAlign: 'left', margin: '16px 0 4px', fontWeight: 600 }}>
+          By hour
+        </p>
+        <ColumnChart points={report.hours} />
       </ChartCard>
 
       <div className={styles.grid}>
