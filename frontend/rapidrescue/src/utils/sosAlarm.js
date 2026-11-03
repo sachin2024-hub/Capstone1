@@ -9,6 +9,9 @@
 export const ALARM_BURST_SECONDS = 4;
 /** While an alert is active the siren repeats this often (burst length + a short pause). */
 export const ALARM_REPEAT_MS = 10000;
+/** Peak loudness (Web Audio gain) at 100% volume. The outside beep is a softer triangle wave, so it gets more gain to be clearly heard. */
+export const ALARM_PEAK_GAIN = { city: 0.3, outside: 0.8 };
+export const ALARM_DEFAULT_VOLUME = 50;
 
 export function createSosAlarm({
   getContext, // optional override (tests); normally the module creates its own AudioContext
@@ -21,6 +24,8 @@ export function createSosAlarm({
   let timer = null;
   let ringing = false;
   let ownContext = null;
+  let variant = 'city';
+  let volume = ALARM_DEFAULT_VOLUME; // 0-100
   const readContext = () => (getContext ? getContext() : ownContext);
 
   const silence = () => {
@@ -32,20 +37,32 @@ export function createSosAlarm({
     try { osc.disconnect(); gain.disconnect(); } catch { /* already disconnected */ }
   };
 
-  const burst = () => {
+  const burst = (seconds = burstSeconds) => {
     silence(); // never two sirens at once
     const ctx = readContext();
     // browsers keep audio locked until the first click/key, so retry on the next repeat
     if (!ctx || ctx.state !== 'running') return;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.type = 'square';
-    gain.gain.value = 0.15;
+    // outside-area requests get a softer, slower triangle "beep ... beep" so it is never mistaken
+    // for the urgent city siren
+    const outside = variant === 'outside';
+    osc.type = outside ? 'triangle' : 'square';
+    const level = ALARM_PEAK_GAIN[outside ? 'outside' : 'city'] * (volume / 100);
+    gain.gain.value = level;
     osc.connect(gain);
     gain.connect(ctx.destination);
     const start = ctx.currentTime;
-    for (let t = 0; t < burstSeconds; t += 0.5) {
-      osc.frequency.setValueAtTime(t % 1 === 0 ? 880 : 660, start + t);
+    if (outside) {
+      for (let t = 0; t < seconds; t += 1) {
+        osc.frequency.setValueAtTime(520, start + t);
+        gain.gain.setValueAtTime(level, start + t);
+        gain.gain.setValueAtTime(0, start + t + 0.4);
+      }
+    } else {
+      for (let t = 0; t < seconds; t += 0.5) {
+        osc.frequency.setValueAtTime(t % 1 === 0 ? 880 : 660, start + t);
+      }
     }
     const mine = { osc, gain };
     osc.onended = () => {
@@ -54,7 +71,7 @@ export function createSosAlarm({
     };
     sound = mine;
     osc.start(start);
-    osc.stop(start + burstSeconds);
+    osc.stop(start + seconds);
   };
 
   return {
@@ -75,6 +92,23 @@ export function createSosAlarm({
       ringing = true;
       burst();
       timer = schedule(burst, repeatMs);
+    },
+    /** 'city' (urgent siren, default) or 'outside' (softer beeps); used from the next burst on. */
+    setVariant(next) {
+      variant = next === 'outside' ? 'outside' : 'city';
+    },
+    /** 0-100; used from the next burst on. */
+    setVolume(next) {
+      const n = Number(next);
+      volume = Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : ALARM_DEFAULT_VOLUME;
+    },
+    /** Short sample of 'city' or 'outside' for the Settings page. Does nothing while a real alert rings. */
+    preview(kind) {
+      if (ringing) return;
+      const keep = variant;
+      variant = kind === 'outside' ? 'outside' : 'city';
+      burst(2);
+      variant = keep;
     },
     /** Stop the sound this instant and cancel every repeat. */
     stop() {

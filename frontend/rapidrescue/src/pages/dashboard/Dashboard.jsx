@@ -30,6 +30,8 @@ import { rememberIncidentStatus, peekIncidentStatus, takeIncidentStatus } from '
 import { APP_IMAGES } from '../../constants/images';
 import { INCIDENT_TYPE_GROUPS, matchingTypeNames, matchingSubTypeNames } from '../../constants/incidentTypes';
 import MiniAnalyticsPreview from '../../components/dashboard/MiniAnalyticsPreview';
+import SettingsPanels from '../../components/settings/SettingsPanels';
+import { readAlarmVolume, saveAlarmVolume } from '../../utils/adminSettings';
 import styles from './Dashboard.module.css';
 
 const ONGOING_STATUSES = ['Pending', 'Dispatch', 'In Progress', 'En Route', 'Arrived'];
@@ -335,6 +337,10 @@ function isIncidentOutside(inc) {
   const loc = Array.isArray(inc?.locations) ? inc.locations[0] : inc?.locations;
   if (loc?.latitude == null || loc?.longitude == null) return false;
   return !isWithinCabadbaran(Number(loc.latitude), Number(loc.longitude));
+}
+
+function isOutsideIncident(inc) {
+  return isIncidentOutside(inc) || inc?.incident_status === 'Outside';
 }
 
 function isIncomingIncident(inc) {
@@ -866,7 +872,12 @@ function IncidentTableSection({
                           )
                         )}
                       </td>
-                      <td className={styles.compactCell}>{inc.incident_type}</td>
+                      <td className={styles.compactCell}>
+                        {inc.incident_type}
+                        {(isIncidentOutside(inc) || inc.incident_status === 'Outside') && (
+                          <div className={styles.outsideBadge}>OUTSIDE AREA</div>
+                        )}
+                      </td>
                       <td className={styles.descCell}>{inc.incident_description || '—'}</td>
                       <td>
                         {inc.users ? (
@@ -887,8 +898,8 @@ function IncidentTableSection({
                       </td>
                       <td className={styles.descCell} style={{ color: '#888', fontSize: 12 }}>
                         {formatLocation(loc)}
-                        {isIncidentOutside(inc) && (
-                          <div className={styles.outsideBadge}>Outside boundary</div>
+                        {(isIncidentOutside(inc) || inc.incident_status === 'Outside') && (
+                          <div className={styles.outsideBadge}>📍 Outside Cabadbaran</div>
                         )}
                       </td>
                       <td style={{ fontSize: 12 }}>
@@ -1785,7 +1796,13 @@ export default function Dashboard() {
   });
   // ids of new requests that are ringing the alarm right now (cleared when the alarm is turned off)
   const [alertIds, setAlertIds] = useState(() => new Set());
-  const alarm = useMemo(() => createSosAlarm({}), []);
+  const [alarmVolume, setAlarmVolume] = useState(readAlarmVolume);
+  const alarm = useMemo(() => {
+    const a = createSosAlarm({});
+    a.setVolume(readAlarmVolume());
+    return a;
+  }, []);
+  const [, setProfileVersion] = useState(0);
   const [sosToast, setSosToast] = useState(null);
   const [liveMapRefreshKey, setLiveMapRefreshKey] = useState(0);
   const [admins, setAdmins] = useState([]);
@@ -1931,6 +1948,7 @@ export default function Dashboard() {
       count: fresh.length,
       id: fresh[0].incident_id,
       type: fresh[0].incident_type,
+      outside: fresh.every(isOutsideIncident),
     });
     // While the alarm is off nothing is added, so turning it on later never replays old requests.
     if (alarmOn) {
@@ -1947,10 +1965,24 @@ export default function Dashboard() {
     [alarmOn, alertIds, incidents]
   );
 
+  // Outside-area requests use a different sound; any in-city request still waiting keeps the siren.
+  const ringVariant = useMemo(() => {
+    const waiting = incidents.filter(
+      (i) => alertIds.has(Number(i.incident_id)) && isIncomingIncident(i) && !i.viewed
+    );
+    return waiting.length > 0 && waiting.every(isOutsideIncident) ? 'outside' : 'city';
+  }, [alertIds, incidents]);
+
+  useEffect(() => {
+    alarm.setVariant(ringVariant);
+  }, [ringVariant, alarm]);
+
   useEffect(() => {
     if (!ringing) return undefined;
+    alarm.setVariant(ringVariant);
     alarm.start();
     return () => alarm.stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ringing, alarm]);
 
   useEffect(() => () => alarm.stop(), [alarm]);
@@ -1965,6 +1997,17 @@ export default function Dashboard() {
     const id = setTimeout(() => setSosToast(null), 15000);
     return () => clearTimeout(id);
   }, [sosToast]);
+
+  const changeAlarmVolume = (volume) => {
+    setAlarmVolume(volume);
+    alarm.setVolume(volume);
+    saveAlarmVolume(volume);
+  };
+
+  const saveProfile = (admin) => {
+    try { localStorage.setItem('rr_admin', JSON.stringify(admin)); } catch { /* ignore */ }
+    setProfileVersion((v) => v + 1);
+  };
 
   const toggleAlarm = () => {
     const next = !alarmOn;
@@ -2848,14 +2891,15 @@ export default function Dashboard() {
           {sosToast && activeTab !== 'incidents' && (
             <button
               type="button"
-              className={styles.sosToast}
+              className={`${styles.sosToast} ${sosToast.outside ? styles.sosToastOutside : ''}`}
               onClick={() => {
                 setSosToast(null);
                 setActiveTab('incidents');
-                setIncidentFilter('pending');
+                setIncidentFilter(sosToast.outside ? 'outside' : 'pending');
               }}
             >
-              🚨 {sosToast.count > 1 ? `${sosToast.count} new help requests` : `New help request #${sosToast.id}`}
+              {sosToast.outside ? '📍 OUTSIDE AREA — ' : '🚨 '}
+              {sosToast.count > 1 ? `${sosToast.count} new help requests` : `New help request #${sosToast.id}`}
               {sosToast.count === 1 && sosToast.type ? ` — ${sosToast.type}` : ''} · Click to view
             </button>
           )}
@@ -3407,69 +3451,32 @@ export default function Dashboard() {
               <div className={styles.tabHeader}>
                 <h2 className={styles.sectionTitle}>Settings</h2>
               </div>
-              <div className={styles.settingsGrid}>
-                <div className={styles.settingsCard}>
-                  <h3 className={styles.settingsCardTitle}><Icon name="person" size={18} /> Admin Profile</h3>
-                  <div className={styles.settingsRow}>
-                    <span>Name</span>
-                    <strong>{fullName}</strong>
-                  </div>
-                  <div className={styles.settingsRow}>
-                    <span>Username</span>
-                    <strong>{user?.username || '—'}</strong>
-                  </div>
-                  <div className={styles.settingsRow}>
-                    <span>Role</span>
-                    <strong>{adminRole}</strong>
-                  </div>
-                </div>
-                <div className={styles.settingsCard}>
-                  <h3 className={styles.settingsCardTitle}><Icon name="info" size={18} /> System Info</h3>
-                  <div className={styles.settingsRow}>
-                    <span>App</span>
-                    <strong>RapidRescue Admin</strong>
-                  </div>
-                  <div className={styles.settingsRow}>
-                    <span>Version</span>
-                    <strong>1.0.0</strong>
-                  </div>
-                  <div className={styles.settingsRow}>
-                    <span>City</span>
-                    <strong>Cabadbaran City, Agusan del Norte</strong>
-                  </div>
-                  <div className={styles.settingsRow}>
-                    <span>Agency</span>
-                    <strong>DRRMO</strong>
-                  </div>
-                </div>
-                <div className={styles.settingsCard}>
-                  <h3 className={styles.settingsCardTitle}><Icon name="bar_chart" size={18} /> Quick Stats</h3>
-                  <div className={styles.settingsRow}>
-                    <span>Ongoing Incidents</span>
-                    <strong>{ongoingIncidents.length}</strong>
-                  </div>
-                  <div className={styles.settingsRow}>
-                    <span>Resolved (not archived)</span>
-                    <strong>{resolvedIncidents.length}</strong>
-                  </div>
-                  <div className={styles.settingsRow}>
-                    <span>Archived Incidents</span>
-                    <strong>{archivedIncidents.length}</strong>
-                  </div>
-                  <div className={styles.settingsRow}>
-                    <span>Deleted Incidents</span>
-                    <strong>{deletedIncidents.length}</strong>
-                  </div>
-                  <div className={styles.settingsRow}>
-                    <span>Total Users</span>
-                    <strong>{stats.users}</strong>
-                  </div>
-                  <div className={styles.settingsRow}>
-                    <span>Vehicle</span>
-                    <strong>{stats.responders}</strong>
-                  </div>
-                </div>
-              </div>
+              <SettingsPanels
+                user={user}
+                onProfileSaved={saveProfile}
+                adminRows={[
+                  ['Name', fullName],
+                  ['Username / Email', user?.username || '—'],
+                  ['Role', adminRole],
+                ]}
+                systemRows={[
+                  ['App', 'RapidRescue Admin'],
+                  ['Version', '1.0.0'],
+                  ['City', 'Cabadbaran City, Agusan del Norte'],
+                  ['Agency', 'DRRMO'],
+                ]}
+                statRows={[
+                  ['Ongoing Incidents', ongoingIncidents.length],
+                  ['Resolved (not archived)', resolvedIncidents.length],
+                  ['Archived Incidents', archivedIncidents.length],
+                  ['Deleted Incidents', deletedIncidents.length],
+                  ['Total Users', stats.users],
+                  ['Vehicles', stats.responders],
+                ]}
+                volume={alarmVolume}
+                onVolume={changeAlarmVolume}
+                onPreview={(kind) => { alarm.unlock(); alarm.preview(kind); }}
+              />
             </div>
           )}
 

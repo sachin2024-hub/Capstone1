@@ -2777,3 +2777,7 @@
   cursor: pointer;
   animation: waitPulse 1s ease-in-out infinite;
 }
+
+.sosToastOutside {
+  background: #e65100;
+}

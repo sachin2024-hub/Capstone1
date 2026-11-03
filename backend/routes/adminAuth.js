@@ -297,6 +297,66 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// Same rule as the strength meter in the admin Settings page (frontend/src/utils/passwordStrength.js)
+const isStrongPassword = (p) =>
+  typeof p === 'string' && p.length >= 8 && /[a-z]/.test(p) && /[A-Z]/.test(p) && /\d/.test(p) && /[^A-Za-z0-9]/.test(p);
+
+// POST /api/admin/change-password — the signed-in admin changes their own password
+router.post('/change-password', async (req, res) => {
+  const { current_password, new_password } = req.body;
+  const bearer = String(req.headers.authorization || '');
+  let decoded;
+  try {
+    decoded = jwt.verify(bearer.replace(/^Bearer\s+/i, ''), process.env.JWT_SECRET);
+  } catch {
+    return res.status(401).json({ message: 'Please sign in again.' });
+  }
+  if (!current_password || !new_password) {
+    return res.status(400).json({ message: 'Current and new password are required.' });
+  }
+  if (!isStrongPassword(new_password)) {
+    return res.status(400).json({
+      message: 'New password is too weak. Use 8+ characters with uppercase, lowercase, a number, and a symbol.',
+    });
+  }
+  if (new_password === current_password) {
+    return res.status(400).json({ message: 'New password must be different from the current one.' });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('admin')
+      .select('admin_id, username, role, password')
+      .eq('admin_id', decoded.admin_id)
+      .single();
+    if (error || !data) return res.status(404).json({ message: 'Admin not found.' });
+
+    if (!(await bcrypt.compare(current_password, data.password))) {
+      return res.status(400).json({ message: 'Current password is incorrect.' });
+    }
+
+    const { error: updateError } = await supabase
+      .from('admin')
+      .update({ password: await bcrypt.hash(new_password, 10) })
+      .eq('admin_id', data.admin_id);
+    if (updateError) return res.status(500).json({ message: 'Could not update password.' });
+
+    logActivity(req, {
+      admin_id: data.admin_id,
+      username: data.username,
+      role: data.role,
+      action: 'admin.update',
+      entity_type: 'admin',
+      entity_id: data.admin_id,
+      target: `@${data.username}`,
+      details: 'Changed own password from Settings.',
+    });
+    return res.json({ message: 'Password changed.' });
+  } catch {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+});
+
 const ADMIN_SAFE_FIELDS = 'admin_id, first_name, middle_name, last_name, username, role, contact_number, email';
 
 // PATCH /api/admin/:id — edit admin (must stay after /list, /register, /login)
