@@ -11,6 +11,9 @@ import MapInitBounds from './MapInitBounds';
 import MapFocusOnClick from './MapFocusOnClick';
 import { victimIcon, responderIcon, outsideIcon, cityHallIcon, stationIcon } from './mapIcons';
 import { fetchRoute, formatDistance, formatDuration } from './routeService';
+import { preloadOfflineRoads } from './offlineRouter';
+import VectorBasemapLayer from './VectorBasemapLayer';
+import OfflineStatusBadge from './OfflineStatusBadge';
 import { parseLocationAddress, formatAreaLabel } from '../../utils/locationFormat';
 import StreetViewModal from './StreetViewModal';
 import Icon from '../common/Icon';
@@ -60,8 +63,16 @@ export default function LiveMap({
   const [refreshing, setRefreshing] = useState(false);
   const loadLockRef = useRef(false);
   const [outsideAlerts, setOutsideAlerts] = useState([]);
-  const [mapLayer, setMapLayer] = useState('hybrid');
+  // Default to the offline-capable street map (satellite/terrain/dark need internet)
+  const [mapLayer, setMapLayer] = useState('streets');
   const [layersOpen, setLayersOpen] = useState(false);
+
+  useEffect(() => {
+    preloadOfflineRoads();
+    const goOffline = () => setMapLayer('streets');
+    window.addEventListener('offline', goOffline);
+    return () => window.removeEventListener('offline', goOffline);
+  }, []);
   const [mapError, setMapError] = useState('');
   const [focusRequestId, setFocusRequestId] = useState(0);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -403,7 +414,13 @@ export default function LiveMap({
           style={{ position: 'absolute', inset: 0, height: '100%', width: '100%' }}
           className={`${styles.map} ${isSatelliteView ? styles.mapSatellite : ''}`}
         >
-          {activeLayer.layers.map((tile, i) => (
+          {activeLayer.layers.map((tile, i) => tile.vector ? (
+            <VectorBasemapLayer
+              key={`${activeLayer.id}-${i}`}
+              attribution={tile.attribution}
+              maxZoom={tile.maxZoom}
+            />
+          ) : (
             <TileLayer
               key={`${activeLayer.id}-${i}`}
               url={tile.url}
@@ -710,6 +727,7 @@ export default function LiveMap({
             );
           })}
         </MapContainer>
+        <OfflineStatusBadge />
 
         <button
           type="button"

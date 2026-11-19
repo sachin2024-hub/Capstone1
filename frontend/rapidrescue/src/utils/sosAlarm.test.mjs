@@ -101,6 +101,30 @@ test('locked audio (no click yet): no sound, but the next repeat plays once unlo
   assert.equal(oscillators.length, 1);
 });
 
+test('unlock() while a request is waiting plays the siren right away (not on the next repeat)', () => {
+  const { alarm, oscillators, ctx } = setup({ state: 'suspended' });
+  alarm.start();
+  assert.equal(oscillators.length, 0);
+  assert.equal(alarm.isAudioReady(), false);
+  ctx.state = 'running'; // the browser allowed audio after the click
+  alarm.unlock();
+  assert.equal(oscillators.length, 1);
+  assert.equal(alarm.isAudioReady(), true);
+});
+
+test('unlock() with nothing waiting stays silent', () => {
+  const { alarm, oscillators } = setup();
+  alarm.unlock();
+  assert.equal(oscillators.length, 0);
+});
+
+test('unlock() does not start a second siren when one is already playing', () => {
+  const { alarm, oscillators } = setup();
+  alarm.start();
+  alarm.unlock();
+  assert.equal(oscillators.length, 1);
+});
+
 test('only genuinely new, unviewed incoming requests count', () => {
   const incoming = (inc) => inc.incident_status === 'Pending';
   const list = [

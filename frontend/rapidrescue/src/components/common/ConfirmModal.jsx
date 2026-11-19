@@ -41,7 +41,12 @@ export default function ConfirmModal({
 
   return (
     <div className={styles.overlay} onClick={onCancel}>
-      <div className={styles.modal} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+      <div
+        className={`${styles.modal} ${reasonOptions?.length ? styles.modalWide : ''}`}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
         <div className={`${styles.iconWrap} ${iconClass}`}><Icon name={icon} size={28} /></div>
         <h3 className={styles.title}>{title}</h3>
         <p className={styles.message}>{message}</p>

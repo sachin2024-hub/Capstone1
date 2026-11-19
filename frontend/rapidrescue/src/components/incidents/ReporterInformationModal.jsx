@@ -22,14 +22,6 @@ function pick(user, keys) {
   return '';
 }
 
-function maskIdNumber(value) {
-  const raw = String(value || '').replace(/\s+/g, '');
-  if (!raw) return '';
-  const visible = raw.slice(-4);
-  const hidden = '•'.repeat(Math.max(raw.length - 4, 4));
-  return `${hidden}${visible}`;
-}
-
 function resolveImageSrc(url) {
   if (!url) return '';
   if (/^https?:\/\//i.test(url) || url.startsWith('data:')) return url;
@@ -75,7 +67,6 @@ export default function ReporterInformationModal({ user, onClose }) {
   const username = pick(user, ['username', 'email']);
   const address = pick(user, ['address']);
   const idType = pick(user, ['id_type', 'valid_id_type', 'identity_type']);
-  const idNumber = pick(user, ['id_number', 'valid_id_number', 'identity_number']);
   const idImage = resolveImageSrc(pick(user, ['id_image_url', 'valid_id_url', 'id_image', 'valid_id_image']));
   const identity = verificationInfo(user);
   const badge = headerBadge(user);
@@ -139,13 +130,9 @@ export default function ReporterInformationModal({ user, onClose }) {
         <section className={styles.section}>
           <h4 className={styles.sectionTitle}>Identity Verification</h4>
           <div className={styles.grid}>
-            <div className={styles.cell}>
+            <div className={`${styles.cell} ${styles.cellFull}`}>
               <span className={styles.label}>ID Type</span>
               <span className={styles.value}>{idType || 'Not provided'}</span>
-            </div>
-            <div className={styles.cell}>
-              <span className={styles.label}>ID Number</span>
-              <span className={styles.masked}>{idNumber ? maskIdNumber(idNumber) : 'Not provided'}</span>
             </div>
           </div>
           <button

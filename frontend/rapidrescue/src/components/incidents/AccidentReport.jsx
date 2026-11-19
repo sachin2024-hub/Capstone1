@@ -6,6 +6,7 @@ import { INCIDENT_TYPE_GROUPS, matchingTypeNames } from '../../constants/inciden
 import { STATUS_COLORS } from '../../constants/statusColors';
 import { OUTSIDE_STATUS_VALUES } from '../../services/incidentService';
 import { parseLocationAddress } from '../../utils/locationFormat';
+import { buildSpecificBreakdown } from '../../utils/incidentBreakdown';
 import { isWithinCabadbaran } from '../../utils/geofence';
 import Icon from '../common/Icon';
 import styles from './AccidentReport.module.css';
@@ -617,6 +618,7 @@ export default function AccidentReport({
   const mode = dateFilter?.mode || 'all';
   const [printOpen, setPrintOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [typeFocus, setTypeFocus] = useState(''); // '' = biggest category, '__all' = everything
   const [reportMeta, setReportMeta] = useState({
     title: 'Accident Analytic Report',
     subtitle: '',
@@ -685,6 +687,15 @@ export default function AccidentReport({
       avgResponseCount: response.count,
     };
   }, [incidents, dateFilter]);
+
+  // Which exact emergency is most common inside each category (e.g. Vehicular Accident).
+  const specifics = useMemo(() => buildSpecificBreakdown(report.rows, incidentCategory), [report.rows]);
+  const focus =
+    typeFocus === '__all'
+      ? specifics.all
+      : specifics.categories.find((c) => c.category === typeFocus) || specifics.categories[0] || null;
+  const focusIsAll = focus === specifics.all;
+  const focusItems = focus ? focus.items.slice(0, 10) : [];
 
   const busy = useMemo(() => {
     const parts = dayParts(report.hours);
@@ -781,6 +792,14 @@ export default function AccidentReport({
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryRows), 'Summary');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(toSheet('By Incident Type', typeItems)), 'By Type');
+      const specificRows = [['Category', 'Specific type', 'Requests', '% of category']];
+      specifics.categories.forEach((cat) => {
+        cat.items.forEach((item) => {
+          specificRows.push([cat.category, item.label, item.count, pct(item.count, cat.count)]);
+        });
+      });
+      if (specificRows.length === 1) specificRows.push(['(no data)', '', 0, '0%']);
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(specificRows), 'By Specific Type');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(toSheet('By Exact Status', statusItems)), 'By Status');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(toSheet('Top Locations', locationItems)), 'Locations');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(toSheet('Time Series', trendItems)), 'Time Series');
@@ -958,6 +977,64 @@ export default function AccidentReport({
           />
         </ChartCard>
       </div>
+
+      <ChartCard
+        title="Specific incident types"
+        note="Pick a category to see which exact emergency happens most often in this period."
+        wide
+      >
+        {!focus ? (
+          <p className={styles.emptyChart}>No requests in this period yet.</p>
+        ) : (
+          <>
+            <div className={styles.typeChips} role="tablist" aria-label="Incident category">
+              {[
+                { key: '__all', label: 'All', count: specifics.total },
+                ...specifics.categories.map((c) => ({ key: c.category, label: c.category, count: c.count })),
+              ].map((chip) => {
+                const active = focusIsAll ? chip.key === '__all' : chip.key === focus.category;
+                return (
+                  <button
+                    key={chip.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    className={`${styles.typeChip} ${active ? styles.typeChipActive : ''}`}
+                    onClick={() => setTypeFocus(chip.key)}
+                  >
+                    {chip.label}
+                    <span className={styles.typeChipCount}>{chip.count}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {focus.top && (
+              <div className={styles.typeCallout}>
+                <span className={styles.typeCalloutLabel}>
+                  Most common{focusIsAll ? '' : ` in ${focus.category}`}
+                </span>
+                <strong>{focus.top.label}</strong>
+                <span>
+                  {requestLabel(focus.top.count)} · {pct(focus.top.count, focus.count)} of{' '}
+                  {focusIsAll ? 'all requests' : `${focus.category.toLowerCase()} requests`}
+                </span>
+              </div>
+            )}
+            <div className={styles.typeBars}>
+              <BarList
+                items={focusItems}
+                colors={focus.top ? { [focus.top.label]: BRAND, default: '#f1a7ad' } : { default: '#f1a7ad' }}
+                total={focus.count}
+              />
+            </div>
+            {focus.items.length > focusItems.length && (
+              <p className={styles.emptyChart} style={{ textAlign: 'left', margin: '8px 0 0' }}>
+                Showing the top {focusItems.length} of {focus.items.length} specific types.
+              </p>
+            )}
+          </>
+        )}
+      </ChartCard>
 
       <ChartCard
         title="Busiest hours of the day"

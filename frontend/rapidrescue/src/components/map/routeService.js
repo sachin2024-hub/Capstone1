@@ -1,4 +1,9 @@
-// OSRM road routing — follows actual streets in Cabadbaran
+// Road routing for Cabadbaran.
+// 1) Offline A* on the bundled road network (works with no internet)
+// 2) Public OSRM server as a backup when the point is outside the bundled coverage
+// 3) Straight line as a last resort
+import { offlineRoute, offlineNearestRoadPoint } from './offlineRouter';
+
 const OSRM_BASE = 'https://router.project-osrm.org/route/v1/driving';
 const cache = new Map();
 const inflight = new Map();
@@ -41,6 +46,12 @@ export async function fetchRoute(from, to) {
   const url = `${OSRM_BASE}/${coords}?overview=simplified&geometries=geojson&steps=false&alternatives=false`;
 
   const pending = (async () => {
+    const local = await offlineRoute(from, to);
+    if (local) {
+      cache.set(key, local);
+      inflight.delete(key);
+      return local;
+    }
     try {
       const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
       const data = await res.json();
@@ -84,6 +95,8 @@ export function formatDuration(seconds) {
 }
 
 export async function nearestRoadPoint(lat, lng) {
+  const local = await offlineNearestRoadPoint(lat, lng);
+  if (local) return local;
   const url = `https://router.project-osrm.org/nearest/v1/driving/${lng},${lat}?number=1`;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(3000) });

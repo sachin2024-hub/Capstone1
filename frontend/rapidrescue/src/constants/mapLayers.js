@@ -1,10 +1,23 @@
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services';
-const OSM = 'https://{s}.tile.openstreetmap.org';
 
 // Esri satellite has no tiles past ~17 in rural PH — maxNativeZoom avoids "Map data not yet available"
 const ESRI_SAT_MAX_NATIVE = 17;
 
 export const MAP_LAYERS = [
+  {
+    id: 'streets',
+    label: 'Map',
+    preview: 'streets',
+    mapMaxZoom: 19,
+    layers: [
+      {
+        // Drawn by the browser from public/offline/basemap.json — works with no internet
+        vector: true,
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19,
+      },
+    ],
+  },
   {
     id: 'hybrid',
     label: 'Satellite',
@@ -28,20 +41,6 @@ export const MAP_LAYERS = [
         maxNativeZoom: ESRI_SAT_MAX_NATIVE,
         maxZoom: 19,
         opacity: 1,
-      },
-    ],
-  },
-  {
-    id: 'streets',
-    label: 'Map',
-    preview: 'streets',
-    mapMaxZoom: 19,
-    layers: [
-      {
-        url: `${OSM}/{z}/{x}/{y}.png`,
-        subdomains: 'abc',
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        maxZoom: 19,
       },
     ],
   },

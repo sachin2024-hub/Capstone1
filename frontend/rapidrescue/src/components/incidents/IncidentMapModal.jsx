@@ -5,7 +5,11 @@ import { victimIcon, cityHallIcon } from '../map/mapIcons';
 import { parseLocationAddress, formatAreaLabel } from '../../utils/locationFormat';
 import MapResizeFix from '../map/MapResizeFix';
 import MapBoundary from '../map/MapBoundary';
+import VectorBasemapLayer from '../map/VectorBasemapLayer';
+import { MAP_LAYERS } from '../../constants/mapLayers';
 import styles from './IncidentMapModal.module.css';
+
+const STREET_TILES = MAP_LAYERS.find((l) => l.id === 'streets').layers[0];
 
 function getIncidentLocation(incident) {
   const loc = Array.isArray(incident?.locations) ? incident.locations[0] : incident?.locations;
@@ -60,16 +64,26 @@ export default function IncidentMapModal({ incident, onClose }) {
               maxZoom={CABADBARAN.maxZoom}
               style={{ height: '100%', width: '100%' }}
             >
-              <TileLayer
-                url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                attribution="Esri"
-                maxZoom={19}
-              />
-              <TileLayer
-                url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
-                attribution=""
-                maxZoom={19}
-              />
+              {typeof navigator !== 'undefined' && navigator.onLine === false ? (
+                // No internet → street map drawn locally from bundled data
+                <VectorBasemapLayer
+                  attribution={STREET_TILES.attribution}
+                  maxZoom={STREET_TILES.maxZoom}
+                />
+              ) : (
+                <>
+                  <TileLayer
+                    url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                    attribution="Esri"
+                    maxZoom={19}
+                  />
+                  <TileLayer
+                    url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
+                    attribution=""
+                    maxZoom={19}
+                  />
+                </>
+              )}
               <Marker position={[CABADBARAN.center[0], CABADBARAN.center[1]]} icon={cityHallIcon}>
                 <Popup>CDRRMO HQ — Brgy. 9, Cabadbaran City</Popup>
               </Marker>

@@ -24,6 +24,9 @@ import { STATUS_COLORS, displayIncidentStatus, statusColor } from '../../constan
 import { BLOCK_REASONS, formatBlockReason } from '../../constants/blockReasons';
 import { formatDate } from '../../utils/formatDate';
 import { createSosAlarm, pickNewIncoming } from '../../utils/sosAlarm';
+import { getOfflineDelay } from '../../utils/offlineSos';
+import OfflineSentBadge from '../../components/incidents/OfflineSentBadge';
+import NewSosModal from '../../components/incidents/NewSosModal';
 import { formatIncidentLocation } from '../../utils/locationFormat';
 import { isWithinCabadbaran } from '../../utils/geofence';
 import { rememberIncidentStatus, peekIncidentStatus, takeIncidentStatus } from '../../utils/restoreMemory';
@@ -943,7 +946,7 @@ function IncidentTableSection({
                           ) : <span style={{ color: '#bbb' }}>—</span>}
                         </td>
                       )}
-                      <td style={{ color: '#888', fontSize: 12 }}>{formatDate(inc.date_reported)}</td>
+                      <td style={{ color: '#888', fontSize: 12 }}>{formatDate(inc.date_reported)}<OfflineSentBadge incident={inc} /></td>
                       {hasActions && (
                         <td onClick={(e) => e.stopPropagation()}>
                           <IncidentRowActionsMenu
@@ -1804,6 +1807,7 @@ export default function Dashboard() {
   }, []);
   const [, setProfileVersion] = useState(0);
   const [sosToast, setSosToast] = useState(null);
+  const [audioReady, setAudioReady] = useState(false);
   const [liveMapRefreshKey, setLiveMapRefreshKey] = useState(0);
   const [admins, setAdmins] = useState([]);
   const [showAddAdmin, setShowAddAdmin] = useState(false);
@@ -1944,12 +1948,22 @@ export default function Dashboard() {
     knownIncidentIdsRef.current = currentIds;
     const fresh = pickNewIncoming(known, incidents, isIncomingIncident);
     if (fresh.length === 0) return;
-    setSosToast({
-      count: fresh.length,
-      id: fresh[0].incident_id,
-      type: fresh[0].incident_type,
-      outside: fresh.every(isOutsideIncident),
-    });
+    const toAlert = (inc) => {
+      const loc = Array.isArray(inc.locations) ? inc.locations[0] : inc.locations;
+      return {
+        id: inc.incident_id,
+        type: inc.incident_type,
+        outside: isOutsideIncident(inc),
+        reporter: inc.users ? `${inc.users.first_name || ''} ${inc.users.last_name || ''}`.trim() : '',
+        phone: inc.users?.phone_number || '',
+        place: formatLocation(loc),
+        pressedAt: inc.date_reported,
+        offlineDelay: getOfflineDelay(inc)?.label || null,
+        incident: inc,
+      };
+    };
+    // Keep earlier unanswered requests in the popup; newest first.
+    setSosToast((prev) => ({ items: [...fresh.map(toAlert).reverse(), ...(prev?.items || [])] }));
     // While the alarm is off nothing is added, so turning it on later never replays old requests.
     if (alarmOn) {
       setAlertIds((prev) => new Set([...prev, ...fresh.map((i) => Number(i.incident_id))]));
@@ -1987,16 +2001,14 @@ export default function Dashboard() {
 
   useEffect(() => () => alarm.stop(), [alarm]);
 
-  // The banner only points people to the Accident page, so drop it once they are there.
+  // While the popup is open, keep checking whether the browser allows the siren to play yet.
   useEffect(() => {
-    if (activeTab === 'incidents') setSosToast(null);
-  }, [activeTab, sosToast]);
-
-  useEffect(() => {
-    if (!sosToast) return undefined;
-    const id = setTimeout(() => setSosToast(null), 15000);
-    return () => clearTimeout(id);
-  }, [sosToast]);
+    if (!sosToast?.items?.length) return undefined;
+    const check = () => setAudioReady(alarm.isAudioReady());
+    check();
+    const id = setInterval(check, 500);
+    return () => clearInterval(id);
+  }, [sosToast, alarm]);
 
   const changeAlarmVolume = (volume) => {
     setAlarmVolume(volume);
@@ -2888,21 +2900,6 @@ export default function Dashboard() {
 
         {/* Content */}
         <div className={`${styles.content} ${(activeTab === 'live-map' || activeTab === 'call-log') ? styles.contentPanel : ''}`}>
-          {sosToast && activeTab !== 'incidents' && (
-            <button
-              type="button"
-              className={`${styles.sosToast} ${sosToast.outside ? styles.sosToastOutside : ''}`}
-              onClick={() => {
-                setSosToast(null);
-                setActiveTab('incidents');
-                setIncidentFilter(sosToast.outside ? 'outside' : 'pending');
-              }}
-            >
-              {sosToast.outside ? '📍 OUTSIDE AREA — ' : '🚨 '}
-              {sosToast.count > 1 ? `${sosToast.count} new help requests` : `New help request #${sosToast.id}`}
-              {sosToast.count === 1 && sosToast.type ? ` — ${sosToast.type}` : ''} · Click to view
-            </button>
-          )}
           {error && (
             <div className={styles.errorBanner}>
               <span><Icon name="warning" size={16} /> {error}</span>
@@ -3026,7 +3023,7 @@ export default function Dashboard() {
                                 {displayIncidentStatus(inc.incident_status)}
                               </span>
                             </td>
-                            <td style={{ color: '#888', fontSize: 12 }}>{formatDate(inc.date_reported)}</td>
+                            <td style={{ color: '#888', fontSize: 12 }}>{formatDate(inc.date_reported)}<OfflineSentBadge incident={inc} /></td>
                           </tr>
                         ))}
                         {dashboardIncidents.length === 0 && (
@@ -3059,6 +3056,7 @@ export default function Dashboard() {
                               {inc.users ? `${inc.users.first_name} ${inc.users.last_name}` : 'Unknown reporter'}
                               {' · '}{formatDate(inc.date_reported)}
                             </small>
+                            <OfflineSentBadge incident={inc} />
                           </span>
                         </button>
                       </li>
@@ -3882,6 +3880,23 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {sosToast?.items?.length > 0 && (
+        <NewSosModal
+          alerts={sosToast.items}
+          soundStatus={!alarmOn ? 'off' : audioReady ? 'on' : 'blocked'}
+          onDismiss={() => setSosToast(null)}
+          onView={() => {
+            const items = sosToast.items;
+            const allOutside = items.every((a) => a.outside);
+            setSosToast(null);
+            setActiveTab('incidents');
+            setIncidentFilter(allOutside ? 'outside' : 'pending');
+            // a single request opens straight away (this also marks it as seen, so the siren stops)
+            if (items.length === 1) handleOpenIncident(items[0].incident);
+          }}
+        />
+      )}
 
       {editingIncident && (
         <IncidentStatusModal

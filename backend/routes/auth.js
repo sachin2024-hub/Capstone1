@@ -5,7 +5,7 @@ const jwt = require('jsonwebtoken');
 const supabase = require('../config/supabase');
 const authenticateToken = require('../middleware/auth');
 const { getUserBlockReason, setUserBlockReason } = require('../utils/archiveStore');
-const { normalizeBlockReason, blockedAccountMessage } = require('../utils/blockReasons');
+const { normalizeBlockReason, blockedAccountMessage, describeBlockReason } = require('../utils/blockReasons');
 const { saveValidId, attachIdentity, removeValidId, loadIdImage, IDENTITY_COLUMNS, isMissingColumnError } = require('../utils/identityStore');
 const { saveProfilePhoto, loadProfilePhoto, removeProfilePhoto } = require('../utils/profilePhotoStore');
 const { verifyIdImage } = require('../utils/idScanner');
@@ -278,8 +278,12 @@ router.post('/login', async (req, res) => {
     }
 
     if (data.account_status === 'Blocked') {
+      const storedReason = getUserBlockReason(data.user_id);
+      const reason = describeBlockReason(storedReason);
       return res.status(403).json({
-        message: blockedAccountMessage(getUserBlockReason(data.user_id)),
+        code: 'ACCOUNT_BLOCKED',
+        message: blockedAccountMessage(storedReason),
+        block_reason: { id: reason.id, label: reason.label, detail: reason.detail },
       });
     }
 
@@ -684,6 +688,7 @@ router.patch('/users/:id', async (req, res) => {
   if (account_status === 'Active' || account_status === 'Deleted') {
     setUserBlockReason(req.params.id, null);
   }
+  if (account_status !== undefined) authenticateToken.invalidateAccountStatus(req.params.id);
   if (password) {
     if (password.length < 6) {
       return res.status(400).json({ message: 'Password must be at least 6 characters.' });

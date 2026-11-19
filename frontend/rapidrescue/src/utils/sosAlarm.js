@@ -77,14 +77,24 @@ export function createSosAlarm({
   return {
     /** Browsers only allow sound after a click/key: call this from such an event to unlock audio. */
     unlock() {
-      if (getContext) return;
       try {
-        if (!ownContext && typeof window !== 'undefined') {
+        if (!getContext && !ownContext && typeof window !== 'undefined') {
           const Ctx = window.AudioContext || window.webkitAudioContext;
           if (Ctx) ownContext = new Ctx();
         }
-        ownContext?.resume?.();
+        const ctx = readContext();
+        // A request may already be waiting while audio was locked: sound it as soon as audio is
+        // allowed instead of waiting for the next repeat.
+        const kick = () => { if (ringing && !sound) burst(); };
+        const resumed = ctx?.resume?.();
+        if (resumed && typeof resumed.then === 'function') resumed.then(kick, () => {});
+        else kick();
       } catch { /* audio unavailable */ }
+    },
+    /** True once the browser lets this page play sound (after the first click/key). */
+    isAudioReady() {
+      const ctx = readContext();
+      return Boolean(ctx) && ctx.state === 'running';
     },
     /** Ring now and keep repeating until `stop()`. Calling it again while ringing does nothing. */
     start() {

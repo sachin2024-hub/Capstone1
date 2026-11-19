@@ -65,4 +65,4 @@ function blockedAccountMessage(reasonId) {
   );
 }
 
-module.exports = { BLOCK_REASONS, getBlockReason, normalizeBlockReason, blockedAccountMessage };
+module.exports = { BLOCK_REASONS, getBlockReason, describeBlockReason, normalizeBlockReason, blockedAccountMessage };

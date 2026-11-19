@@ -8,6 +8,7 @@ import { isWithinCabadbaran } from '../../utils/geofence';
 import ReporterInformationModal from './ReporterInformationModal';
 import { userProfilePhotoUrl } from '../../utils/mediaUrl';
 import Icon from '../common/Icon';
+import OfflineSentBadge from './OfflineSentBadge';
 import styles from './IncidentStatusModal.module.css';
 
 export default function IncidentStatusModal({ incident, responders = [], users = [], onClose, onUpdated }) {
@@ -188,6 +189,7 @@ export default function IncidentStatusModal({ incident, responders = [], users =
           <div className={styles.detailCell}>
             <span className={styles.detailLabel}>Date</span>
             <span className={styles.detailValue}>{formatDate(incident.date_reported)}</span>
+            <OfflineSentBadge incident={incident} />
           </div>
           <div className={`${styles.detailCell} ${styles.detailCellFull}`}>
             <span className={styles.detailLabel}>Description</span>

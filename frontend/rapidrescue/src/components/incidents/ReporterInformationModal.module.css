@@ -199,14 +199,6 @@
   word-break: break-word;
 }
 
-.masked {
-  font-size: 14px;
-  font-weight: 700;
-  color: #1e293b;
-  letter-spacing: 1px;
-  font-variant-numeric: tabular-nums;
-}
-
 .phoneLink,
 .emailLink {
   font-size: 14.5px;
