@@ -55,6 +55,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.use(express.json({ limit: '20mb' }));
+app.use('/uploads/incident-photos', express.static(path.join(__dirname, 'data', 'incident-photos'), { index: false, dotfiles: 'deny' }));
 app.use('/uploads/valid-ids', express.static(path.join(__dirname, 'data', 'valid-ids')));
 
 app.get('/', (req, res) => {

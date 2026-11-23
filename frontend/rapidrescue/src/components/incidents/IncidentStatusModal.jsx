@@ -6,7 +6,7 @@ import { formatDate } from '../../utils/formatDate';
 import { formatIncidentLocation } from '../../utils/locationFormat';
 import { isWithinCabadbaran } from '../../utils/geofence';
 import ReporterInformationModal from './ReporterInformationModal';
-import { userProfilePhotoUrl } from '../../utils/mediaUrl';
+import { userProfilePhotoUrl, resolveMediaUrl } from '../../utils/mediaUrl';
 import Icon from '../common/Icon';
 import OfflineSentBadge from './OfflineSentBadge';
 import styles from './IncidentStatusModal.module.css';
@@ -45,9 +45,11 @@ export default function IncidentStatusModal({ incident, responders = [], users =
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [showReporter, setShowReporter] = useState(false);
+  const [viewPhoto, setViewPhoto] = useState('');
 
   if (!incident) return null;
 
+  const photoUrls = (Array.isArray(incident.photo_urls) ? incident.photo_urls : []).map(resolveMediaUrl);
   const locationText = formatIncidentLocation(loc);
   const nestedUser = Array.isArray(incident.users) ? incident.users[0] : (incident.users || incident.user);
   const matchedUser = (users || []).find(
@@ -195,6 +197,24 @@ export default function IncidentStatusModal({ incident, responders = [], users =
             <span className={styles.detailLabel}>Description</span>
             <span className={styles.detailValue}>{incident.incident_description || '—'}</span>
           </div>
+          {photoUrls.length > 0 && (
+            <div className={`${styles.detailCell} ${styles.detailCellFull}`}>
+              <span className={styles.detailLabel}>Photos from reporter ({photoUrls.length})</span>
+              <div className={styles.photoGrid}>
+                {photoUrls.map((url, i) => (
+                  <button
+                    key={url}
+                    type="button"
+                    className={styles.photoThumb}
+                    onClick={() => setViewPhoto(url)}
+                    aria-label={`View accident photo ${i + 1}`}
+                  >
+                    <img src={url} alt={`Accident photo ${i + 1}`} loading="lazy" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {existingCancelReason ? (
             <div className={`${styles.detailCell} ${styles.detailCellFull}`}>
               <span className={styles.detailLabel}>Cancel reason</span>
@@ -315,6 +335,18 @@ export default function IncidentStatusModal({ incident, responders = [], users =
           </button>
         </div>
       </div>
+
+      {viewPhoto && (
+        <div
+          className={styles.lightbox}
+          onClick={(e) => { e.stopPropagation(); setViewPhoto(''); }}
+          role="dialog"
+          aria-label="Accident photo"
+        >
+          <img src={viewPhoto} alt="Accident" onClick={(e) => e.stopPropagation()} />
+          <button type="button" className={styles.lightboxClose} onClick={() => setViewPhoto('')}>✕</button>
+        </div>
+      )}
 
       {showReporter && (
         <ReporterInformationModal

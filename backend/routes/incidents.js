@@ -11,6 +11,7 @@ const { listViewedIncidents, markIncidentViewed, clearIncidentViewed } = require
 const { attachIdentity, isMissingColumnError } = require('../utils/identityStore');
 const { logActivity } = require('../utils/activityLogger');
 const { validateSosBody, createIncidentOnce, findExisting } = require('../utils/sosService');
+const { listPhotoUrls, savePhotos, removePhotos } = require('../utils/incidentPhotoStore');
 
 // POST /api/incidents/sos  - Send SOS emergency alert
 // Idempotent: the mobile app sends the same client_request_id on every retry, so a retry after a
@@ -99,6 +100,29 @@ router.post('/sos', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('[sos] failed:', err?.message || err);
     return res.status(500).json({ message: 'Server error. Please try again.' });
+  }
+});
+
+// POST /api/incidents/:id/photos - optional photos of the accident, sent by the reporter right
+// after the SOS. Owner only. Re-sending replaces the previous photos (safe to retry).
+router.post('/:id/photos', authenticateToken, async (req, res) => {
+  const incidentId = Number(req.params.id);
+  if (!incidentId) return res.status(400).json({ message: 'Incident ID is required.' });
+
+  try {
+    const { data: incident, error } = await supabase
+      .from('incidents')
+      .select('incident_id')
+      .eq('incident_id', incidentId)
+      .eq('user_id', req.user.user_id)
+      .maybeSingle();
+    if (error) return res.status(500).json({ message: 'Server error.' });
+    if (!incident) return res.status(404).json({ message: 'Incident not found.' });
+
+    const photo_urls = savePhotos(incidentId, req.body?.photos);
+    return res.json({ message: 'Photos saved.', photo_urls });
+  } catch (err) {
+    return res.status(400).json({ message: err.message || 'Could not save the photos.' });
   }
 });
 
@@ -287,6 +311,7 @@ router.get('/all', async (req, res) => {
       return {
         ...inc,
         users: registered,
+        photo_urls: listPhotoUrls(inc.incident_id),
         viewed: Boolean(viewedMap[String(inc.incident_id)]),
       };
     });
@@ -647,6 +672,7 @@ router.delete('/:id/permanent', async (req, res) => {
     if (error) return res.status(500).json({ message: error.message });
 
     clearIncidentViewed(incidentId);
+    removePhotos(incidentId);
     logActivity(req, {
       action: 'incident.delete',
       entity_type: 'incident',
