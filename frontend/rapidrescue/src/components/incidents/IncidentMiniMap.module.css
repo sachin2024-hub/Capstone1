@@ -1,0 +1,51 @@
+.box {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 190px;
+  padding: 0;
+  margin-top: 8px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  cursor: pointer;
+  background: #f2efe9;
+  isolation: isolate; /* keep Leaflet's z-indexes inside the box */
+}
+
+.map {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  width: 100%;
+  pointer-events: none;
+}
+
+.cta {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #fff;
+  background: #c1121f;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  white-space: nowrap;
+}
+
+.box:hover .cta,
+.box:focus-visible .cta {
+  background: #9d0f19;
+}
+
+.box:focus-visible {
+  outline: 3px solid #0f172a;
+  outline-offset: 2px;
+}

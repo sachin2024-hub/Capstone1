@@ -16,7 +16,7 @@ test('just under the threshold is not offline, at the threshold it is', () => {
 
 test('a delayed SOS reports the delay', () => {
   const d = getOfflineDelay({ client_created_at: t0, received_at: plus(12 * 60000) });
-  assert.equal(d.label, '12 min');
+  assert.equal(d.label, '12m 00s');
   assert.equal(d.ms, 12 * 60000);
 });
 
@@ -33,9 +33,10 @@ test('invalid dates and a clock-skewed (negative) gap are ignored', () => {
   assert.equal(getOfflineDelay({ client_created_at: plus(5 * 60000), received_at: t0 }), null);
 });
 
-test('formatDelay is readable', () => {
-  assert.equal(formatDelay(30_000), '1 min');
-  assert.equal(formatDelay(45 * 60000), '45 min');
+test('formatDelay shows seconds', () => {
+  assert.equal(formatDelay(30_000), '30s');
+  assert.equal(formatDelay(135_000), '2m 15s');
+  assert.equal(formatDelay(45 * 60000), '45m 00s');
   assert.equal(formatDelay(90 * 60000), '1h 30m');
   assert.equal(formatDelay(26 * 3600000), '1d 2h');
 });

@@ -1,5 +1,5 @@
 export const STATUS_COLORS = {
-  Pending: '#FFC107',
+  Pending: '#E53935',
   Outside: '#EF6C00',
   'For Referral': '#2196F3',
   Referred: '#9C27B0',

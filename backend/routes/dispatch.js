@@ -5,6 +5,7 @@ const { CABADBARAN, RESPONDER_STATIONS, isWithinCabadbaran, CITY_HALL } = requir
 const { parseLocationAddress } = require('../utils/locationFormat');
 const { isResponderOccupied } = require('../utils/responderBusy');
 const { logActivity } = require('../utils/activityLogger');
+const { isArchived } = require('../utils/archiveStore');
 
 // GET /api/dispatch/all
 router.get('/all', async (req, res) => {
@@ -128,7 +129,7 @@ router.post('/assign', async (req, res) => {
       .eq('responder_id', responderId)
       .single();
 
-    if (respErr || !responder) {
+    if (respErr || !responder || isArchived('archivedResponders', responderId)) {
       return res.status(404).json({ message: 'Responder not found.' });
     }
 

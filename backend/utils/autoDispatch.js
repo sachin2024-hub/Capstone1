@@ -1,5 +1,6 @@
 const supabase = require('../config/supabase');
 const { listOccupiedResponders } = require('./responderBusy');
+const { listArchived } = require('./archiveStore');
 
 async function autoDispatch(incidentId) {
   const occupied = await listOccupiedResponders(incidentId);
@@ -8,7 +9,10 @@ async function autoDispatch(incidentId) {
     .select('*')
     .eq('availability_status', 'Available');
 
-  const free = (responders || []).filter((row) => !occupied.has(Number(row.responder_id)));
+  const archived = new Set(listArchived('archivedResponders'));
+  const free = (responders || []).filter(
+    (row) => !occupied.has(Number(row.responder_id)) && !archived.has(String(row.responder_id))
+  );
 
   if (respErr || !free.length) {
     return null;

@@ -29,7 +29,23 @@ export async function updateResponder(id, data) {
   return res.data;
 }
 
+/** Moves the vehicle to Archive (it is not erased). */
 export async function deleteResponder(id) {
   const res = await api.delete(`/responders/${id}`);
+  return res.data;
+}
+
+export async function restoreResponder(id) {
+  const res = await api.patch(`/responders/${id}/restore`);
+  return res.data;
+}
+
+export async function permanentDeleteResponder(id) {
+  const res = await api.delete(`/responders/${id}`, { params: { permanent: 1 } });
+  return res.data;
+}
+
+export async function fetchArchivedResponders() {
+  const res = await api.get('/responders', { params: { archived: 1 } });
   return res.data;
 }

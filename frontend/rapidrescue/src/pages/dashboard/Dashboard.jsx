@@ -18,7 +18,7 @@ import AssignResponderModal from '../../components/incidents/AssignResponderModa
 import ResponderModal from '../../components/responders/ResponderModal';
 import CallLogPage from '../../components/calllog/CallLogPage';
 import { archiveIncident, restoreIncident, deleteIncident, permanentDeleteIncident, updateIncidentStatus, getStatusesForIncident, OUTSIDE_STATUS_VALUES } from '../../services/incidentService';
-import { deleteResponder } from '../../services/responderService';
+import { deleteResponder, restoreResponder, permanentDeleteResponder, fetchArchivedResponders } from '../../services/responderService';
 import { fetchCallLogs, restoreCallLog, permanentDeleteCallLog } from '../../services/callLogService';
 import { STATUS_COLORS, displayIncidentStatus, statusColor } from '../../constants/statusColors';
 import { BLOCK_REASONS, formatBlockReason } from '../../constants/blockReasons';
@@ -424,36 +424,45 @@ const INCIDENT_FILTER_TABS = [
   { id: 'cancelled', icon: 'cancel', label: 'Cancelled' },
 ];
 
-const ARCHIVE_MODULE_TABS = [
-  { id: 'accident', icon: 'emergency', label: 'Accident' },
-  { id: 'users', icon: 'group', label: 'Users' },
+/** Everything that is deleted anywhere in the system is kept in Archive and filtered by category. */
+const ARCHIVE_CATEGORIES = [
+  { id: 'all', label: 'All' },
+  { id: 'accident', label: 'Accident', color: '#c1121f' },
+  { id: 'users', label: 'Users', color: '#1565c0' },
+  { id: 'admins', label: 'Admins', color: '#6a1b9a' },
+  { id: 'vehicle', label: 'Vehicle', color: '#2e7d32' },
+  { id: 'call-log', label: 'Call Log', color: '#ef6c00' },
 ];
+const ARCHIVE_KIND_CATEGORY = { accident: 'accident', user: 'users', admin: 'admins', vehicle: 'vehicle', 'call-log': 'call-log' };
 
-const CALL_LOG_ARCHIVE_COLUMNS = [
-  { key: 'call_log_id', label: 'ID', render: (row) => <strong>#{row.call_log_id}</strong> },
-  { key: 'caller_name', label: 'Caller' },
-  { key: 'time_of_call', label: 'Time' },
-  { key: 'nature_of_incident', label: 'Nature', compact: true },
-  { key: 'team', label: 'Team' },
-  { key: 'log_date', label: 'Date' },
-];
-
-const USER_ARCHIVE_COLUMNS = [
-  { key: 'user_id', label: 'ID', render: (row) => <strong>#{row.user_id}</strong> },
-  { key: 'name', label: 'Name', render: (row) => `${row.first_name || ''} ${row.last_name || ''}`.trim() || '—' },
-  { key: 'username', label: 'Username' },
-  { key: 'phone_number', label: 'Phone' },
-  { key: 'account_status', label: 'Status', render: () => 'Deleted' },
-  { key: 'date_registered', label: 'Registered', render: (row) => formatDate(row.date_registered) },
-];
-
-const ADMIN_ARCHIVE_COLUMNS = [
-  { key: 'admin_id', label: 'ID', render: (row) => <strong>#{row.admin_id}</strong> },
-  { key: 'name', label: 'Name', render: (row) => `${row.first_name || ''} ${row.last_name || ''}`.trim() || '—' },
-  { key: 'username', label: 'Username' },
-  { key: 'role', label: 'Role' },
-  { key: 'contact_number', label: 'Contact' },
-  { key: 'account_status', label: 'Status', render: () => 'Deleted' },
+const ARCHIVE_ALL_COLUMNS = [
+  {
+    key: 'kind',
+    label: 'Category',
+    render: (row) => {
+      const cat = ARCHIVE_CATEGORIES.find((c) => c.id === ARCHIVE_KIND_CATEGORY[row.kind]);
+      return (
+        <span
+          style={{
+            display: 'inline-block',
+            padding: '3px 10px',
+            borderRadius: 999,
+            fontSize: 12,
+            fontWeight: 700,
+            color: '#fff',
+            background: cat?.color || '#64748b',
+          }}
+        >
+          {cat?.label || row.kind}
+        </span>
+      );
+    },
+  },
+  { key: 'displayId', label: 'ID', render: (row) => <strong>#{row.rawId}</strong> },
+  { key: 'title', label: 'Name / Details' },
+  { key: 'info', label: 'Info', compact: true },
+  { key: 'status', label: 'Status' },
+  { key: 'date', label: 'Date', render: (row) => (row.date ? formatDate(row.date) : '—') },
 ];
 
 function userSearchText(row) {
@@ -1057,6 +1066,8 @@ function ArchiveRecordsTable({
   onDelete,
   searchPlaceholder,
   getSearchText,
+  toolbarExtra = null,
+  toolbarSecondary = null,
 }) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -1128,6 +1139,8 @@ function ArchiveRecordsTable({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
+          {toolbarExtra}
+          {toolbarSecondary}
         </div>
         {isLoading ? (
           <div className={styles.loadingBox}>
@@ -1831,7 +1844,7 @@ export default function Dashboard() {
   const [archivingPeriod, setArchivingPeriod] = useState(false);
   const [periodSelectKind, setPeriodSelectKind] = useState(null);
   const [periodSelectedIds, setPeriodSelectedIds] = useState(() => new Set());
-  const [archiveModule, setArchiveModule] = useState('accident');
+  const [archiveModule, setArchiveModule] = useState('all'); // category filter of the Archive page
   const [archiveSelectedIds, setArchiveSelectedIds] = useState(() => new Set());
   const [archiveCallLogs, setArchiveCallLogs] = useState([]);
   const [archiveRecordsLoading, setArchiveRecordsLoading] = useState(false);
@@ -1842,7 +1855,9 @@ export default function Dashboard() {
   const [userPageSize, setUserPageSize] = usePersistedPageSize('users');
   const [responderPage, setResponderPage] = useState(1);
   const [responderPageSize, setResponderPageSize] = usePersistedPageSize('responders');
-  const [archiveUserTab, setArchiveUserTab] = useState('mobile');
+  const [archiveVehicles, setArchiveVehicles] = useState([]);
+  const [archiveTypeCat, setArchiveTypeCat] = useState(''); // accident type (Fire, Medical…) when Accident is chosen
+  const [archiveSubType, setArchiveSubType] = useState('');
 
   const fetchData = useCallback(async ({ showLoader = false } = {}) => {
     if (showLoader) {
@@ -1867,7 +1882,7 @@ export default function Dashboard() {
       setAdmins(adminsRes.data || []);
       incidentsFetchedRef.current = true;
       setIncidents(incidentsData);
-      setResponders(respondersData);
+      setResponders(respondersData.filter((r) => r.archived !== true));
       setDispatches(dispatchData);
       setStats({
         users: usersData.filter((u) => u.account_status !== 'Deleted').length,
@@ -1889,8 +1904,13 @@ export default function Dashboard() {
   const fetchArchiveRecords = useCallback(async () => {
     setArchiveRecordsLoading(true);
     try {
-      const callLogs = await fetchCallLogs({ archived: true });
+      const [callLogs, vehicles] = await Promise.all([
+        fetchCallLogs({ archived: true }),
+        fetchArchivedResponders().catch(() => []),
+      ]);
       setArchiveCallLogs(callLogs || []);
+      // only vehicles the server marks as archived (an older server ignores ?archived=1)
+      setArchiveVehicles((vehicles || []).filter((v) => v.archived === true));
     } catch (err) {
       setError(err.message || 'Failed to load archive records.');
     } finally {
@@ -2040,7 +2060,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     setArchiveSelectedIds(new Set());
-  }, [archiveModule, archiveUserTab]);
+  }, [archiveModule, archiveTypeCat, archiveSubType]);
 
   useEffect(() => {
     setUserPage(1);
@@ -2203,11 +2223,54 @@ export default function Dashboard() {
     responderCurrentPage * responderLimit
   );
 
-  const archiveModuleCounts = {
-    accident: archivedIncidents.length + deletedIncidents.length,
-    'call-log': archiveCallLogs.length,
-    users: deletedUsers.length + deletedAdmins.length,
-  };
+  // One list for the whole Archive page. `key` is unique across categories (e.g. "vehicle:8").
+  const archiveAllRows = [
+    ...archiveAccidentRows.map((inc) => {
+      const loc = Array.isArray(inc.locations) ? inc.locations[0] : inc.locations;
+      const reporter = inc.users ? `${inc.users.first_name || ''} ${inc.users.last_name || ''}`.trim() : '';
+      return {
+        key: `accident:${inc.incident_id}`, kind: 'accident', rawId: inc.incident_id,
+        title: inc.incident_type || 'Accident',
+        info: [reporter, formatLocation(loc)].filter(Boolean).join(' · ') || '—',
+        status: inc.incident_status, date: inc.date_reported, incident: inc,
+        search: [inc.incident_id, inc.incident_type, reporter, formatLocation(loc), inc.incident_status].join(' '),
+      };
+    }),
+    ...deletedUsers.map((u) => ({
+      key: `users:${u.user_id}`, kind: 'user', rawId: u.user_id,
+      title: `${u.first_name || ''} ${u.last_name || ''}`.trim() || '—',
+      info: [u.username, u.phone_number].filter(Boolean).join(' · ') || '—',
+      status: 'Deleted', date: u.date_registered, search: userSearchText(u),
+    })),
+    ...deletedAdmins.map((a) => ({
+      key: `admins:${a.admin_id}`, kind: 'admin', rawId: a.admin_id,
+      title: `${a.first_name || ''} ${a.last_name || ''}`.trim() || '—',
+      info: [a.username && `@${a.username}`, a.role].filter(Boolean).join(' · ') || '—',
+      status: 'Deleted', date: null, search: adminSearchText(a),
+    })),
+    ...archiveVehicles.map((v) => ({
+      key: `vehicle:${v.responder_id}`, kind: 'vehicle', rawId: v.responder_id,
+      title: v.vehicle || `Vehicle #${v.responder_id}`,
+      info: [v.team, v.contact_number].filter(Boolean).join(' · ') || '—',
+      status: 'Deleted', date: null,
+      search: [v.responder_id, v.vehicle, v.team, v.contact_number].filter(Boolean).join(' '),
+    })),
+    ...archiveCallLogs.map((c) => ({
+      key: `call-log:${c.call_log_id}`, kind: 'call-log', rawId: c.call_log_id,
+      title: c.caller_name || 'Call log',
+      info: [c.nature_of_incident, c.team].filter(Boolean).join(' · ') || '—',
+      status: 'Deleted', date: c.log_date, search: callLogSearchText(c),
+    })),
+  ];
+  const archiveCategoryOf = (row) => ARCHIVE_KIND_CATEGORY[row.kind];
+  const archiveCounts = ARCHIVE_CATEGORIES.reduce((acc, c) => {
+    acc[c.id] = c.id === 'all' ? archiveAllRows.length : archiveAllRows.filter((r) => archiveCategoryOf(r) === c.id).length;
+    return acc;
+  }, {});
+  const archiveVisibleRows = archiveAllRows
+    .filter((r) => archiveModule === 'all' || archiveCategoryOf(r) === archiveModule)
+    .filter((r) => archiveModule !== 'accident' || matchesIncidentType(r.incident, archiveTypeCat, archiveSubType))
+    .sort((x, y) => (Date.parse(y.date) || 0) - (Date.parse(x.date) || 0));
 
   const toggleArchiveSelect = (id) => {
     setArchiveSelectedIds((prev) => {
@@ -2400,53 +2463,6 @@ export default function Dashboard() {
     });
   };
 
-  const handlePermanentDelete = (inc) => {
-    openConfirm({
-      title: 'Delete permanently?',
-      message: `Permanently remove accident #${inc.incident_id}? This cannot be undone.`,
-      confirmLabel: 'Delete',
-      onConfirm: async () => {
-        closeConfirm();
-        try {
-          if (inc.incident_status !== 'Deleted') {
-            await deleteIncident(inc.incident_id);
-          }
-      await permanentDeleteIncident(inc.incident_id);
-      await fetchData();
-    } catch (err) {
-      setError(err.message || 'Failed to permanently remove incident.');
-    }
-      },
-    });
-  };
-
-  const runRestore = async (inc) => {
-    const previous = peekIncidentStatus(inc.incident_id);
-    const result = await restoreIncident(inc.incident_id, previous);
-    takeIncidentStatus(inc.incident_id);
-    const nextStatus = result?.incident?.incident_status || previous || 'Pending';
-    await fetchData();
-    goToRestoredAccident(nextStatus);
-  };
-
-  const handleRestore = (inc) => {
-    openConfirm({
-      title: 'Restore this accident?',
-      message: `Restore accident #${inc.incident_id} back to its previous status?`,
-      confirmLabel: 'Restore',
-      variant: 'info',
-      onConfirm: async () => {
-        closeConfirm();
-        try {
-          await runRestore(inc);
-        } catch (err) {
-          setError(err.message || 'Failed to restore incident.');
-          await fetchData();
-        }
-      },
-    });
-  };
-
   const handleBulkRestoreIncidents = (ids) => {
     if (!ids?.length) return;
     openConfirm({
@@ -2540,13 +2556,74 @@ export default function Dashboard() {
     });
   };
 
+  const handleRestoreVehicles = (ids) => {
+    if (!ids?.length) return;
+    openConfirm({
+      title: 'Restore vehicle?',
+      message: `Restore ${ids.length} vehicle(s) back to the Vehicle page?`,
+      confirmLabel: 'Restore',
+      variant: 'info',
+      onConfirm: async () => {
+        closeConfirm();
+        try {
+          await Promise.all(ids.map((id) => restoreResponder(id)));
+          setArchiveSelectedIds(new Set());
+          await fetchData();
+          await fetchArchiveRecords();
+          setActiveTab('responders');
+        } catch (err) {
+          setError(err.message || 'Failed to restore vehicles.');
+        }
+      },
+    });
+  };
+
+  const handlePermanentDeleteVehicles = (ids) => {
+    if (!ids?.length) return;
+    openConfirm({
+      title: 'Delete vehicles?',
+      message: `Permanently delete ${ids.length} vehicle(s)? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      onConfirm: async () => {
+        closeConfirm();
+        try {
+          await Promise.all(ids.map((id) => permanentDeleteResponder(id)));
+          setArchiveSelectedIds(new Set());
+          await fetchData();
+          await fetchArchiveRecords();
+        } catch (err) {
+          setError(err.message || 'Failed to delete vehicles.');
+        }
+      },
+    });
+  };
+
+  // Restore / Delete from the single Archive list: each category keeps its own rules and dialog.
+  const runArchiveAction = (action, keys) => {
+    const rows = archiveAllRows.filter((r) => keys.includes(r.key));
+    if (!rows.length) return;
+    const kinds = [...new Set(rows.map((r) => r.kind))];
+    if (kinds.length > 1) {
+      setError('To restore or delete several at once, pick one category in the filter first.');
+      return;
+    }
+    const handlers = {
+      accident: { restore: handleBulkRestoreIncidents, remove: handleBulkDeleteIncidents },
+      user: { restore: handleRestoreUsers, remove: handlePermanentDeleteUsers },
+      admin: { restore: handleRestoreAdmins, remove: handlePermanentDeleteAdmins },
+      vehicle: { restore: handleRestoreVehicles, remove: handlePermanentDeleteVehicles },
+      'call-log': { restore: handleRestoreCallLogs, remove: handleBulkDeleteCallLogs },
+    };
+    handlers[kinds[0]][action](rows.map((r) => r.rawId));
+  };
+
   const handleDeleteResponder = (r) => {
     const vehicleName = r.vehicle || `Vehicle #${r.responder_id}`;
     openConfirm({
-      title: 'Delete this vehicle?',
-      message: `Delete “${vehicleName}”? This cannot be undone.`,
-      confirmLabel: 'Delete',
-      variant: 'danger',
+      title: 'Move vehicle to Archive?',
+      message: `“${vehicleName}” will be moved to Archive. You can restore it later.`,
+      confirmLabel: 'Move to Archive',
+      variant: 'warning',
       onConfirm: async () => {
         closeConfirm();
         try {
@@ -2555,6 +2632,8 @@ export default function Dashboard() {
             setViewingResponder(null);
           }
           await fetchData();
+          setActiveTab('archive');
+          setArchiveModule('vehicle');
         } catch (err) {
           setError(err.message || 'Failed to delete responder.');
         }
@@ -2602,7 +2681,6 @@ export default function Dashboard() {
           await fetchData();
           setActiveTab('archive');
           setArchiveModule('users');
-          setArchiveUserTab('mobile');
         } catch (err) {
           setError(err.message || 'Failed to archive user.');
         }
@@ -2695,8 +2773,7 @@ export default function Dashboard() {
           await api.patch(`/admin/${a.admin_id}`, { account_status: 'Deleted' });
           await fetchData();
           setActiveTab('archive');
-          setArchiveModule('users');
-          setArchiveUserTab('admins');
+          setArchiveModule('admins');
         } catch (err) {
           setError(err.message || 'Failed to archive admin.');
         }
@@ -3321,123 +3398,70 @@ export default function Dashboard() {
                 </button>
               </div>
 
-              <div className={styles.incidentFilterBar}>
-                {ARCHIVE_MODULE_TABS.map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    className={`${styles.incidentFilterBtn} ${archiveModule === tab.id ? styles.incidentFilterBtnActive : ''}`}
-                    onClick={() => setArchiveModule(tab.id)}
-                  >
-                    <span><Icon name={tab.icon} size={16} /> {tab.label}</span>
-                    <span className={styles.incidentFilterBadge}>{archiveModuleCounts[tab.id]}</span>
-                  </button>
-                ))}
-              </div>
-
-              {archiveModule === 'accident' && (
-                <>
               <p className={styles.archiveHint}>
-                    Click Restore to send an accident back to the Accident page immediately. Delete asks for confirmation first.
+                Everything you delete (accidents, users, admins, vehicles and call logs) is kept here. Use the
+                category filter to find it. Restore puts it back, Delete removes it permanently.
               </p>
-                <IncidentTableSection
-                    title="Accidents"
-                    icon="emergency"
-                    rows={archiveAccidentRows}
-                  isLoading={isLoading}
-                    emptyMessage="📭 No archived accidents yet."
-                    onEdit={handleOpenIncident}
-                  onArchive={handleArchive}
-                    onDelete={handlePermanentDelete}
-                    onRestore={handleRestore}
-                    onPermanentDelete={handlePermanentDelete}
-                    actions={{ edit: false, archive: false, delete: false, permanentDelete: true, restore: true }}
-                  hideTitle
-                    selectable
-                    selectedIds={archiveSelectedIds}
-                    onToggleSelect={toggleArchiveSelect}
-                    onToggleSelectAll={toggleArchiveSelectAll}
-                    onBulkRestore={handleBulkRestoreIncidents}
-                    onBulkDelete={handleBulkDeleteIncidents}
-                    bulkDeleteLabel="Delete"
-                  />
-                </>
-              )}
-
-              {archiveModule === 'call-log' && (
-                <>
-                  <p className={styles.archiveHint}>
-                    Deleted call logs. Restore sends them back to Call Log. Delete removes them permanently.
-                  </p>
-                  <ArchiveRecordsTable
-                    rows={archiveCallLogs}
-                    columns={CALL_LOG_ARCHIVE_COLUMNS}
-                    idKey="call_log_id"
-                    isLoading={archiveRecordsLoading}
-                    emptyMessage="📭 No archived call logs yet."
-                    selectedIds={archiveSelectedIds}
-                    onToggleSelect={toggleArchiveSelect}
-                    onToggleSelectAll={toggleArchiveSelectAll}
-                    onRestore={handleRestoreCallLogs}
-                    onDelete={handleBulkDeleteCallLogs}
-                    searchPlaceholder="Search call logs..."
-                    getSearchText={callLogSearchText}
-                  />
-                </>
-              )}
-
-              {archiveModule === 'users' && (
-                <>
-                  <p className={styles.archiveHint}>
-                    Deleted users and admins stay here. Restore sends them back to Users. Delete removes them permanently.
-                  </p>
-                  <div className={styles.subTabRow}>
-                    <button
-                      className={`${styles.subTab} ${archiveUserTab === 'mobile' ? styles.subTabActive : ''}`}
-                      onClick={() => setArchiveUserTab('mobile')}
+              <ArchiveRecordsTable
+                rows={archiveVisibleRows}
+                columns={ARCHIVE_ALL_COLUMNS}
+                idKey="key"
+                isLoading={isLoading || archiveRecordsLoading}
+                emptyMessage="📭 Nothing in the archive yet."
+                selectedIds={archiveSelectedIds}
+                onToggleSelect={toggleArchiveSelect}
+                onToggleSelectAll={toggleArchiveSelectAll}
+                onRestore={(keys) => runArchiveAction('restore', keys)}
+                onDelete={(keys) => runArchiveAction('remove', keys)}
+                searchPlaceholder="Search the archive..."
+                getSearchText={(row) => row.search}
+                toolbarExtra={(
+                  <select
+                    className={styles.incidentTypeFilter}
+                    value={archiveModule}
+                    onChange={(e) => {
+                      setArchiveModule(e.target.value);
+                      setArchiveTypeCat('');
+                      setArchiveSubType('');
+                    }}
+                    aria-label="Filter archive by category"
+                  >
+                    {ARCHIVE_CATEGORIES.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.id === 'all' ? `All (${archiveCounts.all})` : `${c.label} (${archiveCounts[c.id]})`}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                toolbarSecondary={archiveModule === 'accident' ? (
+                  <>
+                    <select
+                      className={styles.incidentTypeFilter}
+                      value={archiveTypeCat}
+                      onChange={(e) => { setArchiveTypeCat(e.target.value); setArchiveSubType(''); }}
+                      aria-label="Filter accidents by type"
                     >
-                      Deleted Users ({deletedUsers.length})
-                    </button>
-                    <button
-                      className={`${styles.subTab} ${archiveUserTab === 'admins' ? styles.subTabActive : ''}`}
-                      onClick={() => setArchiveUserTab('admins')}
-                    >
-                      Deleted Admins ({deletedAdmins.length})
-                    </button>
-                  </div>
-                  {archiveUserTab === 'mobile' ? (
-                    <ArchiveRecordsTable
-                      rows={deletedUsers}
-                      columns={USER_ARCHIVE_COLUMNS}
-                      idKey="user_id"
-                  isLoading={isLoading}
-                      emptyMessage="No deleted mobile users yet."
-                      selectedIds={archiveSelectedIds}
-                      onToggleSelect={toggleArchiveSelect}
-                      onToggleSelectAll={toggleArchiveSelectAll}
-                      onRestore={handleRestoreUsers}
-                      onDelete={handlePermanentDeleteUsers}
-                      searchPlaceholder="Search deleted users..."
-                      getSearchText={userSearchText}
-                    />
-                  ) : (
-                    <ArchiveRecordsTable
-                      rows={deletedAdmins}
-                      columns={ADMIN_ARCHIVE_COLUMNS}
-                      idKey="admin_id"
-                      isLoading={isLoading}
-                      emptyMessage="No deleted admin accounts yet."
-                      selectedIds={archiveSelectedIds}
-                      onToggleSelect={toggleArchiveSelect}
-                      onToggleSelectAll={toggleArchiveSelectAll}
-                      onRestore={handleRestoreAdmins}
-                      onDelete={handlePermanentDeleteAdmins}
-                      searchPlaceholder="Search deleted admins..."
-                      getSearchText={adminSearchText}
-                    />
-                  )}
-                </>
-              )}
+                      <option value="">All types</option>
+                      {INCIDENT_TYPE_GROUPS.map((group) => (
+                        <option key={group.category} value={group.category}>{group.category}</option>
+                      ))}
+                    </select>
+                    {archiveTypeCat && (
+                      <select
+                        className={styles.incidentTypeFilter}
+                        value={archiveSubType}
+                        onChange={(e) => setArchiveSubType(e.target.value)}
+                        aria-label="Filter accidents by specific type"
+                      >
+                        <option value="">All {archiveTypeCat}</option>
+                        {(INCIDENT_TYPE_GROUPS.find((g) => g.category === archiveTypeCat)?.options || []).map((opt) => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                    )}
+                  </>
+                ) : null}
+              />
             </div>
           )}
 
@@ -3886,14 +3910,18 @@ export default function Dashboard() {
           alerts={sosToast.items}
           soundStatus={!alarmOn ? 'off' : audioReady ? 'on' : 'blocked'}
           onDismiss={() => setSosToast(null)}
-          onView={() => {
-            const items = sosToast.items;
-            const allOutside = items.every((a) => a.outside);
+          onDismissOne={(id) =>
+            setSosToast((prev) => {
+              const items = (prev?.items || []).filter((x) => x.id !== id);
+              return items.length ? { items } : null;
+            })
+          }
+          onView={(alert) => {
+            // opens THAT request (this also marks it as seen); the others stay NEW in the list
             setSosToast(null);
             setActiveTab('incidents');
-            setIncidentFilter(allOutside ? 'outside' : 'pending');
-            // a single request opens straight away (this also marks it as seen, so the siren stops)
-            if (items.length === 1) handleOpenIncident(items[0].incident);
+            setIncidentFilter(alert.outside ? 'outside' : 'pending');
+            handleOpenIncident(alert.incident);
           }}
         />
       )}
@@ -3905,6 +3933,7 @@ export default function Dashboard() {
           users={users}
           onClose={() => setEditingIncident(null)}
           onUpdated={fetchData}
+          onShowMap={handleShowOnLiveMap}
         />
       )}
 

@@ -9,9 +9,10 @@ import ReporterInformationModal from './ReporterInformationModal';
 import { userProfilePhotoUrl, resolveMediaUrl } from '../../utils/mediaUrl';
 import Icon from '../common/Icon';
 import OfflineSentBadge from './OfflineSentBadge';
+import IncidentMiniMap from './IncidentMiniMap';
 import styles from './IncidentStatusModal.module.css';
 
-export default function IncidentStatusModal({ incident, responders = [], users = [], onClose, onUpdated }) {
+export default function IncidentStatusModal({ incident, responders = [], users = [], onClose, onUpdated, onShowMap }) {
   const currentStatus = incident?.incident_status || 'Pending';
   const dispatch = Array.isArray(incident?.dispatch) ? incident.dispatch[0] : incident?.dispatch;
   const responder = dispatch?.responders;
@@ -169,9 +170,16 @@ export default function IncidentStatusModal({ incident, responders = [], users =
               <span className={styles.detailValue}>—</span>
             )}
           </div>
-          <div className={styles.detailCell}>
+          <div className={`${styles.detailCell} ${styles.detailCellFull}`}>
             <span className={styles.detailLabel}>Location</span>
             <span className={styles.detailValue}>{locationText}</span>
+            {onShowMap && (
+              <IncidentMiniMap
+                lat={loc?.latitude}
+                lng={loc?.longitude}
+                onOpen={() => { onShowMap(incident); onClose(); }}
+              />
+            )}
           </div>
           <div className={styles.detailCell}>
             <span className={styles.detailLabel}>Assigned</span>
@@ -188,7 +196,7 @@ export default function IncidentStatusModal({ incident, responders = [], users =
               {displayIncidentStatus(currentStatus)}
             </span>
           </div>
-          <div className={styles.detailCell}>
+          <div className={`${styles.detailCell} ${styles.detailCellFull}`}>
             <span className={styles.detailLabel}>Date</span>
             <span className={styles.detailValue}>{formatDate(incident.date_reported)}</span>
             <OfflineSentBadge incident={incident} />

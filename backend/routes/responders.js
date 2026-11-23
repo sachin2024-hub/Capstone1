@@ -4,6 +4,7 @@ const supabase = require('../config/supabase');
 
 const { listOccupiedResponders, isResponderOccupied } = require('../utils/responderBusy');
 const { logActivity } = require('../utils/activityLogger');
+const { archiveId, restoreId, listArchived } = require('../utils/archiveStore');
 
 const VALID_TEAMS = [
   'Alpha 1', 'Alpha 2', 'Alpha 3', 'Alpha 4',
@@ -22,12 +23,18 @@ router.get('/', async (req, res) => {
 
     if (error) return res.status(500).json({ message: error.message });
     const occupied = await listOccupiedResponders();
-    const rows = (data || []).map((row) => {
+    // Deleted vehicles live in the Archive: hidden here, listed with ?archived=1
+    const archived = new Set(listArchived('archivedResponders'));
+    const wantArchived = req.query.archived === '1';
+    const rows = (data || [])
+      .filter((row) => archived.has(String(row.responder_id)) === wantArchived)
+      .map((row) => {
       const busyOn = occupied.get(Number(row.responder_id));
       return {
         ...row,
         // Always show the status saved in Edit Vehicle (Available / Busy / Off Duty)
         availability_status: row.availability_status || 'Available',
+        archived: archived.has(String(row.responder_id)),
         occupied: Boolean(busyOn),
         occupied_incident_id: busyOn || null,
       };
@@ -165,12 +172,13 @@ router.patch('/:id/status', async (req, res) => {
   }
 });
 
-// DELETE /api/responders/:id
+// DELETE /api/responders/:id — moves the vehicle to Archive; ?permanent=1 removes it for good
 router.delete('/:id', async (req, res) => {
   const responderId = Number(req.params.id);
   if (!Number.isFinite(responderId)) {
     return res.status(400).json({ message: 'Invalid responder id.' });
   }
+  const permanent = req.query.permanent === '1';
 
   try {
     const occupied = await isResponderOccupied(responderId);
@@ -179,8 +187,6 @@ router.delete('/:id', async (req, res) => {
         message: 'Cannot delete — this unit is assigned to an active incident.',
       });
     }
-
-    await supabase.from('dispatch').delete().eq('responder_id', responderId);
 
     const { data: existing, error: findErr } = await supabase
       .from('responders')
@@ -191,21 +197,63 @@ router.delete('/:id', async (req, res) => {
     if (findErr) return res.status(500).json({ message: findErr.message });
     if (!existing) return res.status(404).json({ message: 'Responder not found.' });
 
+    if (!permanent) {
+      archiveId('archivedResponders', responderId);
+      logActivity(req, {
+        action: 'responder.archive',
+        entity_type: 'responder',
+        entity_id: responderId,
+        target: existing.vehicle,
+        details: `Moved vehicle ${existing.vehicle} (${existing.team}) to Archive.`,
+      });
+      return res.json({ message: 'Vehicle moved to Archive.' });
+    }
+
+    await supabase.from('dispatch').delete().eq('responder_id', responderId);
     const { error } = await supabase
       .from('responders')
       .delete()
       .eq('responder_id', responderId);
 
     if (error) return res.status(500).json({ message: error.message });
+    restoreId('archivedResponders', responderId);
 
     logActivity(req, {
       action: 'responder.delete',
       entity_type: 'responder',
       entity_id: responderId,
       target: existing.vehicle,
-      details: `Deleted vehicle ${existing.vehicle} (${existing.team}).`,
+      details: `Permanently deleted vehicle ${existing.vehicle} (${existing.team}).`,
     });
-    return res.json({ message: 'Responder deleted successfully.' });
+    return res.json({ message: 'Vehicle deleted permanently.' });
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+// PATCH /api/responders/:id/restore — bring an archived vehicle back
+router.patch('/:id/restore', async (req, res) => {
+  const responderId = Number(req.params.id);
+  if (!Number.isFinite(responderId)) {
+    return res.status(400).json({ message: 'Invalid responder id.' });
+  }
+  try {
+    const { data: existing } = await supabase
+      .from('responders')
+      .select('responder_id, vehicle, team')
+      .eq('responder_id', responderId)
+      .maybeSingle();
+    if (!existing) return res.status(404).json({ message: 'Responder not found.' });
+
+    restoreId('archivedResponders', responderId);
+    logActivity(req, {
+      action: 'responder.restore',
+      entity_type: 'responder',
+      entity_id: responderId,
+      target: existing.vehicle,
+      details: `Restored vehicle ${existing.vehicle} (${existing.team}) from Archive.`,
+    });
+    return res.json({ message: 'Vehicle restored.' });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }

@@ -11,6 +11,7 @@ function emptyStore() {
     callLogs: [],
     blockedAdmins: [],
     archivedAdmins: [],
+    archivedResponders: [],
     userBlockReasons: {},
     adminBlockReasons: {},
     viewedIncidents: {},
