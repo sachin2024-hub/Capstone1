@@ -62,6 +62,26 @@ function buildTrend(rows, dateFilter) {
   const mode = dateFilter?.mode || 'all';
   const now = new Date();
 
+  if (mode === 'shift') {
+    // 12 hourly buckets for the running shift (8AM–8PM or 8PM–8AM).
+    const start = new Date(now);
+    if (start.getHours() >= 8 && start.getHours() < 20) start.setHours(8, 0, 0, 0);
+    else {
+      if (start.getHours() < 8) start.setDate(start.getDate() - 1);
+      start.setHours(20, 0, 0, 0);
+    }
+    const buckets = Array.from({ length: 12 }, (_, i) => {
+      const t = new Date(start.getTime() + i * 3600000);
+      return { label: t.toLocaleTimeString('en-US', { hour: 'numeric' }), count: 0, from: t.getTime() };
+    });
+    rows.forEach((inc) => {
+      const t = new Date(inc.date_reported).getTime();
+      const idx = Math.floor((t - start.getTime()) / 3600000);
+      if (idx >= 0 && idx < 12) buckets[idx].count += 1;
+    });
+    return buckets.map(({ label, count }) => ({ label, count }));
+  }
+
   if (mode === 'year') {
     const year = dateFilter.year ?? now.getFullYear();
     const byMonth = Array.from({ length: 12 }, (_, month) => ({ label: monthLabel(month), count: 0 }));
@@ -618,7 +638,7 @@ export default function AccidentReport({
   const mode = dateFilter?.mode || 'all';
   const [printOpen, setPrintOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [typeFocus, setTypeFocus] = useState(''); // '' = biggest category, '__all' = everything
+  const [typeFocus, setTypeFocus] = useState('__all'); // '__all' or a category name
   const [reportMeta, setReportMeta] = useState({
     title: 'Accident Analytic Report',
     subtitle: '',
@@ -690,12 +710,22 @@ export default function AccidentReport({
 
   // Which exact emergency is most common inside each category (e.g. Vehicular Accident).
   const specifics = useMemo(() => buildSpecificBreakdown(report.rows, incidentCategory), [report.rows]);
-  const focus =
-    typeFocus === '__all'
-      ? specifics.all
-      : specifics.categories.find((c) => c.category === typeFocus) || specifics.categories[0] || null;
-  const focusIsAll = focus === specifics.all;
-  const focusItems = focus ? focus.items.slice(0, 10) : [];
+  // Every category gets a chip, including those with no requests in this period.
+  const typeCategories = [
+    ...INCIDENT_TYPE_GROUPS.map(
+      (g) =>
+        specifics.categories.find((c) => c.category === g.category) ||
+        { category: g.category, count: 0, items: [], top: null }
+    ),
+    // Unrecognised types from old records.
+    ...specifics.categories.filter((c) => !INCIDENT_TYPE_GROUPS.some((g) => g.category === c.category)),
+  ].sort((a, b) => b.count - a.count);
+  // "All" compares the categories; specific types show only after picking one.
+  const categoryItems = typeCategories.map((c) => ({ label: c.category, count: c.count }));
+  const allFocus = { category: 'All', count: specifics.total, items: categoryItems, top: categoryItems[0] };
+  const focus = typeCategories.find((c) => c.category === typeFocus) || allFocus;
+  const focusIsAll = focus === allFocus;
+  const focusItems = focusIsAll ? focus.items : focus.items.slice(0, 10);
 
   const busy = useMemo(() => {
     const parts = dayParts(report.hours);
@@ -850,7 +880,9 @@ export default function AccidentReport({
   ];
 
   const trendTitle =
-    mode === 'day'
+    mode === 'shift'
+      ? 'Requests this shift by hour'
+      : mode === 'day'
       ? 'Requests today by hour'
       : mode === 'week'
         ? 'Requests this week'
@@ -861,7 +893,9 @@ export default function AccidentReport({
             : 'Requests over time (last 14 days)';
 
   const trendNote =
-    mode === 'day'
+    mode === 'shift'
+      ? 'Hourly count for the running 12-hour shift. It starts fresh at 8:00 AM and 8:00 PM.'
+      : mode === 'day'
       ? 'Hourly count for today only.'
       : mode === 'week'
         ? 'Daily count for the current week.'
@@ -980,34 +1014,36 @@ export default function AccidentReport({
 
       <ChartCard
         title="Specific incident types"
-        note="Pick a category to see which exact emergency happens most often in this period."
+        note="All compares the categories. Pick a category to see its specific emergency types."
         wide
       >
-        {!focus ? (
-          <p className={styles.emptyChart}>No requests in this period yet.</p>
+        <div className={styles.typeChips} role="tablist" aria-label="Incident category">
+          {[
+            { key: '__all', label: 'All', count: specifics.total },
+            ...typeCategories.map((c) => ({ key: c.category, label: c.category, count: c.count })),
+          ].map((chip) => {
+            const active = focusIsAll ? chip.key === '__all' : chip.key === focus.category;
+            return (
+              <button
+                key={chip.key}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                className={`${styles.typeChip} ${active ? styles.typeChipActive : ''}`}
+                onClick={() => setTypeFocus(chip.key)}
+              >
+                {chip.label}
+                <span className={styles.typeChipCount}>{chip.count}</span>
+              </button>
+            );
+          })}
+        </div>
+        {focus.count === 0 ? (
+          <p className={styles.emptyChart}>
+            No {focusIsAll ? '' : `${focus.category.toLowerCase()} `}requests in this period yet.
+          </p>
         ) : (
           <>
-            <div className={styles.typeChips} role="tablist" aria-label="Incident category">
-              {[
-                { key: '__all', label: 'All', count: specifics.total },
-                ...specifics.categories.map((c) => ({ key: c.category, label: c.category, count: c.count })),
-              ].map((chip) => {
-                const active = focusIsAll ? chip.key === '__all' : chip.key === focus.category;
-                return (
-                  <button
-                    key={chip.key}
-                    type="button"
-                    role="tab"
-                    aria-selected={active}
-                    className={`${styles.typeChip} ${active ? styles.typeChipActive : ''}`}
-                    onClick={() => setTypeFocus(chip.key)}
-                  >
-                    {chip.label}
-                    <span className={styles.typeChipCount}>{chip.count}</span>
-                  </button>
-                );
-              })}
-            </div>
             {focus.top && (
               <div className={styles.typeCallout}>
                 <span className={styles.typeCalloutLabel}>

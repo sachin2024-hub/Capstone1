@@ -14,12 +14,12 @@ import Icon from '../../components/common/Icon';
 import LiveMap from '../../components/map/LiveMap';
 import IncidentStatusModal from '../../components/incidents/IncidentStatusModal';
 import AccidentReport from '../../components/incidents/AccidentReport';
+import AccidentPhotoReport from '../../components/incidents/AccidentPhotoReport';
 import AssignResponderModal from '../../components/incidents/AssignResponderModal';
 import ResponderModal from '../../components/responders/ResponderModal';
 import CallLogPage from '../../components/calllog/CallLogPage';
 import { archiveIncident, restoreIncident, deleteIncident, permanentDeleteIncident, updateIncidentStatus, getStatusesForIncident, OUTSIDE_STATUS_VALUES } from '../../services/incidentService';
 import { deleteResponder, restoreResponder, permanentDeleteResponder, fetchArchivedResponders } from '../../services/responderService';
-import { fetchCallLogs, restoreCallLog, permanentDeleteCallLog } from '../../services/callLogService';
 import { STATUS_COLORS, displayIncidentStatus, statusColor } from '../../constants/statusColors';
 import { BLOCK_REASONS, formatBlockReason } from '../../constants/blockReasons';
 import { formatDate } from '../../utils/formatDate';
@@ -80,11 +80,64 @@ function calendarCells(year, month) {
   return cells;
 }
 
+// ── Shifts ───────────────────────────────────────────────────────────────
+// Morning shift: 8:00 AM – 8:00 PM. Night shift: 8:00 PM – 8:00 AM (next day).
+// Nothing is deleted: analytics just *filters* by the shift window, so the view
+// "resets" every 12 hours while all records stay stored.
+const SHIFT_START_HOUR = 8;
+const SHIFT_MS = 12 * 60 * 60 * 1000;
+const SHIFT_OPTIONS = [
+  { id: 'all', label: 'Whole day' },
+  { id: 'morning', label: 'Morning · 8AM–8PM' },
+  { id: 'night', label: 'Night · 8PM–8AM' },
+];
+
+// Start of the shift that contains `date`.
+function currentShiftStart(date = new Date()) {
+  const d = new Date(date);
+  const start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), SHIFT_START_HOUR);
+  if (d < start) start.setDate(start.getDate() - 1); // before 8AM -> yesterday's night shift
+  if (d - start >= SHIFT_MS) start.setHours(SHIFT_START_HOUR + 12); // 8PM+ -> night shift
+  return start;
+}
+
+function shiftTypeOf(date) {
+  return currentShiftStart(date).getHours() === SHIFT_START_HOUR ? 'morning' : 'night';
+}
+
+// Shifting a timestamp back 8h makes a "shift day" (8AM→8AM) line up with a
+// normal calendar day, so the existing date checks can be reused.
+function toShiftDay(date) {
+  return new Date(new Date(date).getTime() - SHIFT_START_HOUR * 60 * 60 * 1000);
+}
+
+function describeShift(date = new Date()) {
+  const start = currentShiftStart(date);
+  const end = new Date(start.getTime() + SHIFT_MS);
+  const fmt = (d) => d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const name = shiftTypeOf(date) === 'morning' ? 'Morning shift' : 'Night shift';
+  return `${name} (${fmt(start)} – ${fmt(end)})`;
+}
+
 function matchesIncidentDateRange(inc, filter) {
-  if (!filter || filter.mode === 'all') return true;
-  const reported = new Date(inc.date_reported);
-  if (Number.isNaN(reported.getTime())) return false;
-  const now = new Date();
+  if (!filter || (filter.mode === 'all' && (!filter.shift || filter.shift === 'all'))) return true;
+  const rawReported = new Date(inc.date_reported);
+  if (Number.isNaN(rawReported.getTime())) return false;
+
+  // Live "current shift" window, resets automatically at 8AM / 8PM.
+  if (filter.mode === 'shift') {
+    const start = currentShiftStart();
+    return rawReported >= start && rawReported < new Date(start.getTime() + SHIFT_MS);
+  }
+
+  const shiftOnly = filter.shift === 'morning' || filter.shift === 'night';
+  if (shiftOnly && shiftTypeOf(rawReported) !== filter.shift) return false;
+  if (filter.mode === 'all') return true;
+
+  // With a shift selected, compare using shift days (night shift after midnight
+  // still belongs to the day it started on).
+  const reported = shiftOnly ? toShiftDay(rawReported) : rawReported;
+  const now = shiftOnly ? toShiftDay(new Date()) : new Date();
 
   if (filter.mode === 'date' && filter.date) {
     const picked = new Date(`${filter.date}T00:00:00`);
@@ -105,6 +158,14 @@ function matchesIncidentDateRange(inc, filter) {
 }
 
 function describeDateFilter(filter) {
+  if (filter?.mode === 'shift') return `current ${describeShift()}`;
+  const base = describeDateFilterBase(filter);
+  if (filter?.shift === 'morning') return `${base} · Morning shift (8AM–8PM)`;
+  if (filter?.shift === 'night') return `${base} · Night shift (8PM–8AM)`;
+  return base;
+}
+
+function describeDateFilterBase(filter) {
   if (!filter || filter.mode === 'all') return 'all time';
   if (filter.mode === 'day') return 'today';
   if (filter.mode === 'week') return 'this week';
@@ -122,7 +183,7 @@ function describeDateFilter(filter) {
   });
 }
 
-function DateRangeFilter({ value, onChange, years }) {
+function DateRangeFilter({ value, onChange, years, showShift = false }) {
   const [open, setOpen] = useState(null);
   const boxRef = useRef(null);
   const monthName = new Date(value.year, value.month, 1).toLocaleDateString('en-US', { month: 'long' });
@@ -146,15 +207,32 @@ function DateRangeFilter({ value, onChange, years }) {
     const next = new Date(value.year, value.month + delta, 1);
     onChange({
       ...value,
-      mode: value.mode === 'date' ? 'month' : (value.mode === 'year' ? 'month' : value.mode),
+      mode: 'month',
       month: next.getMonth(),
       year: next.getFullYear(),
       date: null,
     });
   };
 
+  const activeShift = value.shift || 'all';
+
   return (
+    <>
     <div className={styles.dateSegmentedBar} ref={boxRef}>
+      {showShift && (
+        <button
+          type="button"
+          title={`Live view that resets every 12 hours (8AM and 8PM). Records are never deleted. Now: ${describeShift()}`}
+          className={`${styles.dateSegmentBtn} ${value.mode === 'shift' ? styles.dateSegmentBtnActive : ''}`}
+          onClick={() => {
+            onChange({ ...value, mode: 'shift', shift: 'all', date: null });
+            setOpen(null);
+          }}
+        >
+          <span className={styles.dateSegmentIcon}><Icon name="schedule" size={16} /></span>
+          Current shift
+        </button>
+      )}
       <button
         type="button"
         className={`${styles.dateSegmentBtn} ${value.mode === 'all' ? styles.dateSegmentBtnActive : ''}`}
@@ -210,7 +288,18 @@ function DateRangeFilter({ value, onChange, years }) {
           <div className={styles.datePickerPop} role="dialog" aria-label="Pick a date">
             <div className={styles.datePickerHead}>
               <button type="button" className={styles.datePickerNav} onClick={() => shiftMonth(-1)} aria-label="Previous month">‹</button>
-              <strong>{monthName}</strong>
+              <strong
+                role="button"
+                tabIndex={0}
+                title="Show the whole month"
+                style={{ cursor: 'pointer' }}
+                onClick={() => onChange({ ...value, mode: 'month', date: null })}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') onChange({ ...value, mode: 'month', date: null });
+                }}
+              >
+                {monthName}
+              </strong>
               <select
                 className={styles.datePickerYearSelect}
                 value={value.year}
@@ -239,8 +328,11 @@ function DateRangeFilter({ value, onChange, years }) {
                     key={iso}
                     type="button"
                     className={`${styles.datePickerDay} ${isToday ? styles.datePickerToday : ''} ${isSelected ? styles.datePickerDayActive : ''}`}
+                    title={isSelected ? 'Click again to show the whole month' : `Show only ${monthName} ${day}`}
                     onClick={() => {
-                      onChange({ ...value, mode: 'date', date: iso });
+                      // Clicking the already-selected day cancels it and goes back to the whole month.
+                      if (isSelected) onChange({ ...value, mode: 'month', date: null });
+                      else onChange({ ...value, mode: 'date', date: iso });
                       setOpen(null);
                     }}
                   >
@@ -248,6 +340,38 @@ function DateRangeFilter({ value, onChange, years }) {
                   </button>
                 );
               })}
+            </div>
+            <div
+              style={{
+                marginTop: 10,
+                paddingTop: 8,
+                borderTop: '1px solid rgba(128,128,128,0.25)',
+                fontSize: 12,
+                textAlign: 'center',
+                lineHeight: 1.4,
+              }}
+            >
+              {value.mode === 'date' && value.date ? (
+                <>
+                  <div style={{ opacity: 0.75, marginBottom: 6 }}>
+                    Showing only <strong>{monthName} {Number(value.date.slice(8, 10))}</strong>
+                  </div>
+                  <button
+                    type="button"
+                    className={styles.datePickerYearBtn}
+                    onClick={() => {
+                      onChange({ ...value, mode: 'month', date: null });
+                      setOpen(null);
+                    }}
+                  >
+                    ✕ Clear date · show all of {monthName}
+                  </button>
+                </>
+              ) : (
+                <div style={{ opacity: 0.75 }}>
+                  Showing all of <strong>{monthName} {value.year}</strong>. Click a day to see that day only.
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -274,6 +398,45 @@ function DateRangeFilter({ value, onChange, years }) {
         )}
       </div>
     </div>
+    {showShift && (
+      <div style={{ margin: '12px 0 6px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', opacity: 0.6 }}>
+            Shift
+          </span>
+          <div className={styles.dateSegmentedBar}>
+            {SHIFT_OPTIONS.map((opt) => {
+              const live = value.mode === 'shift';
+              const isActive = live ? opt.id === shiftTypeOf(new Date()) : activeShift === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  className={`${styles.dateSegmentBtn} ${isActive ? styles.dateSegmentBtnActive : ''}`}
+                  onClick={() => {
+                    if (live) onChange({ ...value, mode: 'day', shift: opt.id, date: null });
+                    else onChange({ ...value, shift: opt.id });
+                  }}
+                >
+                  <span className={styles.dateSegmentIcon}>
+                    <Icon name={opt.id === 'morning' ? 'light_mode' : opt.id === 'night' ? 'dark_mode' : 'schedule'} size={16} />
+                  </span>
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <p style={{ margin: '8px 0 0', fontSize: 12, lineHeight: 1.5, opacity: 0.7 }}>
+          {value.mode === 'shift'
+            ? `Live now: ${describeShift()}. Numbers start fresh at 8:00 AM and 8:00 PM — old shifts are never deleted. Pick a shift and a date to look back.`
+            : activeShift === 'all'
+              ? 'Showing all hours for the selected period. Pick Morning or Night to see one shift only.'
+              : `Showing ${activeShift === 'morning' ? 'Morning (8AM–8PM)' : 'Night (8PM–8AM)'} shift only, for the selected period.`}
+        </p>
+      </div>
+    )}
+    </>
   );
 }
 
@@ -399,6 +562,7 @@ const NAV_SECTIONS = [
     label: 'Operations',
     items: [
       { id: 'responders', icon: 'ambulance', label: 'Vehicle' },
+      { id: 'accident-report', icon: 'photo_library', label: 'Accident Report' },
     ],
   },
   {
@@ -431,9 +595,8 @@ const ARCHIVE_CATEGORIES = [
   { id: 'users', label: 'Users', color: '#1565c0' },
   { id: 'admins', label: 'Admins', color: '#6a1b9a' },
   { id: 'vehicle', label: 'Vehicle', color: '#2e7d32' },
-  { id: 'call-log', label: 'Call Log', color: '#ef6c00' },
 ];
-const ARCHIVE_KIND_CATEGORY = { accident: 'accident', user: 'users', admin: 'admins', vehicle: 'vehicle', 'call-log': 'call-log' };
+const ARCHIVE_KIND_CATEGORY = { accident: 'accident', user: 'users', admin: 'admins', vehicle: 'vehicle' };
 
 const ARCHIVE_ALL_COLUMNS = [
   {
@@ -485,17 +648,6 @@ function adminSearchText(row) {
     row.role,
     row.email,
     row.contact_number,
-  ].filter(Boolean).join(' ');
-}
-
-function callLogSearchText(row) {
-  return [
-    row.call_log_id,
-    row.caller_name,
-    row.nature_of_incident,
-    row.patient_name,
-    row.team,
-    row.log_date,
   ].filter(Boolean).join(' ');
 }
 
@@ -1840,13 +1992,20 @@ export default function Dashboard() {
   const [incidentFilter, setIncidentFilter] = useState('pending');
   const [incidentDateFilter, setIncidentDateFilter] = useState(() => makeDateFilter());
   const [dashboardDateFilter, setDashboardDateFilter] = useState(() => makeDateFilter());
-  const [analyticsDateFilter, setAnalyticsDateFilter] = useState(() => makeDateFilter());
+  const [photoDateFilter, setPhotoDateFilter] = useState(() => makeDateFilter());
+  // Analytics opens on the live "Current shift" view (resets every 12h at 8AM / 8PM).
+  const [analyticsDateFilter, setAnalyticsDateFilter] = useState(() => makeDateFilter({ mode: 'shift' }));
+  const [, setShiftTick] = useState(0);
+  useEffect(() => {
+    // Re-render every minute so the current-shift window rolls over at 8AM / 8PM.
+    const id = setInterval(() => setShiftTick((n) => n + 1), 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
   const [archivingPeriod, setArchivingPeriod] = useState(false);
   const [periodSelectKind, setPeriodSelectKind] = useState(null);
   const [periodSelectedIds, setPeriodSelectedIds] = useState(() => new Set());
   const [archiveModule, setArchiveModule] = useState('all'); // category filter of the Archive page
   const [archiveSelectedIds, setArchiveSelectedIds] = useState(() => new Set());
-  const [archiveCallLogs, setArchiveCallLogs] = useState([]);
   const [archiveRecordsLoading, setArchiveRecordsLoading] = useState(false);
   const [confirmModal, setConfirmModal] = useState(null);
   const [userSearch, setUserSearch] = useState('');
@@ -1904,11 +2063,7 @@ export default function Dashboard() {
   const fetchArchiveRecords = useCallback(async () => {
     setArchiveRecordsLoading(true);
     try {
-      const [callLogs, vehicles] = await Promise.all([
-        fetchCallLogs({ archived: true }),
-        fetchArchivedResponders().catch(() => []),
-      ]);
-      setArchiveCallLogs(callLogs || []);
+      const vehicles = await fetchArchivedResponders().catch(() => []);
       // only vehicles the server marks as archived (an older server ignores ?archived=1)
       setArchiveVehicles((vehicles || []).filter((v) => v.archived === true));
     } catch (err) {
@@ -2255,12 +2410,6 @@ export default function Dashboard() {
       status: 'Deleted', date: null,
       search: [v.responder_id, v.vehicle, v.team, v.contact_number].filter(Boolean).join(' '),
     })),
-    ...archiveCallLogs.map((c) => ({
-      key: `call-log:${c.call_log_id}`, kind: 'call-log', rawId: c.call_log_id,
-      title: c.caller_name || 'Call log',
-      info: [c.nature_of_incident, c.team].filter(Boolean).join(' · ') || '—',
-      status: 'Deleted', date: c.log_date, search: callLogSearchText(c),
-    })),
   ];
   const archiveCategoryOf = (row) => ARCHIVE_KIND_CATEGORY[row.kind];
   const archiveCounts = ARCHIVE_CATEGORIES.reduce((acc, c) => {
@@ -2516,46 +2665,6 @@ export default function Dashboard() {
     });
   };
 
-  const handleRestoreCallLogs = (ids) => {
-    if (!ids?.length) return;
-    openConfirm({
-      title: 'Restore call log?',
-      message: `Restore ${ids.length} call log(s) back to Call Log?`,
-      confirmLabel: 'Restore',
-      variant: 'info',
-      onConfirm: async () => {
-        closeConfirm();
-        try {
-          await Promise.all(ids.map((id) => restoreCallLog(id)));
-          setArchiveSelectedIds(new Set());
-          await fetchArchiveRecords();
-          setActiveTab('call-log');
-        } catch (err) {
-          setError(err.message || 'Failed to restore call logs.');
-        }
-      },
-    });
-  };
-
-  const handleBulkDeleteCallLogs = (ids) => {
-    if (!ids?.length) return;
-    openConfirm({
-      title: 'Delete call logs?',
-      message: `Permanently delete ${ids.length} call log(s)? This cannot be undone.`,
-      confirmLabel: 'Delete',
-      onConfirm: async () => {
-        closeConfirm();
-        try {
-          await Promise.all(ids.map((id) => permanentDeleteCallLog(id)));
-          setArchiveSelectedIds(new Set());
-          await fetchArchiveRecords();
-        } catch (err) {
-          setError(err.message || 'Failed to delete call logs.');
-        }
-      },
-    });
-  };
-
   const handleRestoreVehicles = (ids) => {
     if (!ids?.length) return;
     openConfirm({
@@ -2612,7 +2721,6 @@ export default function Dashboard() {
       user: { restore: handleRestoreUsers, remove: handlePermanentDeleteUsers },
       admin: { restore: handleRestoreAdmins, remove: handlePermanentDeleteAdmins },
       vehicle: { restore: handleRestoreVehicles, remove: handlePermanentDeleteVehicles },
-      'call-log': { restore: handleRestoreCallLogs, remove: handleBulkDeleteCallLogs },
     };
     handlers[kinds[0]][action](rows.map((r) => r.rawId));
   };
@@ -3188,12 +3296,43 @@ export default function Dashboard() {
                 value={analyticsDateFilter}
                 onChange={setAnalyticsDateFilter}
                 years={filterYears}
+                showShift
               />
               <AccidentReport
                 incidents={incidents.filter((i) => matchesIncidentDateRange(i, analyticsDateFilter))}
                 dateFilter={analyticsDateFilter}
                 periodLabel={describeDateFilter(analyticsDateFilter)}
                 isLoading={isLoading}
+              />
+            </div>
+          )}
+
+          {/* ── ACCIDENT REPORT (photos) ─────────────────── */}
+          {activeTab === 'accident-report' && (
+            <div>
+              <div className={styles.tabHeader}>
+                <h2 className={styles.sectionTitle}>Accident Report</h2>
+                <button
+                  type="button"
+                  className={styles.refreshBtn}
+                  onClick={handleRefresh}
+                  disabled={isRefreshing}
+                  aria-busy={isRefreshing}
+                >
+                  <Icon name="refresh" size={16} className={isRefreshing ? styles.refreshSpin : undefined} />
+                  Refresh
+                </button>
+              </div>
+              <DateRangeFilter
+                value={photoDateFilter}
+                onChange={setPhotoDateFilter}
+                years={filterYears}
+              />
+              <AccidentPhotoReport
+                incidents={incidents.filter((i) => matchesIncidentDateRange(i, photoDateFilter))}
+                periodLabel={describeDateFilter(photoDateFilter)}
+                isLoading={isLoading}
+                onOpenIncident={handleOpenIncident}
               />
             </div>
           )}
@@ -3616,7 +3755,6 @@ export default function Dashboard() {
             <CallLogPage
               onArchived={() => {
                 setActiveTab('archive');
-                setArchiveModule('call-log');
                 fetchArchiveRecords();
               }}
             />

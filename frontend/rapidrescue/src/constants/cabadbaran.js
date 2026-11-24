@@ -11,6 +11,7 @@ export const CITY_HALL = {
 };
 
 // Official City of Cabadbaran boundary (NAMRIA 2023 / PSGC 1600203000)
+// West/coastal edge extended ~2.5 km so Tolosa, Purok 4, Purok 7 and Calibunan are inside.
 // Leaflet format: [lat, lng]
 export const CABADBARAN_POLYGON = [
   [9.21637, 125.75833],
@@ -18,9 +19,9 @@ export const CABADBARAN_POLYGON = [
   [9.08609, 125.74909],
   [9.08686, 125.61214],
   [9.06575, 125.57026],
-  [9.06599, 125.53377],
-  [9.07859, 125.53659],
-  [9.13958, 125.52022],
+  [9.06599, 125.50877],
+  [9.07859, 125.51159],
+  [9.13958, 125.49522],
   [9.14545, 125.56956],
   [9.19037, 125.56980],
   [9.19190, 125.62604],
