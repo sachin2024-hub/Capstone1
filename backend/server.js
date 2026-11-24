@@ -97,6 +97,8 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   const ip = getLocalIp();
   if (ip) writeConnectionInfo({ localIp: ip });
   console.log(`✅ RapidRescue server running on http://localhost:${PORT}`);
+  // Load the ID-scan OCR engine now so the first ID scan isn't slow
+  require('./utils/idScanner').warmUp();
   if (ip) console.log(`📱 Mobile (same WiFi): http://${ip}:${PORT}`);
 });
 

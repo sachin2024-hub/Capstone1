@@ -1,6 +1,20 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const supabase = require('../config/supabase');
+
+// One-way HMAC-SHA256 of ID data. Only the hash goes to the users table; the
+// readable copy stays in the local valid-ids store used by the admin viewer.
+function hashIdValue(value) {
+  if (value == null || value === '') return null;
+  const secret = process.env.ID_HASH_SECRET || process.env.JWT_SECRET;
+  if (!secret) throw new Error('ID_HASH_SECRET or JWT_SECRET must be set to store ID data.');
+  return crypto.createHmac('sha256', secret).update(value).digest('hex');
+}
+
+function looksHashed(value) {
+  return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
+}
 
 const META_FILE = path.join(__dirname, '..', 'data', 'valid-ids.json');
 const IMAGE_DIR = path.join(__dirname, '..', 'data', 'valid-ids');
@@ -113,9 +127,9 @@ async function saveValidId(userId, { id_type, id_number, id_image }) {
   // Write to users table — try full update, then fall back column-by-column
   // so a missing column never blocks id_type/id_image.
   const payload = {
-    id_type: record.id_type,
-    id_number: record.id_number,
-    id_image: parsed.dataUrl,
+    id_type: hashIdValue(record.id_type),
+    id_number: hashIdValue(record.id_number),
+    id_image: hashIdValue(parsed.buffer.toString('base64')),
   };
 
   const { error } = await supabase
@@ -144,10 +158,12 @@ function attachIdentity(user) {
   if (!user || user.user_id == null) return user;
   const local = getLocalRecord(user.user_id);
   const hasDbImage = Boolean(user.id_image || user.id_type || user.id_number);
+  // DB values are hashes now, so show the readable local copy instead of the hash
+  const readable = (dbVal, localVal) => (dbVal && !looksHashed(dbVal) ? dbVal : localVal || null);
   const withId = {
     ...user,
-    id_type: user.id_type || local.id_type || null,
-    id_number: user.id_number || local.id_number || null,
+    id_type: readable(user.id_type, local.id_type),
+    id_number: readable(user.id_number, local.id_number),
     id_image_url: user.id_image_url || (hasDbImage || local.id_image_url ? publicApiUrl(user.user_id) : local.id_image_url) || null,
   };
   const { attachProfilePhoto } = require('./profilePhotoStore');
@@ -195,6 +211,10 @@ async function removeValidId(userId) {
 }
 
 module.exports = {
+  hashIdValue,
+  looksHashed,
+  parseImagePayload,
+  extensionFor,
   saveValidId,
   attachIdentity,
   loadIdImage,

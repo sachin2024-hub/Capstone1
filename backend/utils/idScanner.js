@@ -27,6 +27,11 @@ const ID_KEYWORDS = {
     // OCR fragments often seen on PhilID
     'given names',
     'philippine id',
+    'apelyido',
+    'mga pangalan',
+    'gitnang apelyido',
+    'petsa ng kapanganakan',
+    'tirahan',
   ],
   "Driver's License": [
     'land transportation',
@@ -74,8 +79,12 @@ const ID_KEYWORDS = {
   ],
   'PRC ID': [
     'professional regulation commission',
+    'professional regulation',
+    'regulation commission',
+    'professional identification card',
     'prc id',
-    'professional license',
+    'registration no',
+    'registration date',
   ],
   'Senior Citizen ID': [
     'senior citizen',
@@ -125,6 +134,43 @@ function compact(text) {
   return normalizeOcr(text).replace(/\s+/g, '');
 }
 
+function editDistance(a, b, max) {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    let rowMin = i;
+    for (let j = 1; j <= b.length; j++) {
+      const v = Math.min(
+        prev[j] + 1,
+        cur[j - 1] + 1,
+        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+      cur[j] = v;
+      if (v < rowMin) rowMin = v;
+    }
+    if (rowMin > max) return max + 1;
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+/** Tolerates small OCR misreads (e.g. "PROFESSIONAI REGULATlON") for multi-word keywords */
+function fuzzyKeyword(tokens, k) {
+  const words = k.split(' ').filter((w) => w.length >= 4);
+  if (words.length === 1 && words[0].length >= 7 && !k.includes(' ')) {
+    const w = words[0];
+    const max = w.length >= 10 ? 2 : 1;
+    return tokens.some((t) => Math.abs(t.length - w.length) <= max && editDistance(t, w, max) <= max);
+  }
+  if (words.length < 2) return false;
+  const found = words.filter((w) => {
+    const max = w.length >= 9 ? 2 : 1;
+    return tokens.some((t) => Math.abs(t.length - w.length) <= max && editDistance(t, w, max) <= max);
+  });
+  return found.length === words.length;
+}
+
 function textHasKeyword(text, keyword) {
   const n = normalizeOcr(text);
   const k = normalizeOcr(keyword);
@@ -132,7 +178,7 @@ function textHasKeyword(text, keyword) {
   if (n.includes(k)) return true;
   // spaced OCR often breaks words — also try compacted form
   if (compact(n).includes(compact(k))) return true;
-  return false;
+  return fuzzyKeyword(n.split(' '), k);
 }
 
 function findMatches(text, keywords) {
@@ -140,18 +186,55 @@ function findMatches(text, keywords) {
 }
 
 function detectTypes(text) {
-  const detected = [];
-  for (const [type, kws] of Object.entries(ID_KEYWORDS)) {
-    if (kws.some((kw) => textHasKeyword(text, kw))) {
-      detected.push(type);
-    }
-  }
-  return detected;
+  return Object.keys(ID_KEYWORDS).filter((type) => matchesSelectedType(type, text).match);
+}
+
+/** single OCR word (>=6 letters) present allowing 1-2 character misreads */
+function hasFuzzyWord(text, word) {
+  const max = word.length >= 9 ? 2 : 1;
+  return normalizeOcr(text)
+    .split(' ')
+    .some((t) => Math.abs(t.length - word.length) <= max && editDistance(t, word, max) <= max);
 }
 
 function matchesSelectedType(idType, text) {
   const keywords = ID_KEYWORDS[idType] || [];
   const hits = findMatches(text, keywords);
+
+  if (idType === 'PRC ID') {
+    // PRC cards: any two of these words (OCR-tolerant) is enough
+    const signals = ['professional', 'regulation', 'commission', 'identification'].filter((w) =>
+      hasFuzzyWord(text, w)
+    );
+    const regNo = textHasKeyword(text, 'registration no') || textHasKeyword(text, 'registration date');
+    const prcOnly = signals.includes('regulation') || signals.includes('commission') ||
+      textHasKeyword(text, 'professional regulation') || textHasKeyword(text, 'prc id');
+    const looksLikeOther =
+      textHasKeyword(text, 'land transportation') || textHasKeyword(text, 'driver') ||
+      textHasKeyword(text, 'commission on elections');
+    if (looksLikeOther && !textHasKeyword(text, 'professional regulation')) {
+      return { match: false, hits: [] };
+    }
+    if (prcOnly && (hits.length > 0 || signals.length >= 2 || (signals.includes('professional') && regNo))) {
+      return { match: true, hits: hits.length ? hits : ['prc signals'] };
+    }
+    return { match: false, hits };
+  }
+
+  if (idType === 'UMID') {
+    const words = ['unified', 'multi', 'purpose'];
+    const near = (w) =>
+      normalizeOcr(text)
+        .split(' ')
+        .some((t) => (t.length >= 4 && w.startsWith(t)) ||
+          (Math.abs(t.length - w.length) <= 2 && w.length >= 5 && editDistance(t, w, 2) <= 2));
+    const signals = words.filter(near).length;
+    const crn = /\bcrn\b|\b[c0o]\d{3}\s?\d{7}\s?\d\b/i.test(String(text || ''));
+    if (hits.length > 0 || signals >= 2 || (signals >= 1 && crn)) {
+      return { match: true, hits: hits.length ? hits : ['umid signals'] };
+    }
+    return { match: false, hits };
+  }
 
   if (idType === 'Philippine National ID') {
     const strong = NATIONAL_ID_STRONG.some((kw) => textHasKeyword(text, kw));
@@ -239,22 +322,64 @@ function extractIdFields(text, idType = '') {
   const raw = String(text || '');
   const lower = normalizeOcr(raw);
   const extracted = {
+    id_type: idType || null,
     id_number: null,
     name: null,
     birth_date: null,
     expiration_date: null,
   };
 
-  const idPatterns = [
-    /\b(?:psn|pcn|id(?:\s*no\.?|#)?|license\s*no\.?|passport\s*no\.?)\s*[:#]?\s*([A-Z0-9\-]{6,22})\b/i,
-    /\b(\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4})\b/,
-  ];
+  // ID-type specific formats first, then labelled numbers, then generic fallbacks
+  const idPatterns = [];
+  if (idType === 'PRC ID') {
+    idPatterns.push(/registration\s*(?:no|number)\.?\s*[:#]?\s*(\d{5,8})\b/i);
+  }
+  if (idType === "Driver's License") {
+    idPatterns.push(/\b([A-Z]\d{2}[-\s]?\d{2}[-\s]?\d{6,7})\b/);
+  }
+  if (idType === 'Passport') {
+    idPatterns.push(/\b(P\d{7}[A-Z])\b/, /\b([A-Z]{1,2}\d{6,7}[A-Z]?)\b/);
+  }
+  if (idType === 'UMID') {
+    idPatterns.push(/\b(\d{4}[-\s]?\d{7}[-\s]?\d)\b/);
+  }
+  idPatterns.push(
+    /\b(?:psn|pcn|crn|vin|prn|registration\s*no|license\s*no|passport\s*no|id\s*no|id#)\.?\s*[:#]?\s*([A-Z0-9][A-Z0-9\-]{4,21})\b/i,
+    /\b(\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4})\b/
+  );
   for (const re of idPatterns) {
     const m = raw.match(re);
-    if (m?.[1]) {
+    if (m?.[1] && /\d/.test(m[1])) {
       extracted.id_number = m[1].replace(/\s+/g, '').trim();
       break;
     }
+  }
+  // PRC fallback: OCR often separates the label from its value
+  if (!extracted.id_number && idType === 'PRC ID') {
+    const m = raw.replace(/\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}/g, ' ').match(/\b(\d{6,7})\b/);
+    if (m) extracted.id_number = m[1];
+  }
+
+  // Name (best effort): labelled last / first / middle name, or a single "NAME:" line
+  const LABEL_WORDS =
+    /name|apelyido|pangalan|birth|kapanganakan|date|sex|kasarian|address|tirahan|registration|valid|until|signature|blood|marital|license|number|commission|republic|philippines|identification|professional/i;
+  const grab = (re) => {
+    const m = raw.match(re);
+    if (!m?.[1]) return null;
+    // keep only the first line of the value
+    const firstLine = m[1].split('\n').map((l) => l.trim()).find((l) => l) || '';
+    const v = firstLine.replace(/[^A-Za-zÑñ\s.'\-]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (v.length < 2 || LABEL_WORDS.test(v)) return null; // got the next label instead of a value
+    return v;
+  };
+  const VALUE = '[:\\-/]?\\s*([^\\n]*\\n?[^\\n]*)';
+  const lastName = grab(new RegExp('(?:apelyido\\s*\\/\\s*)?last\\s*name\\s*' + VALUE, 'i'));
+  const firstName = grab(new RegExp('(?:mga\\s*pangalan\\s*\\/\\s*)?(?:first\\s*name|given\\s*names?)\\s*' + VALUE, 'i'));
+  const middleName = grab(new RegExp('(?:gitnang\\s*apelyido\\s*\\/\\s*)?middle\\s*name\\s*' + VALUE, 'i'));
+  if (lastName || firstName) {
+    extracted.name = [firstName, middleName, lastName].filter(Boolean).join(' ');
+  } else {
+    extracted.name = grab(/\bname\s*[:\-]\s*([^\n]{4,50})/i);
   }
 
   const allDates = collectDates(raw);
@@ -285,6 +410,21 @@ function extractIdFields(text, idType = '') {
     }
     if (!extracted.expiration_date && expHints.test(window)) {
       extracted.expiration_date = item.ymd;
+    }
+  }
+
+  // 2b) On IDs that carry issue/registration dates beside the expiry (PRC, DL, Passport, Postal),
+  // OCR can scramble label order. The expiry is always the latest non-birth date on the card.
+  if (EXPIRY_CHECK_TYPES.has(idType) && allDates.length) {
+    const nowD = new Date();
+    const nonBirth = allDates.filter((item) => {
+      if (item.ymd === extracted.birth_date) return false;
+      const age = ageYears(item.date, nowD);
+      return age < 16 || age > 95; // skip dates that look like a birth date
+    });
+    const latest = [...nonBirth].sort((a, b) => b.date - a.date)[0];
+    if (latest && (!extracted.expiration_date || latest.ymd > extracted.expiration_date)) {
+      extracted.expiration_date = latest.ymd;
     }
   }
 
@@ -356,7 +496,7 @@ function evaluateExpiration(idType, extracted) {
     if (!Number.isNaN(exp.getTime()) && exp < now) {
       return {
         status: 'expired',
-        message: 'This ID has expired. Please use a valid, unexpired ID.',
+        message: 'Your ID has expired. Please provide a valid and unexpired ID.',
         expiration_date: extracted.expiration_date,
       };
     }
@@ -374,7 +514,7 @@ function evaluateExpiration(idType, extracted) {
     return {
       status: 'unknown',
       message:
-        'Expiration date could not be verified from this photo. Please retake a clearer photo that clearly shows the expiration date.',
+        'Expiration date could not be detected. Please recapture your ID so the expiration date is clearly visible.',
       expiration_date: null,
     };
   }
@@ -554,7 +694,139 @@ function failResult(partial) {
   };
 }
 
-async function verifyIdImage(idType, image) {
+/** Grayscale + upscale + contrast-stretch: helps OCR on coloured/patterned ID cards */
+function preprocessForOcr(buffer) {
+  if (!jpeg) return null;
+  try {
+    const src = jpeg.decode(buffer, { useTArray: true, maxMemoryUsageInMB: 128 });
+    const { width: w, height: h, data } = src;
+    if (!w || !h) return null;
+
+    const scale = w < 900 ? 2 : w < 1200 ? 1.5 : 1; // phone photos are already large
+    const nw = Math.round(w * scale);
+    const nh = Math.round(h * scale);
+    const gray = new Uint8Array(nw * nh);
+    const g = (x, y) => {
+      const i = (y * w + x) * 4;
+      return 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    };
+    for (let y = 0; y < nh; y++) {
+      const sy = Math.min(h - 1, y / scale);
+      const y0 = Math.floor(sy);
+      const y1 = Math.min(h - 1, y0 + 1);
+      const fy = sy - y0;
+      for (let x = 0; x < nw; x++) {
+        const sx = Math.min(w - 1, x / scale);
+        const x0 = Math.floor(sx);
+        const x1 = Math.min(w - 1, x0 + 1);
+        const fx = sx - x0;
+        const top = g(x0, y0) * (1 - fx) + g(x1, y0) * fx;
+        const bot = g(x0, y1) * (1 - fx) + g(x1, y1) * fx;
+        gray[y * nw + x] = top * (1 - fy) + bot * fy;
+      }
+    }
+
+    // Stretch contrast between the 2nd and 98th percentile
+    const hist = new Uint32Array(256);
+    for (let i = 0; i < gray.length; i++) hist[gray[i]]++;
+    const lowCut = gray.length * 0.02;
+    const highCut = gray.length * 0.98;
+    let acc = 0;
+    let lo = 0;
+    let hi = 255;
+    for (let v = 0; v < 256; v++) {
+      acc += hist[v];
+      if (acc >= lowCut) {
+        lo = v;
+        break;
+      }
+    }
+    acc = 0;
+    for (let v = 0; v < 256; v++) {
+      acc += hist[v];
+      if (acc >= highCut) {
+        hi = v;
+        break;
+      }
+    }
+    const range = Math.max(30, hi - lo);
+    const out = Buffer.alloc(nw * nh * 4);
+    for (let i = 0; i < gray.length; i++) {
+      const v = Math.max(0, Math.min(255, ((gray[i] - lo) * 255) / range));
+      out[i * 4] = v;
+      out[i * 4 + 1] = v;
+      out[i * 4 + 2] = v;
+      out[i * 4 + 3] = 255;
+    }
+    return jpeg.encode({ data: out, width: nw, height: nh }, 92).data;
+  } catch {
+    return null;
+  }
+}
+
+// One shared Tesseract worker: loading the engine costs seconds, so do it once, not per scan.
+let sharedWorker = null;
+let ocrQueue = Promise.resolve();
+
+function getWorker(Tesseract) {
+  if (!sharedWorker) {
+    sharedWorker = Tesseract.createWorker('eng', 1, { logger: () => {} }).catch((err) => {
+      sharedWorker = null;
+      throw err;
+    });
+  }
+  return sharedWorker;
+}
+
+/** Load the OCR engine ahead of time so the first scan is fast too. */
+function warmUp() {
+  try {
+    return getWorker(require('tesseract.js')).catch(() => {});
+  } catch {
+    return Promise.resolve();
+  }
+}
+
+/**
+ * Multi-pass OCR on a shared worker. Pass 1 reads the photo as taken (usually enough).
+ * Only if `isEnough(text)` is still false do we try an enhanced copy / other modes.
+ * Text from all passes is combined so label/value fragments from any pass are kept.
+ */
+function runOcr(Tesseract, buffer, isEnough) {
+  const job = ocrQueue.then(async () => {
+    const worker = await getWorker(Tesseract);
+    const texts = [];
+    let confidence = 0;
+    let enhanced; // built lazily — skipped entirely when pass 1 succeeds
+
+    const passes = [
+      () => ({ img: buffer, psm: '3' }),
+      () => {
+        if (enhanced === undefined) enhanced = preprocessForOcr(buffer);
+        return enhanced ? { img: enhanced, psm: '6' } : null;
+      },
+      () => (enhanced ? { img: enhanced, psm: '11' } : null),
+      () => ({ img: buffer, psm: '11' }),
+    ];
+
+    for (const make of passes) {
+      const pass = make();
+      if (!pass) continue;
+      await worker.setParameters({ tessedit_pageseg_mode: pass.psm });
+      const {
+        data: { text, confidence: conf },
+      } = await worker.recognize(pass.img);
+      texts.push(text || '');
+      if (typeof conf === 'number') confidence = Math.max(confidence, conf);
+      if (isEnough && isEnough(texts.join('\n'))) break;
+    }
+    return { text: texts.join('\n'), confidence };
+  });
+  ocrQueue = job.catch(() => {}); // keep the queue alive after a failure
+  return job;
+}
+
+async function verifyIdImage(idType, image, options = {}) {
   if (!idType || !image) {
     return failResult({ message: 'Please select an ID type and take a photo.' });
   }
@@ -602,9 +874,17 @@ async function verifyIdImage(idType, image) {
       });
     }
 
-    const {
-      data: { text, confidence },
-    } = await Tesseract.recognize(buffer, 'eng', { logger: () => {} });
+    // Stop OCR passes early once the ID type (and, if given, the name) is already confirmed
+    const isEnough = (t) => {
+      const n = normalizeOcr(t);
+      if (!matchesSelectedType(idType, n).match) return false;
+      if (options.names) {
+        const { extracted: ex } = extractIdFields(t, idType);
+        return compareNames(options.names, ex.name, n).ok;
+      }
+      return true;
+    };
+    const { text, confidence } = await runOcr(Tesseract, buffer, isEnough);
 
     const readable = normalizeOcr(text);
     const ocrConfidence = typeof confidence === 'number' ? confidence : 0;
@@ -638,7 +918,7 @@ async function verifyIdImage(idType, image) {
         quality,
         extracted,
         expiration,
-        message: `This photo looks like a school or company ID, not a ${idType}. Please scan the correct ID.`,
+        message: 'Invalid or unsupported ID. Please capture a valid government-issued ID.',
       });
     }
 
@@ -652,7 +932,7 @@ async function verifyIdImage(idType, image) {
         expiration,
         message: other.length
           ? `The photo looks like a ${other.join(', ')}, not a ${idType}. Please scan the correct ID.`
-          : `No valid ${idType} was detected. Please scan the ID type you selected.`,
+          : 'Invalid or unsupported ID. Please capture a valid government-issued ID.',
       });
     }
 
@@ -664,7 +944,7 @@ async function verifyIdImage(idType, image) {
         quality,
         extracted,
         expiration,
-        message: expiration.message || 'This ID has expired. Please use a valid, unexpired ID.',
+        message: expiration.message || 'Your ID has expired. Please provide a valid and unexpired ID.',
       });
     }
 
@@ -677,7 +957,7 @@ async function verifyIdImage(idType, image) {
         expiration,
         message:
           expiration.message ||
-          'Expiration date could not be verified from this photo. Please retake a clearer photo that clearly shows the expiration date.',
+          'Expiration date could not be detected. Please recapture your ID so the expiration date is clearly visible.',
       });
     }
 
@@ -685,6 +965,7 @@ async function verifyIdImage(idType, image) {
       match: true,
       detected: detected.length ? detected : [idType],
       text: readable.slice(0, 500),
+      ocrText: readable,
       message: `Verified as ${idType} (quality checks passed). ${QUALITY_DISCLAIMER}`,
       quality: { ...quality, ok: true },
       extracted,
@@ -698,11 +979,110 @@ async function verifyIdImage(idType, image) {
   }
 }
 
+const NAME_MISMATCH_MSG =
+  'Full name does not match the captured ID. Please check your name and try again.';
+const NAME_UNREADABLE_MSG =
+  'Unable to read the name on your ID. Please capture a clearer image of your ID.';
+
+const NAME_SUFFIXES = new Set(['jr', 'sr', 'ii', 'iii', 'iv']);
+
+/** lowercase, strip accents/punctuation, split into name words (suffixes ignored) */
+function nameTokens(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, ' ')
+    .split(/\s+/)
+    .filter((t) => t && !NAME_SUFFIXES.has(t));
+}
+
+/** exact match, or a 1-edit OCR slip on longer words (never for short names) */
+function tokenInList(token, list) {
+  const max = token.length >= 9 ? 2 : token.length >= 5 ? 1 : 0;
+  return list.some((t) => t === token || (max > 0 && editDistance(t, token, max) <= max));
+}
+
+/**
+ * Compare the name typed in the registration form with the name on the ID.
+ * entered: { first_name, middle_name, last_name }
+ * extractedName: best-effort name parsed from the ID (may be null)
+ * ocrText: full normalized OCR text, used when label parsing fails
+ * Returns { ok, reason: 'match' | 'unreadable' | 'mismatch', message }.
+ */
+function compareNames(entered, extractedName, ocrText) {
+  const first = nameTokens(entered?.first_name);
+  const middle = nameTokens(entered?.middle_name);
+  const last = nameTokens(entered?.last_name);
+  if (!first.length || !last.length) {
+    return { ok: false, reason: 'mismatch', message: NAME_MISMATCH_MSG };
+  }
+
+  const extractedTokens = nameTokens(extractedName);
+  const ocrTokens = nameTokens(ocrText);
+  if (!extractedTokens.length && ocrTokens.length < 3) {
+    return { ok: false, reason: 'unreadable', message: NAME_UNREADABLE_MSG };
+  }
+
+  const covers = (haystack) => {
+    if (!first.every((t) => tokenInList(t, haystack))) return false;
+    if (!last.every((t) => tokenInList(t, haystack))) return false;
+    // Middle name is optional on some IDs (initial only); if shown in full it must match
+    if (middle.length) {
+      const initials = middle.map((t) => t[0]);
+      const ok = middle.every((t, i) => tokenInList(t, haystack) || haystack.includes(initials[i]));
+      if (!ok) return false;
+    }
+    return true;
+  };
+
+  if (extractedTokens.length && covers(extractedTokens)) return { ok: true, reason: 'match', message: null };
+  // Label order is often scrambled by OCR: accept if the name words appear in the ID text
+  if (covers(ocrTokens)) return { ok: true, reason: 'match', message: null };
+
+  if (!extractedTokens.length) {
+    return { ok: false, reason: 'unreadable', message: NAME_UNREADABLE_MSG };
+  }
+  return { ok: false, reason: 'mismatch', message: NAME_MISMATCH_MSG };
+}
+
+/**
+ * Name to show the user for review: drop OCR noise (stray letters like "A A", "th").
+ * When the name matched, keep only the words that belong to the entered name, in ID order.
+ */
+function cleanDisplayName(extractedName, entered, matched) {
+  const words = String(extractedName || '')
+    .split(/\s+/)
+    .filter(Boolean);
+  let kept;
+  if (matched) {
+    const mine = [
+      ...nameTokens(entered?.first_name),
+      ...nameTokens(entered?.middle_name),
+      ...nameTokens(entered?.last_name),
+    ];
+    kept = words.filter((w) => {
+      const t = nameTokens(w)[0];
+      return t && tokenInList(t, mine);
+    });
+  } else {
+    kept = words.filter((w) => w.replace(/[^A-Za-zÑñ]/g, '').length >= 3);
+  }
+  return kept.length ? kept.join(' ') : null;
+}
+
 module.exports = {
+  compareNames,
+  cleanDisplayName,
+  runOcr,
+  warmUp,
+  detectTypes,
+  normalizeOcr,
   verifyIdImage,
   ID_KEYWORDS,
   analyzePixelQuality,
   extractIdFields,
   evaluateExpiration,
+  matchesSelectedType,
   QUALITY_DISCLAIMER,
 };

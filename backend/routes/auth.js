@@ -8,7 +8,7 @@ const { getUserBlockReason, setUserBlockReason } = require('../utils/archiveStor
 const { normalizeBlockReason, blockedAccountMessage, describeBlockReason } = require('../utils/blockReasons');
 const { saveValidId, attachIdentity, removeValidId, loadIdImage, IDENTITY_COLUMNS, isMissingColumnError } = require('../utils/identityStore');
 const { saveProfilePhoto, loadProfilePhoto, removeProfilePhoto } = require('../utils/profilePhotoStore');
-const { verifyIdImage } = require('../utils/idScanner');
+const { verifyIdImage, compareNames, cleanDisplayName } = require('../utils/idScanner');
 const { logActivity } = require('../utils/activityLogger');
 const {
   getContacts: getEmergencyContacts,
@@ -165,13 +165,29 @@ router.post('/register', async (req, res) => {
       }
     }
 
-    const scan = await verifyIdImage(String(id_type).trim(), id_image);
+    const scan = await verifyIdImage(String(id_type).trim(), id_image, {
+      names: { first_name, middle_name, last_name },
+    });
     if (!scan.match) {
       return res.status(400).json({
         field: 'id_image',
         message: scan.message || 'The ID photo does not match the ID type you selected.',
       });
     }
+
+    // The name entered in the form must match the name on the captured ID
+    const nameCheck = compareNames(
+      { first_name, middle_name, last_name },
+      scan.extracted?.name,
+      scan.ocrText
+    );
+    if (!nameCheck.ok) {
+      return res.status(400).json({
+        field: nameCheck.reason === 'unreadable' ? 'id_image' : 'full_name',
+        message: nameCheck.message,
+      });
+    }
+    const scannedIdNumber = String(scan.extracted?.id_number || '').replace(/[^A-Za-z0-9\-]/g, '') || null;
 
     const { data, error } = await supabase
       .from('users')
@@ -211,7 +227,7 @@ router.post('/register', async (req, res) => {
     try {
       identity = await saveValidId(data.user_id, {
         id_type,
-        id_number,
+        id_number: scannedIdNumber,
         id_image,
       });
     } catch (idErr) {
@@ -814,7 +830,19 @@ router.post('/scan-id', async (req, res) => {
     return res.status(400).json({ match: false, message: 'id_type and image are required.' });
   }
 
-  const result = await verifyIdImage(String(id_type).trim(), image);
+  const names = {
+    first_name: req.body.first_name,
+    middle_name: req.body.middle_name,
+    last_name: req.body.last_name,
+  };
+  const result = await verifyIdImage(String(id_type).trim(), image, { names });
+  if (result.match) {
+    result.name_check = compareNames(names, result.extracted?.name, result.ocrText);
+    if (result.extracted) {
+      result.extracted.name = cleanDisplayName(result.extracted.name, names, result.name_check.ok);
+    }
+  }
+  delete result.ocrText;
   return res.json(result);
 });
 
