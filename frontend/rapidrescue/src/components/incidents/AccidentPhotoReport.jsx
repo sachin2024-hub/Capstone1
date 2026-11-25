@@ -70,7 +70,7 @@ export default function AccidentPhotoReport({ incidents, periodLabel, isLoading,
   const open = openIndex >= 0 ? shown[openIndex] : null;
 
   const filters = [
-    { id: 'all', label: 'All', count: photos.length },
+    { id: 'all', label: 'All categories', count: photos.length },
     ...INCIDENT_TYPE_GROUPS.map((g) => ({
       id: g.category,
       label: g.category,
@@ -122,23 +122,7 @@ export default function AccidentPhotoReport({ incidents, periodLabel, isLoading,
 
   return (
     <div>
-      <div className={styles.filters} role="group" aria-label="Filter photos by accident type">
-        {filters.map((f) => (
-          <button
-            key={f.id}
-            type="button"
-            className={`${styles.chip} ${category === f.id ? styles.chipActive : ''}`}
-            onClick={() => { setCategory(f.id); setDownloadError(''); }}
-            aria-pressed={category === f.id}
-          >
-            {f.label}
-            <span className={styles.chipCount}>{f.count}</span>
-          </button>
-        ))}
-      </div>
-
       <div className={styles.toolbar}>
-        {downloadError && <span className={styles.error} role="alert">{downloadError}</span>}
         <button
           type="button"
           className={styles.downloadAll}
@@ -148,6 +132,17 @@ export default function AccidentPhotoReport({ incidents, periodLabel, isLoading,
           <Icon name="download" size={18} />
           {isDownloadingAll ? 'Downloading…' : `Download All (${shown.length})`}
         </button>
+        {downloadError && <span className={styles.error} role="alert">{downloadError}</span>}
+        <select
+          className={styles.categorySelect}
+          value={category}
+          onChange={(e) => { setCategory(e.target.value); setDownloadError(''); }}
+          aria-label="Filter photos by accident type"
+        >
+          {filters.map((f) => (
+            <option key={f.id} value={f.id}>{f.label} ({f.count})</option>
+          ))}
+        </select>
       </div>
 
       {shown.length === 0 ? (

@@ -95,6 +95,81 @@
   word-break: break-word;
 }
 
+.typeSelect {
+  width: 100%;
+  padding: 7px 8px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fafafa;
+  color: #1e293b;
+  font-size: 13.5px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.typeSelect:focus {
+  outline: none;
+  border-color: #e53935;
+}
+
+.typeSelectSpecific {
+  margin-top: 2px;
+  animation: typeSlideIn 0.25s ease;
+}
+
+@keyframes typeSlideIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.typeReported {
+  color: #64748b;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.typeActions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.typeSave,
+.typeUndo {
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.typeSave {
+  border: none;
+  background: #c62828;
+  color: #fff;
+}
+
+.typeUndo {
+  border: 1px solid #e0e0e0;
+  background: #f5f5f5;
+  color: #334155;
+}
+
+.typeSave:disabled,
+.typeUndo:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.typeError {
+  color: #c62828;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
 .phoneLink {
   font-size: 15px;
   font-weight: 800;
@@ -382,3 +457,116 @@
   font-size: 16px;
   cursor: pointer;
 }
+
+/* ─── Incident Details: two columns that fit the screen ───
+   (.modal is shared with the assign dialog, so these use their own classes) */
+.detailsOverlay {
+  padding: 12px;
+}
+
+.detailsModal {
+  max-width: 1080px;
+  max-height: calc(100vh - 24px);
+  padding: 14px 18px;
+}
+
+.detailsModal .modalHeader {
+  margin-bottom: 10px;
+}
+
+.headerMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.detailsBody {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 14px;
+}
+
+.detailsBody .incidentInfo {
+  gap: 8px;
+  padding: 8px;
+  margin-bottom: 0;
+}
+
+.detailsBody .detailCell {
+  gap: 2px;
+  padding: 7px 10px;
+}
+
+.typeRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.typeRow .typeSelect {
+  flex: 1 1 160px;
+  width: auto;
+  min-width: 0;
+  margin-top: 0;
+}
+
+.mapSlot button {
+  height: clamp(90px, 24vh, 190px);
+  margin-top: 4px;
+}
+
+.actionColumn {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.detailsBody .photoBlock {
+  margin-bottom: 10px;
+}
+
+.detailsBody .photoGrid {
+  margin-top: 2px;
+}
+
+.detailsBody .photoThumb {
+  width: 56px;
+  height: 56px;
+}
+
+.detailsBody .label {
+  margin-bottom: 4px;
+}
+
+.detailsBody .select {
+  padding: 7px 12px;
+  margin-bottom: 8px;
+}
+
+.detailsBody .reasonBox {
+  min-height: 54px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.detailsBody .hint {
+  padding: 6px 10px;
+  margin-bottom: 8px;
+}
+
+.detailsBody .error {
+  margin-bottom: 8px;
+}
+
+@media (max-width: 760px) {
+  .detailsModal {
+    max-width: 560px;
+  }
+
+  .detailsBody {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+

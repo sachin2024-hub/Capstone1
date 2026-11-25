@@ -13,6 +13,7 @@
 }
 
 .title {
+  display: none; /* printed copy only; on screen the page heading is enough */
   margin: 0;
   font-size: 18px;
   font-weight: 800;
@@ -313,7 +314,6 @@
   line-height: 1.1;
 }
 
-.heroSub,
 .heroHint {
   display: block;
   font-size: 12px;
@@ -470,12 +470,26 @@
   border: 1.5px solid #e5e7eb;
   border-radius: 14px;
   padding: 14px 16px;
-  transition: box-shadow 0.15s ease, transform 0.15s ease;
+  min-width: 0;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
 }
 
 .kpi:hover {
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
-  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+  transform: translateY(-3px);
+}
+
+.kpi:active {
+  transform: scale(0.98);
+}
+
+.kpiAction {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: #2563eb;
 }
 
 .kpiAlert {
@@ -931,10 +945,67 @@
   .wide { grid-column: auto; }
 }
 
+/* ── Busiest hours ───────────────────────────── */
+.chartSubhead {
+  margin: 14px 0 6px;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #475569;
+}
+
+/* Wide labels so "Late night · 12 AM–6 AM" is not cut off. */
+.partList .barRow {
+  grid-template-columns: minmax(90px, 190px) 1fr 28px 44px;
+}
+
+/* ── Graph animations ───────────────────────────── */
+.ringArc {
+  animation: ringDraw 1.1s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.stackTrack,
+.kpiBar span {
+  transform-origin: left center;
+  animation: barGrow 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.insight,
+.kpi {
+  animation: cardRise 0.5s ease backwards;
+}
+
+.insight:nth-child(2),
+.kpi:nth-child(2) { animation-delay: 0.07s; }
+.insight:nth-child(3),
+.kpi:nth-child(3) { animation-delay: 0.14s; }
+.kpi:nth-child(4) { animation-delay: 0.21s; }
+.kpi:nth-child(5) { animation-delay: 0.28s; }
+.kpi:nth-child(6) { animation-delay: 0.35s; }
+
+/* Held at the start until the card is scrolled into view. */
+.waiting .barFill,
+.waiting .colBar,
+.waiting .donutSlice {
+  animation-play-state: paused;
+}
+
+@keyframes ringDraw {
+  from { stroke-dasharray: 0 1000; }
+}
+
+@keyframes cardRise {
+  from { opacity: 0; transform: translateY(10px); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .donutSlice,
   .barFill,
-  .colBar {
+  .colBar,
+  .ringArc,
+  .stackTrack,
+  .kpiBar span,
+  .insight,
+  .kpi {
     animation: none !important;
   }
 }
@@ -943,7 +1014,11 @@
   .toolbarRight,
   .chartDownloadBtn,
   .printOverlay,
-  .chartTooltip { display: none !important; }
+  .chartTooltip,
+  .kpiAction { display: none !important; }
+  /* Print finished graphs, including cards that were never scrolled into view. */
+  .report * { animation: none !important; }
+  .title,
   .printMeta { display: block; }
   .card, .kpi, .hero, .insight { break-inside: avoid; }
   .hero, .kpiBar span, .stackSeg, .heatCell { -webkit-print-color-adjust: exact; print-color-adjust: exact; }

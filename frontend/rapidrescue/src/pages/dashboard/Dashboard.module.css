@@ -235,6 +235,131 @@
   text-overflow: ellipsis;
 }
 
+/* Period carried over from Analytics to the Accident page */
+.carriedFilter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 9px 14px;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-size: 13px;
+}
+
+.carriedFilter button {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+/* Nested options under a nav item (Analytics shifts) */
+.navSubWrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  flex-shrink: 0;
+  opacity: 0;
+  visibility: hidden; /* closed options cannot be reached with Tab */
+  transition: grid-template-rows 0.32s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease,
+    visibility 0s linear 0.32s;
+}
+
+.navSubOpen {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+.navSubInner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Options slide in one after another */
+.navSubOpen .navSubItem {
+  animation: navSubIn 0.34s cubic-bezier(0.34, 1.4, 0.64, 1) backwards;
+}
+
+.navSubOpen .navSubItem:nth-child(1) { animation-delay: 0.08s; }
+.navSubOpen .navSubItem:nth-child(2) { animation-delay: 0.15s; }
+.navSubOpen .navSubItem:nth-child(3) { animation-delay: 0.22s; }
+
+/* The icon pops when an option gets selected */
+.navSubItemActive > :first-child {
+  animation: navSubPop 0.4s ease;
+}
+
+@keyframes navSubIn {
+  from { opacity: 0; transform: translateX(-14px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes navSubPop {
+  0% { transform: scale(1) rotate(0); }
+  45% { transform: scale(1.35) rotate(-12deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+
+.navSub {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 4px 4px 4px 24px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.navSubCollapsed {
+  margin-left: 4px;
+  padding-left: 0;
+  border-left: none;
+  align-items: center;
+}
+
+.navSubItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: 'Inter', system-ui, sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.25s ease, color 0.25s ease, transform 0.15s ease;
+}
+
+.navSubItem:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  transform: translateX(3px);
+}
+
+.navSubItem:active {
+  transform: scale(0.95);
+}
+
+.navSubItemActive {
+  background: rgba(229, 57, 53, 0.22);
+  color: #fff;
+  font-weight: 700;
+}
+
 /* Alert badge on nav */
 .navBadge {
   background: #e53935;
@@ -1852,6 +1977,29 @@
   width: 240px;
 }
 
+.datePickerPresets {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.datePickerPresets .datePickerYearBtn {
+  padding: 7px 4px;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.datePickerYearBtn.datePickerDayActive:hover {
+  color: #fff;
+}
+
+.datePickerActions {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+
 .datePickerYearTitle {
   margin: 0 0 8px;
   font-size: 11px;
@@ -2376,8 +2524,15 @@
   .statCard::after,
   .tableCard,
   .dateSegmentedBar,
+  .navSubOpen .navSubItem,
+  .navSubItemActive > :first-child,
   .table tbody tr {
     animation: none !important;
+  }
+
+  .navSubWrap,
+  .navSubItem {
+    transition: none !important;
   }
 
   .statCard:hover,

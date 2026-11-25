@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Fragment, useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { logout, getStoredAdmin } from '../../services/authService';
@@ -48,12 +48,57 @@ function makeDateFilter(overrides = {}) {
     month: now.getMonth(),
     year: now.getFullYear(),
     date: null,
+    dates: [], // days picked one by one (mode 'custom'), sorted 'YYYY-MM-DD'
     ...overrides,
   };
 }
 
 function padDatePart(n) {
   return String(n).padStart(2, '0');
+}
+
+function toIsoDay(date) {
+  return `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}`;
+}
+
+function formatShortDay(iso) {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function formatIsoDay(iso) {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+// True when the sorted days have no gap between them.
+function isUnbrokenRun(dates) {
+  return dates.every((iso, i) => {
+    if (i === 0) return true;
+    const next = new Date(`${dates[i - 1]}T00:00:00`);
+    next.setDate(next.getDate() + 1);
+    return toIsoDay(next) === iso;
+  });
+}
+
+function describePickedDays(dates) {
+  const first = dates[0];
+  const last = dates[dates.length - 1];
+  if (dates.length === 1) return formatIsoDay(first);
+  if (isUnbrokenRun(dates)) return `${formatIsoDay(first)} – ${formatIsoDay(last)}`;
+  if (dates.length <= 3) return dates.map(formatIsoDay).join('; ');
+  return `${dates.length} selected days (${formatIsoDay(first)} – ${formatIsoDay(last)})`;
+}
+
+// Shorter version for the filter button.
+function pickedDaysButtonLabel(dates) {
+  const first = formatShortDay(dates[0]);
+  if (dates.length === 1) return first;
+  if (isUnbrokenRun(dates)) return `${first} – ${formatShortDay(dates[dates.length - 1])}`;
+  if (dates.length === 2) return `${first}, ${formatShortDay(dates[1])}`;
+  return `${dates.length} days`;
 }
 
 function sameCalendarDay(a, b) {
@@ -87,9 +132,9 @@ function calendarCells(year, month) {
 const SHIFT_START_HOUR = 8;
 const SHIFT_MS = 12 * 60 * 60 * 1000;
 const SHIFT_OPTIONS = [
-  { id: 'all', label: 'Whole day' },
-  { id: 'morning', label: 'Morning · 8AM–8PM' },
-  { id: 'night', label: 'Night · 8PM–8AM' },
+  { id: 'all', icon: 'schedule', label: 'Whole day' },
+  { id: 'morning', icon: 'light_mode', label: 'Morning · 8AM–8PM' },
+  { id: 'night', icon: 'dark_mode', label: 'Night · 8PM–8AM' },
 ];
 
 // Start of the shift that contains `date`.
@@ -109,6 +154,17 @@ function shiftTypeOf(date) {
 // normal calendar day, so the existing date checks can be reused.
 function toShiftDay(date) {
   return new Date(new Date(date).getTime() - SHIFT_START_HOUR * 60 * 60 * 1000);
+}
+
+// Which shift option is highlighted; the live view highlights the running shift.
+function selectedShiftOf(filter) {
+  return filter.mode === 'shift' ? shiftTypeOf(new Date()) : filter.shift || 'all';
+}
+
+// Picking a shift while in the live view switches to today, filtered by that shift.
+function withShift(filter, shift) {
+  if (filter.mode === 'shift') return { ...filter, mode: 'day', shift, date: null };
+  return { ...filter, shift };
 }
 
 function describeShift(date = new Date()) {
@@ -143,6 +199,9 @@ function matchesIncidentDateRange(inc, filter) {
     const picked = new Date(`${filter.date}T00:00:00`);
     return !Number.isNaN(picked.getTime()) && sameCalendarDay(reported, picked);
   }
+  if (filter.mode === 'custom' && filter.dates?.length) {
+    return filter.dates.includes(toIsoDay(reported));
+  }
   if (filter.mode === 'day') return sameCalendarDay(reported, now);
   if (filter.mode === 'week') {
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -170,25 +229,20 @@ function describeDateFilterBase(filter) {
   if (filter.mode === 'day') return 'today';
   if (filter.mode === 'week') return 'this week';
   if (filter.mode === 'year') return String(filter.year);
-  if (filter.mode === 'date' && filter.date) {
-    return new Date(`${filter.date}T00:00:00`).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  }
+  if (filter.mode === 'date' && filter.date) return formatIsoDay(filter.date);
+  if (filter.mode === 'custom' && filter.dates?.length) return describePickedDays(filter.dates);
   return new Date(filter.year, filter.month, 1).toLocaleDateString('en-US', {
     month: 'long',
     year: 'numeric',
   });
 }
 
-function DateRangeFilter({ value, onChange, years, showShift = false }) {
+function DateRangeFilter({ value, onChange, years, showShift = false, allowMultiple = false }) {
   const [open, setOpen] = useState(null);
   const boxRef = useRef(null);
   const monthName = new Date(value.year, value.month, 1).toLocaleDateString('en-US', { month: 'long' });
   const today = new Date();
-  const monthActive = value.mode === 'month' || value.mode === 'date';
+  const monthActive = ['month', 'date', 'custom'].includes(value.mode);
 
   useEffect(() => {
     const onDocClick = (e) => {
@@ -203,18 +257,70 @@ function DateRangeFilter({ value, onChange, years, showShift = false }) {
     setOpen(null);
   };
 
-  const shiftMonth = (delta) => {
-    const next = new Date(value.year, value.month + delta, 1);
-    onChange({
-      ...value,
-      mode: 'month',
-      month: next.getMonth(),
-      year: next.getFullYear(),
-      date: null,
-    });
+  // Changing the viewed month keeps hand-picked days, so they can span several months.
+  const viewMonth = (year, month) => {
+    if (value.mode === 'custom') onChange({ ...value, year, month });
+    else onChange({ ...value, mode: 'month', year, month, date: null });
   };
 
-  const activeShift = value.shift || 'all';
+  const shiftMonth = (delta) => {
+    const next = new Date(value.year, value.month + delta, 1);
+    viewMonth(next.getFullYear(), next.getMonth());
+  };
+
+  const showWholeMonth = () => {
+    onChange({ ...value, mode: 'month', date: null, dates: [] });
+  };
+
+  let selectedDays = [];
+  if (value.mode === 'custom') selectedDays = value.dates;
+  else if (value.mode === 'date' && value.date) selectedDays = [value.date];
+
+  const lastDays = (count) =>
+    Array.from({ length: count }, (_, i) =>
+      toIsoDay(new Date(today.getFullYear(), today.getMonth(), today.getDate() - (count - 1 - i)))
+    );
+  const lastMonthLength = new Date(today.getFullYear(), today.getMonth(), 0).getDate();
+  const dayPresets = [
+    { label: 'Last 7 days', dates: lastDays(7) },
+    { label: 'Last 30 days', dates: lastDays(30) },
+    {
+      label: 'Last month',
+      dates: Array.from({ length: lastMonthLength }, (_, i) =>
+        toIsoDay(new Date(today.getFullYear(), today.getMonth() - 1, i + 1))
+      ),
+    },
+  ];
+
+  const applyPreset = (dates) => {
+    const end = new Date(`${dates[dates.length - 1]}T00:00:00`);
+    onChange({
+      ...value,
+      mode: 'custom',
+      dates,
+      date: null,
+      month: end.getMonth(),
+      year: end.getFullYear(),
+    });
+    setOpen(null);
+  };
+
+  const pickDay = (iso) => {
+    const isSelected = selectedDays.includes(iso);
+    if (!allowMultiple) {
+      // Clicking the already-selected day cancels it and goes back to the whole month.
+      if (isSelected) showWholeMonth();
+      else onChange({ ...value, mode: 'date', date: iso });
+      setOpen(null);
+      return;
+    }
+    // Every click adds or removes one day; the calendar stays open for more.
+    const dates = isSelected
+      ? selectedDays.filter((day) => day !== iso)
+      : [...selectedDays, iso].sort();
+    if (dates.length) onChange({ ...value, mode: 'custom', dates, date: null });
+    else showWholeMonth();
+  };
 
   return (
     <>
@@ -263,14 +369,16 @@ function DateRangeFilter({ value, onChange, years, showShift = false }) {
           type="button"
           className={`${styles.dateSegmentBtn} ${monthActive ? styles.dateSegmentBtnActive : ''}`}
           onClick={() => {
-            onChange({ ...value, mode: value.mode === 'date' ? 'date' : 'month' });
+            onChange({ ...value, mode: monthActive ? value.mode : 'month' });
             setOpen((prev) => (prev === 'month' ? null : 'month'));
           }}
         >
           <span className={styles.dateSegmentIcon}><Icon name="calendar_month" size={16} /></span>
           {value.mode === 'date' && value.date
-            ? new Date(`${value.date}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-            : monthName}
+            ? formatShortDay(value.date)
+            : value.mode === 'custom'
+              ? pickedDaysButtonLabel(value.dates)
+              : monthName}
         </button>
         <button
           type="button"
@@ -283,7 +391,6 @@ function DateRangeFilter({ value, onChange, years, showShift = false }) {
           <span className={styles.dateSegmentIcon}><Icon name="bar_chart" size={16} /></span>
           {value.year}
         </button>
-
         {open === 'month' && (
           <div className={styles.datePickerPop} role="dialog" aria-label="Pick a date">
             <div className={styles.datePickerHead}>
@@ -293,9 +400,9 @@ function DateRangeFilter({ value, onChange, years, showShift = false }) {
                 tabIndex={0}
                 title="Show the whole month"
                 style={{ cursor: 'pointer' }}
-                onClick={() => onChange({ ...value, mode: 'month', date: null })}
+                onClick={showWholeMonth}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') onChange({ ...value, mode: 'month', date: null });
+                  if (e.key === 'Enter' || e.key === ' ') showWholeMonth();
                 }}
               >
                 {monthName}
@@ -304,9 +411,7 @@ function DateRangeFilter({ value, onChange, years, showShift = false }) {
                 className={styles.datePickerYearSelect}
                 value={value.year}
                 aria-label="Select year"
-                onChange={(e) => {
-                  onChange({ ...value, mode: 'month', year: Number(e.target.value), date: null });
-                }}
+                onChange={(e) => viewMonth(Number(e.target.value), value.month)}
               >
                 {years.map((year) => (
                   <option key={year} value={year}>{year}</option>
@@ -322,19 +427,18 @@ function DateRangeFilter({ value, onChange, years, showShift = false }) {
                 if (day == null) return <span key={`e-${idx}`} />;
                 const iso = `${value.year}-${padDatePart(value.month + 1)}-${padDatePart(day)}`;
                 const isToday = sameCalendarDay(new Date(value.year, value.month, day), today);
-                const isSelected = value.mode === 'date' && value.date === iso;
+                const isSelected = selectedDays.includes(iso);
+                const removeHint = allowMultiple
+                  ? 'Click again to remove this day'
+                  : 'Click again to show the whole month';
                 return (
                   <button
                     key={iso}
                     type="button"
                     className={`${styles.datePickerDay} ${isToday ? styles.datePickerToday : ''} ${isSelected ? styles.datePickerDayActive : ''}`}
-                    title={isSelected ? 'Click again to show the whole month' : `Show only ${monthName} ${day}`}
-                    onClick={() => {
-                      // Clicking the already-selected day cancels it and goes back to the whole month.
-                      if (isSelected) onChange({ ...value, mode: 'month', date: null });
-                      else onChange({ ...value, mode: 'date', date: iso });
-                      setOpen(null);
-                    }}
+                    title={isSelected ? removeHint : formatIsoDay(iso)}
+                    aria-pressed={isSelected}
+                    onClick={() => pickDay(iso)}
                   >
                     {day}
                   </button>
@@ -351,28 +455,58 @@ function DateRangeFilter({ value, onChange, years, showShift = false }) {
                 lineHeight: 1.4,
               }}
             >
-              {value.mode === 'date' && value.date ? (
+              {selectedDays.length > 0 ? (
                 <>
-                  <div style={{ opacity: 0.75, marginBottom: 6 }}>
-                    Showing only <strong>{monthName} {Number(value.date.slice(8, 10))}</strong>
+                  <div style={{ opacity: 0.75, marginBottom: 6 }} aria-live="polite">
+                    Showing {selectedDays.length === 1 ? 'only ' : ''}
+                    <strong>{describePickedDays(selectedDays)}</strong>
+                    {allowMultiple && <><br />Click more days to add, click again to remove.</>}
                   </div>
-                  <button
-                    type="button"
-                    className={styles.datePickerYearBtn}
-                    onClick={() => {
-                      onChange({ ...value, mode: 'month', date: null });
-                      setOpen(null);
-                    }}
-                  >
-                    ✕ Clear date · show all of {monthName}
-                  </button>
+                  <div className={styles.datePickerActions}>
+                    <button
+                      type="button"
+                      className={styles.datePickerYearBtn}
+                      onClick={() => {
+                        showWholeMonth();
+                        setOpen(null);
+                      }}
+                    >
+                      ✕ Clear · show all of {monthName}
+                    </button>
+                    {allowMultiple && (
+                      <button
+                        type="button"
+                        className={`${styles.datePickerYearBtn} ${styles.datePickerDayActive}`}
+                        onClick={() => setOpen(null)}
+                      >
+                        Done
+                      </button>
+                    )}
+                  </div>
                 </>
               ) : (
                 <div style={{ opacity: 0.75 }}>
-                  Showing all of <strong>{monthName} {value.year}</strong>. Click a day to see that day only.
+                  Showing all of <strong>{monthName} {value.year}</strong>.{' '}
+                  {allowMultiple
+                    ? 'Click any days you want to see.'
+                    : 'Click a day to see that day only.'}
                 </div>
               )}
             </div>
+            {allowMultiple && (
+              <div className={styles.datePickerPresets}>
+                {dayPresets.map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    className={`${styles.datePickerYearBtn} ${selectedDays.join() === preset.dates.join() ? styles.datePickerDayActive : ''}`}
+                    onClick={() => applyPreset(preset.dates)}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -398,44 +532,6 @@ function DateRangeFilter({ value, onChange, years, showShift = false }) {
         )}
       </div>
     </div>
-    {showShift && (
-      <div style={{ margin: '12px 0 6px' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', opacity: 0.6 }}>
-            Shift
-          </span>
-          <div className={styles.dateSegmentedBar}>
-            {SHIFT_OPTIONS.map((opt) => {
-              const live = value.mode === 'shift';
-              const isActive = live ? opt.id === shiftTypeOf(new Date()) : activeShift === opt.id;
-              return (
-                <button
-                  key={opt.id}
-                  type="button"
-                  className={`${styles.dateSegmentBtn} ${isActive ? styles.dateSegmentBtnActive : ''}`}
-                  onClick={() => {
-                    if (live) onChange({ ...value, mode: 'day', shift: opt.id, date: null });
-                    else onChange({ ...value, shift: opt.id });
-                  }}
-                >
-                  <span className={styles.dateSegmentIcon}>
-                    <Icon name={opt.id === 'morning' ? 'light_mode' : opt.id === 'night' ? 'dark_mode' : 'schedule'} size={16} />
-                  </span>
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        <p style={{ margin: '8px 0 0', fontSize: 12, lineHeight: 1.5, opacity: 0.7 }}>
-          {value.mode === 'shift'
-            ? `Live now: ${describeShift()}. Numbers start fresh at 8:00 AM and 8:00 PM — old shifts are never deleted. Pick a shift and a date to look back.`
-            : activeShift === 'all'
-              ? 'Showing all hours for the selected period. Pick Morning or Night to see one shift only.'
-              : `Showing ${activeShift === 'morning' ? 'Morning (8AM–8PM)' : 'Night (8PM–8AM)'} shift only, for the selected period.`}
-        </p>
-      </div>
-    )}
     </>
   );
 }
@@ -2018,6 +2114,45 @@ export default function Dashboard() {
   const [archiveTypeCat, setArchiveTypeCat] = useState(''); // accident type (Fire, Medical…) when Accident is chosen
   const [archiveSubType, setArchiveSubType] = useState('');
 
+  // Picking a shift in the sidebar keeps the graph you are looking at in place.
+  const contentRef = useRef(null);
+  const reportAnchorRef = useRef(null);
+
+  const selectShift = (shiftId) => {
+    const content = contentRef.current;
+    const report = content?.querySelector('[data-report]');
+    if (report) {
+      const top = content.getBoundingClientRect().top;
+      const sections = [...report.children];
+      const index = sections.findIndex((el) => el.getBoundingClientRect().bottom > top + 80);
+      if (index >= 0) {
+        reportAnchorRef.current = { index, offset: sections[index].getBoundingClientRect().top - top };
+      }
+    }
+    setAnalyticsDateFilter((prev) => withShift(prev, shiftId));
+  };
+
+  useLayoutEffect(() => {
+    const anchor = reportAnchorRef.current;
+    reportAnchorRef.current = null;
+    const content = contentRef.current;
+    const report = content?.querySelector('[data-report]');
+    if (!report) return;
+    const wrapper = report.parentElement;
+    wrapper.style.minHeight = '';
+    const section = anchor && report.children[anchor.index];
+    if (!section) return;
+    const target =
+      content.scrollTop +
+      section.getBoundingClientRect().top -
+      content.getBoundingClientRect().top -
+      anchor.offset;
+    // With less data the page gets shorter; pad it so the same spot stays reachable.
+    const missing = target + content.clientHeight - content.scrollHeight;
+    if (missing > 0) wrapper.style.minHeight = `${wrapper.offsetHeight + missing}px`;
+    content.scrollTop = target;
+  }, [analyticsDateFilter]);
+
   const fetchData = useCallback(async ({ showLoader = false } = {}) => {
     if (showLoader) {
       setIsLoading(true);
@@ -2969,6 +3104,14 @@ export default function Dashboard() {
     setActiveTab(card.tab);
   };
 
+  // A status card in Analytics opens the same requests (same period) on the Accident page.
+  const openAccidentsFromAnalytics = (tab) => {
+    setIncidentDateFilter({ ...analyticsDateFilter });
+    setIncidentFilter(tab);
+    setActiveTab('incidents');
+    if (contentRef.current) contentRef.current.scrollTop = 0;
+  };
+
   const TableLoader = () => (
     <div className={styles.loadingBox}>
       <div className={styles.loader} />
@@ -3001,8 +3144,8 @@ export default function Dashboard() {
                 <p className={styles.navSectionLabel}>{section.label}</p>
               )}
               {section.items.map((item) => (
+                <Fragment key={item.id}>
                 <button
-                  key={item.id}
                   type="button"
                   className={`${styles.navItem} ${activeTab === item.id ? styles.navItemActive : ''}`}
                   onClick={() => setActiveTab(item.id)}
@@ -3014,6 +3157,35 @@ export default function Dashboard() {
                     <span className={styles.navBadge}>{unviewedPendingCount}</span>
                   )}
                 </button>
+                {item.id === 'analytics' && (
+                  <div className={`${styles.navSubWrap} ${activeTab === 'analytics' ? styles.navSubOpen : ''}`}>
+                  <div className={styles.navSubInner}>
+                  <div
+                    className={`${styles.navSub} ${sidebarOpen ? '' : styles.navSubCollapsed}`}
+                    role="group"
+                    aria-label="Shift"
+                  >
+                    {SHIFT_OPTIONS.map((opt) => {
+                      const isActive = selectedShiftOf(analyticsDateFilter) === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          className={`${styles.navSubItem} ${isActive ? styles.navSubItemActive : ''}`}
+                          onClick={() => selectShift(opt.id)}
+                          aria-pressed={isActive}
+                          title={!sidebarOpen ? opt.label : undefined}
+                        >
+                          <Icon name={opt.icon} size={16} />
+                          {sidebarOpen && <span>{opt.label}</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  </div>
+                  </div>
+                )}
+                </Fragment>
               ))}
             </div>
           ))}
@@ -3042,7 +3214,10 @@ export default function Dashboard() {
 
           <div className={styles.topbarLeft}>
           <div className={styles.topbarTitle}>
-              {currentNav ? <><Icon name={currentNav.icon} size={20} /> {currentNav.label}</> : null}
+              {/* Other pages show their own heading, so the name is not repeated here. */}
+              {activeTab === 'live-map' && currentNav ? (
+                <><Icon name={currentNav.icon} size={20} /> {currentNav.label}</>
+              ) : null}
             </div>
           </div>
 
@@ -3084,7 +3259,10 @@ export default function Dashboard() {
         </header>
 
         {/* Content */}
-        <div className={`${styles.content} ${(activeTab === 'live-map' || activeTab === 'call-log') ? styles.contentPanel : ''}`}>
+        <div
+          ref={contentRef}
+          className={`${styles.content} ${(activeTab === 'live-map' || activeTab === 'call-log') ? styles.contentPanel : ''}`}
+        >
           {error && (
             <div className={styles.errorBanner}>
               <span><Icon name="warning" size={16} /> {error}</span>
@@ -3297,12 +3475,14 @@ export default function Dashboard() {
                 onChange={setAnalyticsDateFilter}
                 years={filterYears}
                 showShift
+                allowMultiple
               />
               <AccidentReport
                 incidents={incidents.filter((i) => matchesIncidentDateRange(i, analyticsDateFilter))}
                 dateFilter={analyticsDateFilter}
                 periodLabel={describeDateFilter(analyticsDateFilter)}
                 isLoading={isLoading}
+                onOpenStatus={openAccidentsFromAnalytics}
               />
             </div>
           )}
@@ -3356,9 +3536,22 @@ export default function Dashboard() {
 
               <DateRangeFilter
                 value={incidentDateFilter}
-                onChange={setIncidentDateFilter}
+                // Picking a date here also drops a shift carried over from Analytics.
+                onChange={(next) => setIncidentDateFilter({ ...next, shift: undefined })}
                 years={filterYears}
               />
+
+              {(['shift', 'custom'].includes(incidentDateFilter.mode) ||
+                ['morning', 'night'].includes(incidentDateFilter.shift)) && (
+                <p className={styles.carriedFilter}>
+                  <span>
+                    Showing <strong>{describeDateFilter(incidentDateFilter)}</strong>, as picked in Analytics.
+                  </span>
+                  <button type="button" onClick={() => setIncidentDateFilter(makeDateFilter())}>
+                    Show all time
+                  </button>
+                </p>
+              )}
 
               <div className={styles.incidentFilterBar}>
                 {INCIDENT_FILTER_TABS.map((tab) => (
@@ -4072,6 +4265,9 @@ export default function Dashboard() {
           onClose={() => setEditingIncident(null)}
           onUpdated={fetchData}
           onShowMap={handleShowOnLiveMap}
+          onTypeChanged={(incidentType) =>
+            setEditingIncident((prev) => prev && { ...prev, incident_type: incidentType })
+          }
         />
       )}
 

@@ -88,6 +88,11 @@ export async function updateIncidentStatus(incidentId, incident_status, extra = 
   return res.data;
 }
 
+export async function updateIncidentType(incidentId, incident_type) {
+  const res = await api.patch(`/incidents/${incidentId}/type`, { incident_type });
+  return res.data;
+}
+
 export async function archiveIncident(incidentId) {
   const res = await api.patch(`/incidents/${incidentId}/archive`);
   return res.data;

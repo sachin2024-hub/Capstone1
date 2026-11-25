@@ -499,6 +499,83 @@ router.patch('/:id/status', async (req, res) => {
   }
 });
 
+const TYPE_CATEGORIES = [
+  'Medical Emergency',
+  'Fire',
+  'Vehicular Accident',
+  'Natural Disaster',
+  'Crime / Violence',
+  'Drowning',
+  'Fall / Injury',
+  'Other Emergency',
+];
+
+// PATCH /api/incidents/:id/type — admin corrects a wrongly reported emergency type
+router.patch('/:id/type', async (req, res) => {
+  const incidentId = Number(req.params.id);
+  const incidentType = String(req.body?.incident_type || '').trim();
+  const [category, ...specific] = incidentType.split(' — ');
+
+  if (!incidentId) return res.status(400).json({ message: 'Incident ID is required.' });
+  if (!TYPE_CATEGORIES.includes(category) || !specific.join('').trim() || incidentType.length > 150) {
+    return res.status(400).json({ message: 'Invalid emergency type.' });
+  }
+
+  try {
+    const { data: existing, error: existingErr } = await supabase
+      .from('incidents')
+      .select('incident_type, incident_status')
+      .eq('incident_id', incidentId)
+      .single();
+
+    if (existingErr || !existing) {
+      return res.status(404).json({ message: 'Incident not found.' });
+    }
+    if (['Archived', 'Deleted'].includes(existing.incident_status)) {
+      return res.status(400).json({ message: 'Restore this accident before changing its type.' });
+    }
+
+    // Fire and Crime are referred instead of dispatched. Switching between the two kinds
+    // is only safe while nothing has been done on the request yet.
+    if (isReferralOnlyType(existing.incident_type) !== isReferralOnlyType(incidentType)) {
+      const { data: dispatches, error: dispatchErr } = await supabase
+        .from('dispatch')
+        .select('dispatch_status')
+        .eq('incident_id', incidentId);
+      if (dispatchErr) return res.status(500).json({ message: dispatchErr.message });
+
+      const unitAssigned = (dispatches || []).some((d) => d.dispatch_status !== 'Completed');
+      if (unitAssigned || !['Pending', 'Outside'].includes(existing.incident_status)) {
+        return res.status(400).json({
+          message:
+            'Fire and Crime are referred, not dispatched. This type can only be switched while the request is still waiting and has no assigned unit.',
+        });
+      }
+    }
+
+    const { data: incident, error } = await supabase
+      .from('incidents')
+      .update({ incident_type: incidentType })
+      .eq('incident_id', incidentId)
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ message: error.message });
+
+    logActivity(req, {
+      action: 'incident.type',
+      entity_type: 'incident',
+      entity_id: incidentId,
+      target: `Incident #${incidentId}`,
+      details: `Changed accident #${incidentId} type from ${existing.incident_type} to ${incidentType}.`,
+    });
+
+    return res.json({ message: 'Type updated.', incident });
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+});
+
 // PATCH /api/incidents/:id/cancel — same as POST /cancel
 router.patch('/:id/cancel', authenticateToken, async (req, res) => {
   const incidentId = Number(req.params.id);

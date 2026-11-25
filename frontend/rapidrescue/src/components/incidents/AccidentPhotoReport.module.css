@@ -1,44 +1,20 @@
-.filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 18px;
-}
-
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
+.categorySelect {
+  min-width: 240px;
+  max-width: 100%;
+  margin-left: auto;
+  padding: 9px 12px;
   border: 1.5px solid #e5e7eb;
-  border-radius: 999px;
+  border-radius: 9px;
   background: #fff;
-  color: #555;
+  color: #333;
   font: 600 13px 'Inter', system-ui, sans-serif;
   cursor: pointer;
 }
 
-.chip:hover {
+.categorySelect:hover,
+.categorySelect:focus {
   border-color: #c1121f;
-}
-
-.chipActive {
-  background: #c1121f;
-  border-color: #c1121f;
-  color: #fff;
-}
-
-.chipCount {
-  min-width: 22px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.08);
-  font-size: 11px;
-  text-align: center;
-}
-
-.chipActive .chipCount {
-  background: rgba(255, 255, 255, 0.25);
+  outline: none;
 }
 
 .grid {

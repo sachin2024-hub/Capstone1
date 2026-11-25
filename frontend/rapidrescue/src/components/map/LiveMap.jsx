@@ -37,15 +37,7 @@ function stopPopupClick(e) {
   e.nativeEvent?.stopImmediatePropagation?.();
 }
 
-/** Scroll only inside a panel — never moves the page/window. */
-function scrollPanelToCard(panel, card, padding = 10) {
-  if (!panel || !card || typeof panel.scrollTo !== 'function') return;
-  const panelRect = panel.getBoundingClientRect();
-  const cardRect = card.getBoundingClientRect();
-  const delta = cardRect.top - panelRect.top - padding;
-  const nextTop = Math.max(0, panel.scrollTop + delta);
-  panel.scrollTo({ top: nextTop, behavior: 'smooth' });
-}
+const ALERTS_PER_PAGE = 3;
 
 export default function LiveMap({
   focusIncidentId = null,
@@ -80,13 +72,10 @@ export default function LiveMap({
   const hasAutoSelected = useRef(false);
   const markerRefs = useRef({});
   const mapPanelRef = useRef(null);
-  const alertListRef = useRef(null);
+  const [page, setPage] = useState(0);
   const pendingFocusId = useRef(
     focusIncidentId != null ? Number(focusIncidentId) : null
   );
-  /** Only true after Accident green-map click; cleared after one panel scroll. */
-  const needsAlertPanelScroll = useRef(false);
-  const scrolledFocusKey = useRef('');
 
   const sameIncidentId = (a, b) => Number(a) === Number(b);
 
@@ -189,45 +178,26 @@ export default function LiveMap({
     setFocusRequestId((n) => n + 1);
   }, [focusIncidentId, focusNonce]);
 
-  // Arm scroll only when Dashboard says this came from the green map icon
+  // Tell the Dashboard its "show this alert" request has been handled.
   useEffect(() => {
-    if (!scrollAlertsOnce) return;
-    needsAlertPanelScroll.current = true;
-  }, [scrollAlertsOnce, focusNonce]);
+    if (scrollAlertsOnce && liveIncidents.length) onAlertsScrolled?.();
+  }, [scrollAlertsOnce, liveIncidents.length, onAlertsScrolled]);
 
-  // One-time scroll of Active Help Alerts list only (never the page)
-  useEffect(() => {
-    if (!needsAlertPanelScroll.current || !scrollAlertsOnce) return undefined;
-    const id = pendingFocusId.current;
-    if (id == null || !liveIncidents.length) return undefined;
-    if (!liveIncidents.some((inc) => sameIncidentId(inc.incident_id, id))) return undefined;
+  // Turn to the page of the selected alert (card, map pin, or request from the Accident page).
+  // Not run on the 8-second refresh, so paging through the list is never interrupted.
+  const selectedIndex = liveIncidents.findIndex((inc) => sameIncidentId(inc.incident_id, selectedId));
+  const followKey = `${selectedId}:${focusRequestId}:${selectedIndex >= 0}`;
+  const [followedKey, setFollowedKey] = useState('');
+  if (followKey !== followedKey) {
+    // Adjusting state during render: React re-renders at once, without an extra effect.
+    setFollowedKey(followKey);
+    if (selectedIndex >= 0) setPage(Math.floor(selectedIndex / ALERTS_PER_PAGE));
+  }
 
-    setSelectedId(id);
-
-    const attemptScroll = () => {
-      if (!needsAlertPanelScroll.current) return;
-      const list = alertListRef.current;
-      const card = list?.querySelector(`[data-incident-id="${id}"]`);
-      if (!list || !card) return;
-      scrollPanelToCard(list, card, 12);
-      needsAlertPanelScroll.current = false;
-      scrolledFocusKey.current = `${id}:${focusNonce}`;
-      onAlertsScrolled?.();
-    };
-
-    const t1 = setTimeout(attemptScroll, 40);
-    const t2 = setTimeout(attemptScroll, 220);
-    const t3 = setTimeout(() => {
-      if (!needsAlertPanelScroll.current) return;
-      needsAlertPanelScroll.current = false;
-      onAlertsScrolled?.();
-    }, 900);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-    };
-  }, [liveIncidents, focusIncidentId, focusNonce, scrollAlertsOnce, onAlertsScrolled]);
+  const pageCount = Math.max(1, Math.ceil(liveIncidents.length / ALERTS_PER_PAGE));
+  const currentPage = Math.min(page, pageCount - 1);
+  const firstShown = currentPage * ALERTS_PER_PAGE;
+  const pagedIncidents = liveIncidents.slice(firstShown, firstShown + ALERTS_PER_PAGE);
 
   useEffect(() => {
     if (!layersOpen) return undefined;
@@ -271,8 +241,6 @@ export default function LiveMap({
   const focusOnIncident = (incidentId) => {
     const id = Number(incidentId);
     pendingFocusId.current = id;
-    // Manual card click: update highlight only — do not auto-scroll the panel
-    needsAlertPanelScroll.current = false;
     setSelectedId(id);
     setFocusRequestId((n) => n + 1);
   };
@@ -854,13 +822,11 @@ export default function LiveMap({
             <p className={styles.emptyHint}>Press Help on the mobile app inside Cabadbaran City to trigger a response.</p>
           </div>
         ) : (
-          <div
-            ref={alertListRef}
-            className={styles.alertList}
-            data-active-help-scroll
-          >
-          {liveIncidents.map((inc) => {
+          <>
+          <div className={styles.alertList}>
+          {pagedIncidents.map((inc) => {
             const outside = !isWithinCabadbaran(inc.victim.lat, inc.victim.lng);
+            const isSelected = sameIncidentId(selectedId, inc.incident_id);
             const route = routes[Number(inc.incident_id)];
             const parsed = parseLocationAddress(inc.victim.address);
             const loc = {
@@ -868,25 +834,51 @@ export default function LiveMap({
               area: inc.victim.area || parsed.area,
               barangay: inc.victim.barangay || parsed.barangay,
             };
+            const place = outside
+              ? OUTSIDE_CITY_MESSAGE
+              : `${formatAreaLabel(loc)} · Brgy. ${loc.barangay || 'Unknown'}`;
+            const distance = route?.isRoad
+              ? `${formatDistance(route.distance)} · ${formatDuration(route.duration)}`
+              : route?.points
+                ? `~${formatDistance(route.distance)} · ${formatDuration(route.duration)}`
+                : isSelected
+                  ? 'Getting directions…'
+                  : '';
             return (
               <button
                 type="button"
                 key={inc.incident_id}
                 data-incident-id={Number(inc.incident_id)}
-                className={`${styles.alertCard} ${sameIncidentId(selectedId, inc.incident_id) ? styles.alertCardActive : ''} ${outside ? styles.alertCardOutside : ''}`}
+                className={`${styles.alertCard} ${isSelected ? styles.alertCardActive : ''} ${outside ? styles.alertCardOutside : ''}`}
                 onClick={() => focusOnIncident(inc.incident_id)}
               >
-                <div className={styles.alertHeader}>
-                  <span className={styles.alertId}>#{inc.incident_id}</span>
+                <span className={styles.alertHeader}>
+                  <span className={styles.alertUser}>
+                    <span className={styles.alertId}>#{inc.incident_id}</span>{' '}
+                    {inc.user ? `${inc.user.first_name} ${inc.user.last_name}` : 'Unknown user'}
+                  </span>
                   <span className={outside ? styles.alertOutside : styles.alertStatus}>
                     {outside ? '⚠️ Outside' : inc.incident_status}
                   </span>
-                </div>
-                <div className={styles.alertUserRow}>
-                  <p className={styles.alertUser}>
-                    👤 {inc.user ? `${inc.user.first_name} ${inc.user.last_name}` : 'Unknown user'}
-                  </p>
-                  {inc.user?.phone_number && (
+                </span>
+                <span className={styles.alertPlace} title={place}>
+                  📍 {place}
+                </span>
+                <span className={styles.alertMeta}>
+                  {!outside && (inc.responder ? (
+                    <span
+                      className={styles.alertResponder}
+                      title={`From: ${inc.responder.station_name || 'DRRMO Headquarters'}`}
+                    >
+                      🚑 {inc.responder.vehicle} — {inc.responder.team}
+                    </span>
+                  ) : (
+                    <span className={styles.alertNoResponder}>⏳ Waiting for dispatch</span>
+                  ))}
+                  {distance && <span className={styles.alertRoute}>🛣️ {distance}</span>}
+                </span>
+                <span className={styles.alertFooter}>
+                  {inc.user?.phone_number ? (
                     <a
                       href={`tel:${inc.user.phone_number}`}
                       className={styles.callBtn}
@@ -895,79 +887,52 @@ export default function LiveMap({
                     >
                       📞 {inc.user.phone_number}
                     </a>
-                  )}
-                </div>
-                {!outside && (
-                  <div className={styles.alertLocation}>
-                    <p className={styles.alertPurok}>
-                      📍 {formatAreaLabel(loc)}
-                    </p>
-                    <p className={styles.alertBarangay}>
-                      🏘️ Barangay {loc.barangay || 'Unknown'}
-                    </p>
-                  </div>
-                )}
-                {outside ? (
-                  <>
-                    <p className={styles.alertOutsideText}>{OUTSIDE_CITY_MESSAGE}</p>
-                    {route?.isRoad && (
-                      <p className={styles.alertRoute}>
-                        🛣️ {formatDistance(route.distance)} · {formatDuration(route.duration)} via road
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    {inc.responder ? (
-                      <>
-                        <p className={styles.alertResponder}>
-                          🚑 {inc.responder.vehicle} — {inc.responder.team}
-                        </p>
-                        <p className={styles.alertStation}>
-                          🏢 From: {inc.responder.station_name || 'DRRMO Headquarters'}
-                        </p>
-                      </>
-                    ) : (
-                      <p className={styles.alertNoResponder}>
-                        ⏳ Waiting for responder dispatch...
-                      </p>
-                    )}
-                    <p className={styles.alertRoute}>
-                      {route?.isRoad
-                        ? `🛣️ ${formatDistance(route.distance)} · ${formatDuration(route.duration)} via road`
-                        : route?.points
-                          ? `🛣️ ~${formatDistance(route.distance)} · ${formatDuration(route.duration)} (direct)`
-                          : sameIncidentId(selectedId, inc.incident_id)
-                            ? '⏳ Getting road directions…'
-                            : 'Tap to show route'}
-                    </p>
-                  </>
-                )}
-                {sameIncidentId(selectedId, inc.incident_id) && (
-                  <span
-                    className={styles.alertStreetBtn}
-                    role="button"
-                    tabIndex={0}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      openStreetView(inc);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
+                  ) : <span />}
+                  {isSelected && (
+                    <span
+                      className={styles.alertStreetBtn}
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
                         openStreetView(inc);
-                      }
-                    }}
-                  >
-                    🚶 Street View
-                  </span>
-                )}
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          openStreetView(inc);
+                        }
+                      }}
+                    >
+                      🚶 Street View
+                    </span>
+                  )}
+                </span>
               </button>
             );
           })}
           </div>
+          <nav className={styles.alertPager} aria-label="Help alert pages">
+            <button type="button" onClick={() => setPage(0)} disabled={currentPage === 0} aria-label="First page">«</button>
+            <button type="button" onClick={() => setPage(currentPage - 1)} disabled={currentPage === 0} aria-label="Previous page">‹ Prev</button>
+            <span aria-live="polite">
+              {firstShown + 1}–{firstShown + pagedIncidents.length} of {liveIncidents.length}
+            </span>
+            <button
+              type="button"
+              // Nudges a few times on the first page so people notice there is more.
+              className={currentPage === 0 ? styles.alertPagerNudge : undefined}
+              onClick={() => setPage(currentPage + 1)}
+              disabled={currentPage >= pageCount - 1}
+              aria-label="Next page"
+            >
+              Next ›
+            </button>
+            <button type="button" onClick={() => setPage(pageCount - 1)} disabled={currentPage >= pageCount - 1} aria-label="Last page">»</button>
+          </nav>
+          </>
         )}
       </div>
 

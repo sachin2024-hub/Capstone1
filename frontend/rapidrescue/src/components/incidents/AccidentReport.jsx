@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { toPng } from 'html-to-image';
 import * as XLSX from 'xlsx';
@@ -96,6 +96,29 @@ function buildTrend(rows, dateFilter) {
   let dayCount = 14;
   let from = startOfLocalDay(addDays(now, -(dayCount - 1)));
 
+  if (mode === 'custom' && dateFilter.dates?.length) {
+    const { dates } = dateFilter;
+    // With one shift picked, a night shift after midnight counts on the day it
+    // started, the same way the date filter treats it (shift day = 8AM–8AM).
+    const shiftOnly = dateFilter.shift === 'morning' || dateFilter.shift === 'night';
+    const shiftOffsetMs = shiftOnly ? 8 * 3600000 : 0;
+    // More than a month of days would not fit as daily columns: group them by month.
+    const byMonth = dates.length > 31;
+    const keyOf = (iso) => (byMonth ? iso.slice(0, 7) : iso);
+    const buckets = new Map(dates.map((iso) => [keyOf(iso), 0]));
+    rows.forEach((inc) => {
+      if (!inc.date_reported) return;
+      const key = keyOf(dayKey(new Date(inc.date_reported).getTime() - shiftOffsetMs));
+      if (buckets.has(key)) buckets.set(key, buckets.get(key) + 1);
+    });
+    const sameYear = dates[0].slice(0, 4) === dates[dates.length - 1].slice(0, 4);
+    return [...buckets.entries()].map(([key, count]) => {
+      const [year, month] = key.split('-');
+      if (byMonth) return { label: `${monthLabel(Number(month) - 1)} '${year.slice(-2)}`, count };
+      return { label: sameYear ? shortDay(key) : `${shortDay(key)} '${year.slice(-2)}`, count };
+    });
+  }
+
   if (mode === 'week') {
     const start = startOfLocalDay(now);
     const weekday = start.getDay();
@@ -174,6 +197,12 @@ function hourLabel(hour) {
   if (hour === 0) return '12 AM';
   if (hour === 12) return '12 PM';
   return hour < 12 ? `${hour} AM` : `${hour - 12} PM`;
+}
+
+function joinNames(names) {
+  if (names.length > 4) return `${names.slice(0, 3).join(', ')} +${names.length - 3} more`;
+  if (names.length < 2) return names[0] || '';
+  return `${names.slice(0, -1).join(', ')} & ${names[names.length - 1]}`;
 }
 
 /** Groups the 24 hourly counts into 4 parts of the day, which are easier to read than 24 boxes. */
@@ -497,7 +526,7 @@ function BarList({ items, colors, total }) {
   );
 }
 
-function ColumnChart({ points, color = '#c1121f' }) {
+function ColumnChart({ points, color = '#c1121f', highlight = [] }) {
   const max = Math.max(1, ...points.map((p) => p.count));
   const { hostRef, tip, hide, bindItem } = useHoverTip();
 
@@ -522,7 +551,7 @@ function ColumnChart({ points, color = '#c1121f' }) {
                 className={styles.colBar}
                 style={{
                   height: `${Math.max(point.count ? 8 : 2, (point.count / max) * 100)}%`,
-                  background: color,
+                  background: !highlight.length || highlight.includes(point.label) ? color : '#f1a7ad',
                   animationDelay: `${index * 0.05}s`,
                 }}
               />
@@ -593,6 +622,19 @@ function StackBar({ items, total }) {
 function ChartCard({ title, note, children, wide = false, className = '' }) {
   const cardRef = useRef(null);
   const [busy, setBusy] = useState(false);
+  const [seen, setSeen] = useState(false);
+
+  useEffect(() => {
+    if (seen || !cardRef.current) return undefined;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) setSeen(true);
+      },
+      { threshold: 0.2 }
+    );
+    observer.observe(cardRef.current);
+    return () => observer.disconnect();
+  }, [seen]);
 
   const handleDownload = async () => {
     if (!cardRef.current || busy) return;
@@ -608,7 +650,10 @@ function ChartCard({ title, note, children, wide = false, className = '' }) {
   };
 
   return (
-    <section ref={cardRef} className={`${styles.card} ${wide ? styles.wide : ''} ${className}`}>
+    <section
+      ref={cardRef}
+      className={`${styles.card} ${wide ? styles.wide : ''} ${seen ? '' : styles.waiting} ${className}`}
+    >
       <div className={styles.cardHead}>
         <h4>{title}</h4>
         <button
@@ -631,11 +676,14 @@ function ChartCard({ title, note, children, wide = false, className = '' }) {
 
 export default function AccidentReport({
   incidents = [],
+  onOpenStatus,
   dateFilter = { mode: 'all' },
   periodLabel = 'all time',
   isLoading = false,
 }) {
   const mode = dateFilter?.mode || 'all';
+  // A single day reads better hour by hour.
+  const hourlyTrend = mode === 'day' || (mode === 'custom' && dateFilter.dates?.length === 1);
   const [printOpen, setPrintOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [typeFocus, setTypeFocus] = useState('__all'); // '__all' or a category name
@@ -673,7 +721,9 @@ export default function AccidentReport({
     const response = averageResponseMs(rows);
     const types = countBy(rows, (inc) => incidentCategory(inc.incident_type));
     const barangays = countBy(rows, barangayOf);
-    const peak = hours.reduce((best, h) => (h.count > best.count ? h : best), hours[0]);
+    // Every hour tied for the highest count, not only the first one.
+    const peakCount = Math.max(...hours.map((h) => h.count));
+    const peakHours = peakCount > 0 ? hours.filter((h) => h.count === peakCount) : [];
 
     return {
       rows,
@@ -684,6 +734,11 @@ export default function AccidentReport({
       cancelled: cancelled.length,
       outside: outside.length,
       unreviewed: unreviewed.length,
+      // The Accident page lists referred requests in their own tab.
+      outsideTab:
+        outside.length && outside.every((inc) => inc.incident_status === 'Referred')
+          ? 'referred'
+          : 'outside',
       stillOpen,
       resolutionRate,
       openRate,
@@ -700,7 +755,8 @@ export default function AccidentReport({
       barangays,
       topType: types[0] || null,
       topArea: barangays[0] || null,
-      peakHour: peak && peak.count > 0 ? hourLabel(peak.hour) : null,
+      peakHours: peakHours.map((h) => hourLabel(h.hour)),
+      peakCount,
       trend: buildTrend(rows, dateFilter),
       hours: hours.map((item) => ({ label: hourLabel(item.hour), count: item.count })),
       avgResponse: formatDuration(response.avgMs),
@@ -729,8 +785,9 @@ export default function AccidentReport({
 
   const busy = useMemo(() => {
     const parts = dayParts(report.hours);
-    const top = parts.reduce((best, part) => (part.count > best.count ? part : best), parts[0]);
-    return { parts, top: top.count > 0 ? top : null };
+    const max = Math.max(...parts.map((part) => part.count));
+    const tops = max > 0 ? parts.filter((part) => part.count === max) : [];
+    return { parts, tops };
   }, [report.hours]);
 
   const printedOn = new Date().toLocaleString('en-PH', {
@@ -797,7 +854,7 @@ export default function AccidentReport({
       const typeItems = report.types.map((item) => ({ label: item.label, count: item.count }));
       const statusItems = report.statuses.map((item) => ({ label: item.label, count: item.count }));
       const locationItems = report.barangays.map((item) => ({ label: item.label, count: item.count }));
-      const trendSource = mode === 'day' ? report.hours : report.trend;
+      const trendSource = hourlyTrend ? report.hours : report.trend;
       const trendItems = trendSource.map((item) => ({ label: item.label, count: item.count }));
 
       const recordRows = [
@@ -853,12 +910,12 @@ export default function AccidentReport({
   }
 
   const kpis = [
-    { label: 'Pending', value: report.pending, color: STATUS_COLORS.Pending },
-    { label: 'Active response', value: report.active, color: '#1565c0' },
-    { label: 'Resolved', value: report.resolved, color: STATUS_COLORS.Resolved },
-    { label: 'Outside', value: report.outside, color: STATUS_COLORS.Outside },
-    { label: 'Cancelled', value: report.cancelled, color: STATUS_COLORS.Cancelled },
-    { label: 'Not reviewed', value: report.unreviewed, color: BRAND, alert: report.unreviewed > 0 },
+    { tab: 'pending', label: 'Pending', value: report.pending, color: STATUS_COLORS.Pending },
+    { tab: 'active', label: 'Active response', value: report.active, color: '#1565c0' },
+    { tab: 'resolved', label: 'Resolved', value: report.resolved, color: STATUS_COLORS.Resolved },
+    { tab: report.outsideTab, label: 'Outside', value: report.outside, color: STATUS_COLORS.Outside },
+    { tab: 'cancelled', label: 'Cancelled', value: report.cancelled, color: STATUS_COLORS.Cancelled },
+    { tab: 'pending', label: 'Not reviewed', value: report.unreviewed, color: BRAND, alert: report.unreviewed > 0 },
   ];
 
   const insights = [
@@ -873,9 +930,11 @@ export default function AccidentReport({
       hint: report.topArea ? `${report.topArea.count} requests · ${pct(report.topArea.count, report.total)}` : 'No data yet',
     },
     {
-      label: 'Busiest hour',
-      value: report.peakHour || '—',
-      hint: report.peakHour ? 'Most requests are reported around this time' : 'No data yet',
+      label: report.peakHours.length > 1 ? 'Busiest hours' : 'Busiest hour',
+      value: joinNames(report.peakHours) || '—',
+      hint: report.peakHours.length
+        ? `${requestLabel(report.peakCount)}${report.peakHours.length > 1 ? ' each' : ''}`
+        : 'No data yet',
     },
   ];
 
@@ -884,6 +943,8 @@ export default function AccidentReport({
       ? 'Requests this shift by hour'
       : mode === 'day'
       ? 'Requests today by hour'
+      : mode === 'custom'
+      ? hourlyTrend ? 'Requests by hour' : 'Requests in the selected dates'
       : mode === 'week'
         ? 'Requests this week'
         : mode === 'month' || mode === 'date'
@@ -897,6 +958,8 @@ export default function AccidentReport({
       ? 'Hourly count for the running 12-hour shift. It starts fresh at 8:00 AM and 8:00 PM.'
       : mode === 'day'
       ? 'Hourly count for today only.'
+      : mode === 'custom'
+      ? `${hourlyTrend ? 'Hourly count' : 'Count'} for ${periodLabel}.`
       : mode === 'week'
         ? 'Daily count for the current week.'
         : mode === 'month' || mode === 'date'
@@ -909,7 +972,7 @@ export default function AccidentReport({
   const displaySubtitle = reportMeta.subtitle || `Cabadbaran City DRRMO · Showing data for ${periodLabel}`;
 
   return (
-    <div className={styles.report}>
+    <div className={styles.report} key={periodLabel} data-report>
       <div className={styles.toolbar}>
         <div>
           <h3 className={styles.title}>{displayTitle}</h3>
@@ -940,7 +1003,6 @@ export default function AccidentReport({
         <div className={styles.heroMain}>
           <span className={styles.heroEyebrow}>Total requests</span>
           <strong className={styles.heroValue}>{report.total}</strong>
-          <span className={styles.heroSub}>{periodLabel}</span>
         </div>
         <div className={styles.heroGauge}>
           <div className={styles.ringWrap}>
@@ -985,23 +1047,30 @@ export default function AccidentReport({
 
       <div className={styles.kpiGrid}>
         {kpis.map((kpi) => (
-          <div key={kpi.label} className={`${styles.kpi} ${kpi.alert ? styles.kpiAlert : ''}`}>
-            <div className={styles.kpiTop}>
+          <button
+            type="button"
+            key={kpi.label}
+            className={`${styles.kpi} ${kpi.alert ? styles.kpiAlert : ''}`}
+            onClick={() => onOpenStatus?.(kpi.tab)}
+            title={`Open ${kpi.label.toLowerCase()} requests in the Accident page`}
+          >
+            <span className={styles.kpiTop}>
               <span className={styles.legendDot} style={{ background: kpi.color }} />
               <span className={styles.kpiLabel}>{kpi.label}</span>
-            </div>
-            <div className={styles.kpiValue}>{kpi.value}</div>
-            <div className={styles.kpiBar}>
+            </span>
+            <span className={styles.kpiValue}>{kpi.value}</span>
+            <span className={styles.kpiBar}>
               <span style={{ width: report.total ? `${(kpi.value / report.total) * 100}%` : 0, background: kpi.color }} />
-            </div>
-            <div className={styles.kpiShare}>{pct(kpi.value, report.total)} of requests</div>
-          </div>
+            </span>
+            <span className={styles.kpiShare}>{pct(kpi.value, report.total)} of requests</span>
+            <span className={styles.kpiAction}>Open ›</span>
+          </button>
         ))}
       </div>
 
       <div className={styles.mainGrid}>
         <ChartCard title={trendTitle} note={trendNote}>
-          <ColumnChart points={mode === 'day' ? report.hours : report.trend} />
+          <ColumnChart points={hourlyTrend ? report.hours : report.trend} />
         </ChartCard>
         <ChartCard title="By incident type">
           <DonutChart
@@ -1074,23 +1143,22 @@ export default function AccidentReport({
 
       <ChartCard
         title="Busiest hours of the day"
-        note={busy.top
-          ? `Most requests come in during the ${busy.top.label.split(' · ')[0].toLowerCase()}${report.peakHour ? `, busiest around ${report.peakHour}` : ''}.`
-          : 'No requests in this period yet.'}
+        note={busy.tops.length ? undefined : 'No requests in this period yet.'}
         wide
       >
-        <p className={styles.emptyChart} style={{ textAlign: 'left', margin: '0 0 8px', fontWeight: 600 }}>
-          By part of the day
-        </p>
-        <BarList
-          items={busy.parts}
-          colors={busy.top ? { [busy.top.label]: '#c1121f', default: '#f1a7ad' } : { default: '#f1a7ad' }}
-          total={report.total}
-        />
-        <p className={styles.emptyChart} style={{ textAlign: 'left', margin: '16px 0 4px', fontWeight: 600 }}>
-          By hour
-        </p>
-        <ColumnChart points={report.hours} />
+        <p className={styles.chartSubhead}>By part of the day (6 hours each)</p>
+        <div className={styles.partList}>
+          <BarList
+            items={busy.parts}
+            colors={{
+              ...Object.fromEntries(busy.tops.map((p) => [p.label, '#c1121f'])),
+              default: '#f1a7ad',
+            }}
+            total={report.total}
+          />
+        </div>
+        <p className={styles.chartSubhead}>By single hour</p>
+        <ColumnChart points={report.hours} highlight={report.peakHours} />
       </ChartCard>
 
       <div className={styles.grid}>
