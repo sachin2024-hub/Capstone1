@@ -9,6 +9,7 @@ const { normalizeBlockReason, blockedAccountMessage, describeBlockReason } = req
 const { saveValidId, attachIdentity, removeValidId, loadIdImage, IDENTITY_COLUMNS, isMissingColumnError } = require('../utils/identityStore');
 const { saveProfilePhoto, loadProfilePhoto, removeProfilePhoto } = require('../utils/profilePhotoStore');
 const { verifyIdImage, compareNames, cleanDisplayName } = require('../utils/idScanner');
+const { compareFaces } = require('../utils/faceMatcher');
 const { logActivity } = require('../utils/activityLogger');
 const {
   getContacts: getEmergencyContacts,
@@ -93,9 +94,8 @@ router.post('/register', async (req, res) => {
     username,
     password,
     address,
-    id_type,
-    id_number,
     id_image,
+    selfie_image,
     emergency_contacts,
   } = req.body;
 
@@ -103,10 +103,17 @@ router.post('/register', async (req, res) => {
     return res.status(400).json({ message: 'First name, last name, username, and password are required.' });
   }
 
-  if (!String(id_type || '').trim() || !id_image) {
+  if (!id_image) {
     return res.status(400).json({
       field: 'id_image',
       message: 'Please take a photo of your valid ID to finish registration.',
+    });
+  }
+
+  if (!selfie_image) {
+    return res.status(400).json({
+      field: 'selfie_image',
+      message: 'Please take a selfie so we can match your face with your valid ID.',
     });
   }
 
@@ -165,13 +172,13 @@ router.post('/register', async (req, res) => {
       }
     }
 
-    const scan = await verifyIdImage(String(id_type).trim(), id_image, {
+    const scan = await verifyIdImage(id_image, {
       names: { first_name, middle_name, last_name },
     });
     if (!scan.match) {
       return res.status(400).json({
         field: 'id_image',
-        message: scan.message || 'The ID photo does not match the ID type you selected.',
+        message: scan.message || 'Please capture a valid government-issued ID.',
       });
     }
 
@@ -185,6 +192,14 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({
         field: nameCheck.reason === 'unreadable' ? 'id_image' : 'full_name',
         message: nameCheck.message,
+      });
+    }
+    // The person registering must be the person pictured on the ID
+    const face = await compareFaces(id_image, selfie_image);
+    if (!face.match) {
+      return res.status(400).json({
+        field: face.reason === 'id_no_face' ? 'id_image' : 'selfie_image',
+        message: face.message,
       });
     }
     const scannedIdNumber = String(scan.extracted?.id_number || '').replace(/[^A-Za-z0-9\-]/g, '') || null;
@@ -226,7 +241,7 @@ router.post('/register', async (req, res) => {
     let identity;
     try {
       identity = await saveValidId(data.user_id, {
-        id_type,
+        id_type: scan.id_type,
         id_number: scannedIdNumber,
         id_image,
       });
@@ -825,9 +840,9 @@ router.delete('/users/:id', async (req, res) => {
 
 // POST /api/auth/scan-id
 router.post('/scan-id', async (req, res) => {
-  const { id_type, image } = req.body;
-  if (!id_type || !image) {
-    return res.status(400).json({ match: false, message: 'id_type and image are required.' });
+  const { image } = req.body;
+  if (!image) {
+    return res.status(400).json({ match: false, message: 'image is required.' });
   }
 
   const names = {
@@ -835,7 +850,7 @@ router.post('/scan-id', async (req, res) => {
     middle_name: req.body.middle_name,
     last_name: req.body.last_name,
   };
-  const result = await verifyIdImage(String(id_type).trim(), image, { names });
+  const result = await verifyIdImage(image, { names });
   if (result.match) {
     result.name_check = compareNames(names, result.extracted?.name, result.ocrText);
     if (result.extracted) {
@@ -844,6 +859,16 @@ router.post('/scan-id', async (req, res) => {
   }
   delete result.ocrText;
   return res.json(result);
+});
+
+// POST /api/auth/verify-face — does the selfie show the person on the ID?
+router.post('/verify-face', async (req, res) => {
+  const { id_image, selfie_image } = req.body || {};
+  if (!id_image || !selfie_image) {
+    return res.status(400).json({ match: false, message: 'id_image and selfie_image are required.' });
+  }
+  const { match, reason, message } = await compareFaces(id_image, selfie_image);
+  return res.json({ match, reason, message });
 });
 
 module.exports = router;

@@ -105,11 +105,6 @@ const NATIONAL_ID_STRONG = [
   'national identification',
 ];
 
-const REJECT_KEYWORDS = [
-  'student', 'university', 'college', 'school id', 'campus',
-  'library card', 'employee id', 'company id', 'membership card',
-];
-
 /** Types where an explicitly detected past expiry should reject */
 const EXPIRY_CHECK_TYPES = new Set([
   "Driver's License",
@@ -252,6 +247,37 @@ function matchesSelectedType(idType, text) {
   }
 
   return { match: hits.length > 0, hits };
+}
+
+/** Which supported government ID is this? Returns the best match, or null. */
+function detectPrimaryType(text) {
+  const candidates = detectTypes(text);
+  const tokens = normalizeOcr(text).split(' ');
+  // Short keywords ("lto", "dfa") only count as whole words, never inside another word
+  const score = (type) => {
+    const found = ID_KEYWORDS[type].filter((kw) =>
+      compact(kw).length <= 4 ? tokens.includes(compact(kw)) : textHasKeyword(text, kw)
+    ).length;
+    if (found) return found;
+    if (type === 'PRC ID') return 1;
+    if (type === 'UMID') return matchesSelectedType(type, text).hits.includes('umid signals') ? 1 : 0;
+    return 0;
+  };
+
+  const national = 'Philippine National ID';
+  const best = candidates
+    .filter((type) => type !== national)
+    .map((type) => ({ type, score: score(type) }))
+    .filter((c) => c.score > 0)
+    .sort((a, b) => b.score - a.score)[0];
+
+  // National ID wording ("Republika", "Apelyido") also appears on other cards,
+  // so another ID wins unless the PhilID signal is strong and the other one is weak.
+  if (candidates.includes(national)) {
+    const strong = NATIONAL_ID_STRONG.some((kw) => textHasKeyword(text, kw));
+    if (!best || (strong && best.score < 2)) return national;
+  }
+  return best ? best.type : null;
 }
 
 function toYmd(d) {
@@ -826,9 +852,10 @@ function runOcr(Tesseract, buffer, isEnough) {
   return job;
 }
 
-async function verifyIdImage(idType, image, options = {}) {
-  if (!idType || !image) {
-    return failResult({ message: 'Please select an ID type and take a photo.' });
+/** Reads the ID photo, works out which government ID it is, and checks expiry. */
+async function verifyIdImage(image, options = {}) {
+  if (!image) {
+    return failResult({ message: 'Please take a photo of your valid ID.' });
   }
 
   let Tesseract;
@@ -877,7 +904,8 @@ async function verifyIdImage(idType, image, options = {}) {
     // Stop OCR passes early once the ID type (and, if given, the name) is already confirmed
     const isEnough = (t) => {
       const n = normalizeOcr(t);
-      if (!matchesSelectedType(idType, n).match) return false;
+      const idType = detectPrimaryType(n);
+      if (!idType) return false;
       if (options.names) {
         const { extracted: ex } = extractIdFields(t, idType);
         return compareNames(options.names, ex.name, n).ok;
@@ -904,14 +932,12 @@ async function verifyIdImage(idType, image, options = {}) {
       });
     }
 
-    const { extracted } = extractIdFields(text, idType);
+    const idType = detectPrimaryType(readable);
+    const { extracted } = extractIdFields(text, idType || '');
     const expiration = evaluateExpiration(idType, extracted);
+    const detected = idType ? [idType] : [];
 
-    const rejectHits = findMatches(readable, REJECT_KEYWORDS);
-    const detected = detectTypes(readable);
-    const typeCheck = matchesSelectedType(idType, readable);
-
-    if (rejectHits.length && !typeCheck.match) {
+    if (!idType) {
       return failResult({
         detected,
         text: readable.slice(0, 500),
@@ -922,24 +948,10 @@ async function verifyIdImage(idType, image, options = {}) {
       });
     }
 
-    if (!typeCheck.match) {
-      const other = detected.filter((type) => type !== idType);
-      return failResult({
-        detected,
-        text: readable.slice(0, 500),
-        quality,
-        extracted,
-        expiration,
-        message: other.length
-          ? `The photo looks like a ${other.join(', ')}, not a ${idType}. Please scan the correct ID.`
-          : 'Invalid or unsupported ID. Please capture a valid government-issued ID.',
-      });
-    }
-
     // After type match: hard-reject expired / unverifiable expiry (GCash-style)
     if (expiration.status === 'expired') {
       return failResult({
-        detected: detected.length ? detected : [idType],
+        detected,
         text: readable.slice(0, 500),
         quality,
         extracted,
@@ -950,7 +962,7 @@ async function verifyIdImage(idType, image, options = {}) {
 
     if (expiration.status === 'unknown') {
       return failResult({
-        detected: detected.length ? detected : [idType],
+        detected,
         text: readable.slice(0, 500),
         quality,
         extracted,
@@ -963,7 +975,8 @@ async function verifyIdImage(idType, image, options = {}) {
 
     return {
       match: true,
-      detected: detected.length ? detected : [idType],
+      id_type: idType,
+      detected,
       text: readable.slice(0, 500),
       ocrText: readable,
       message: `Verified as ${idType} (quality checks passed). ${QUALITY_DISCLAIMER}`,
@@ -1077,6 +1090,7 @@ module.exports = {
   runOcr,
   warmUp,
   detectTypes,
+  detectPrimaryType,
   normalizeOcr,
   verifyIdImage,
   ID_KEYWORDS,
